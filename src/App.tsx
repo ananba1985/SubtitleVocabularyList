@@ -12,8 +12,9 @@ import type {
 import { CollectionModal } from "./components/CollectionModal";
 import { LibraryView } from "./components/LibraryView";
 import { EpisodesView } from "./components/EpisodesView";
+import { ReviewView } from "./components/ReviewView";
 
-type Tab = "library" | "episodes" | "tasks" | "settings";
+type Tab = "library" | "episodes" | "reviews" | "leech" | "tasks" | "settings";
 export default function App() {
   const [tab, setTab] = useState<Tab>("library"),
     [info, setInfo] = useState<AppInfo | null>(null),
@@ -103,6 +104,8 @@ export default function App() {
             [
               ["library", "我的单词本"],
               ["episodes", "观看前预习"],
+              ["reviews", "主动回忆测验"],
+              ["leech", "易忘词专项"],
               ["tasks", "后台任务"],
               ["settings", "本地设置"],
             ] as [Tab, string][]
@@ -137,6 +140,8 @@ export default function App() {
                 {
                   library: "我的单词本",
                   episodes: "观看前预习",
+                  reviews: "主动回忆测验",
+                  leech: "易忘词专项",
                   tasks: "后台任务",
                   settings: "本地设置",
                 }[tab]
@@ -214,6 +219,13 @@ export default function App() {
             notify={setNotice}
           />
         )}
+        {(tab === "reviews" || tab === "leech") && (
+          <ReviewView
+            key={tab}
+            special={tab === "leech"}
+            refreshKey={refreshKey}
+          />
+        )}
         {tab === "tasks" && (
           <section className="task-list">
             {tasks.map((task) => (
@@ -229,6 +241,7 @@ export default function App() {
                       selection: "划词采集",
                       screen_capture: "截图选区准备",
                       ocr: "截图文字识别",
+                      review_audio: "听力题音频准备",
                     }[task.kind] ?? task.kind}
                   </strong>
                   <span className={`badge ${task.state}`}>

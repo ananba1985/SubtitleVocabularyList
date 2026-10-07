@@ -138,3 +138,59 @@ export interface ScreenSession {
   bounds: { x: number; y: number; width: number; height: number };
   imagePath: string;
 }
+export type ReviewOutcome =
+  "correct" | "correct_with_hint" | "incorrect" | "needs_confirmation";
+export interface ReviewState {
+  level: string;
+  streak: number;
+  lapses: number;
+  intervalMs: number;
+  dueAt: number;
+  lastReviewedAt: number;
+  recent: ReviewOutcome[];
+  leechActive: boolean;
+  leechStartedAt: number;
+  leechClearedAt: number;
+}
+export interface ReviewUnit {
+  id: string;
+  entryId: string;
+  text: string;
+  kind: string;
+  scope: string;
+  dimension: "meaning" | "listening";
+  state: ReviewState;
+  revision: number;
+  reasons: string[];
+  available: boolean;
+}
+export interface ReviewQuestion {
+  id: string;
+  unitId: string;
+  dimension: "meaning" | "listening";
+  prompt: string;
+  context: string;
+  audioKind: string;
+}
+export interface ReviewAttempt {
+  id: string;
+  unitId: string;
+  question: {
+    entryId: string;
+    target: string;
+    dimension: "meaning" | "listening";
+    expected: string[];
+    context: string;
+    assetId: string | null;
+    audioKind: string;
+  };
+  answer: string;
+  hinted: boolean;
+  originalOutcome: ReviewOutcome;
+  outcome: ReviewOutcome;
+  grader: string;
+  revision: number;
+  createdAt: number;
+  state: ReviewState;
+  corrections: { outcome: ReviewOutcome; reason: string; createdAt: number }[];
+}

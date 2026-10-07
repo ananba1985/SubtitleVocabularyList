@@ -4,10 +4,14 @@ export function AudioPlayer({
   path,
   label = "原声",
   playbackKey,
+  onPlayed,
+  onFailed,
 }: {
   path: string;
   label?: string;
   playbackKey?: number;
+  onPlayed?: () => void;
+  onFailed?: () => void;
 }) {
   const audio = useRef<HTMLAudioElement>(null);
   const [notice, setNotice] = useState("");
@@ -47,7 +51,13 @@ export function AudioPlayer({
             new CustomEvent("svl_audio_started", { detail: audio.current }),
           );
         }}
-        onError={() => setNotice("音频无法加载，请检查文件或重新准备。")}
+        onTimeUpdate={() => {
+          if (audio.current && audio.current.currentTime > 0) onPlayed?.();
+        }}
+        onError={() => {
+          setNotice("音频无法加载，请检查文件或重新准备。");
+          onFailed?.();
+        }}
       />
       {notice && (
         <span className="muted" role="status">

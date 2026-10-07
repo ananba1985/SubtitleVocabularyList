@@ -2,6 +2,7 @@ use crate::{
     application::{Application, PreparedCollection, Settings, example_input_from_corpus},
     corpus::{Candidate, CandidateExample, SourceSummary},
     error::AppError,
+    reviews::{AnswerInput, Attempt, CorrectionInput, Question, ReviewUnit},
     store::Store,
     tasks::{TaskManager, TaskSnapshot},
     vocabulary::{CollectionInput, Entry, EntryUpdate},
@@ -162,6 +163,58 @@ async fn entry_get(app: AppState<'_>, entry_id: String) -> Result<Entry, AppErro
 async fn entry_update(app: AppState<'_>, input: EntryUpdate) -> Result<Entry, AppError> {
     let app = app.inner().clone();
     background(move || app.store.update_entry(&input)).await
+}
+#[tauri::command]
+async fn review_units(
+    app: AppState<'_>,
+    mode: String,
+    dimension: String,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<ReviewUnit>, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.review_units(&mode, &dimension, offset, limit)).await
+}
+#[tauri::command]
+async fn review_question(
+    app: AppState<'_>,
+    unit_id: String,
+    expected_revision: i64,
+) -> Result<Question, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.review_question(&unit_id, expected_revision)).await
+}
+#[tauri::command]
+fn review_hint(app: AppState<'_>, question_id: String) -> Result<String, AppError> {
+    app.store.review_hint(&question_id)
+}
+#[tauri::command]
+async fn review_submit(app: AppState<'_>, input: AnswerInput) -> Result<Attempt, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.review_submit(&input)).await
+}
+#[tauri::command]
+async fn review_correct(app: AppState<'_>, input: CorrectionInput) -> Result<Attempt, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.review_correct(&input)).await
+}
+#[tauri::command]
+async fn review_history(
+    app: AppState<'_>,
+    unit_id: Option<String>,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<Attempt>, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.review_history(unit_id.as_deref(), offset, limit)).await
+}
+#[tauri::command]
+fn review_audio_start(
+    app: AppState<'_>,
+    question_id: String,
+    operation_id: String,
+) -> Result<TaskSnapshot, AppError> {
+    app.review_audio_start(question_id, operation_id)
 }
 #[tauri::command]
 fn collection_prepare(
@@ -439,6 +492,13 @@ pub fn run() {
             entries_list,
             entry_get,
             entry_update,
+            review_units,
+            review_question,
+            review_hint,
+            review_submit,
+            review_correct,
+            review_history,
+            review_audio_start,
             collection_prepare,
             collection_from_example,
             collection_commit,

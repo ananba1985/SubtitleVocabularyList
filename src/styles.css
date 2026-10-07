@@ -481,6 +481,35 @@ h3 {
 .system-speech {
   margin: 8px 0;
 }
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+.review-grid h3 {
+  font-size: 20px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.review-card {
+  max-width: 800px;
+  background: #fff;
+  border: 1px solid #e0e5dc;
+  border-radius: 12px;
+  padding: 28px;
+}
+.review-card h2 {
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.review-answer {
+  margin-top: 24px;
+}
+.review-feedback {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e5dc;
+}
 .capture-overlay {
   position: fixed;
   inset: 0;

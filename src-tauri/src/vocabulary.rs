@@ -263,6 +263,8 @@ impl Store {
                 input.id
             ],
         )?;
+        crate::reviews::ensure_units(&transaction, &input.id, Utc::now().timestamp_millis())?;
+        transaction.execute("UPDATE review_states SET revision=revision+1 WHERE unit_id IN (SELECT id FROM learning_units WHERE entry_id=?)", [&input.id])?;
         transaction.commit()?;
         get_entry_on(&connection, &input.id)
     }
@@ -295,9 +297,9 @@ impl Store {
     pub fn collect(&self, input: &CollectionInput) -> Result<CollectionResult, AppError> {
         validate(input)?;
         let request_hash = digest(&serde_json::to_vec(input)?);
-        let now = Utc::now().timestamp_millis();
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
+        let now = crate::reviews::event_time(&transaction)?;
         let receipt: Option<(String, String)> = transaction
             .query_row(
                 "SELECT request_hash,result_json FROM collection_actions WHERE operation_id=?",
@@ -388,17 +390,6 @@ impl Store {
                 example_ids.push(id);
             }
         }
-        for dimension in ["meaning", "listening"] {
-            let unit_id = identity();
-            let scope_key = meaning_id.as_deref().unwrap_or("entry");
-            transaction.execute("INSERT OR IGNORE INTO learning_units(id,entry_id,scope_key,dimension) VALUES (?,?,?,?)", params![unit_id, entry_id, scope_key, dimension])?;
-            let unit_id: String = transaction.query_row(
-                "SELECT id FROM learning_units WHERE entry_id=? AND scope_key=? AND dimension=?",
-                params![entry_id, scope_key, dimension],
-                |row| row.get(0),
-            )?;
-            transaction.execute("INSERT INTO review_states(unit_id,state_json,due_at,relearn_at) VALUES (?,'{}',?,?) ON CONFLICT(unit_id) DO UPDATE SET due_at=MIN(review_states.due_at,excluded.due_at),relearn_at=excluded.relearn_at,revision=review_states.revision+1", params![unit_id, now, now])?;
-        }
         let revision = transaction.query_row(
             "SELECT revision FROM entries WHERE id=?",
             [&entry_id],
@@ -412,6 +403,8 @@ impl Store {
             example_ids,
         };
         transaction.execute("INSERT INTO collection_actions(operation_id,request_hash,entry_id,source_id,result_json,created_at) VALUES (?,?,?,?,?,?)", params![input.operation_id, request_hash, entry_id, input.examples.first().and_then(|e| e.source_id.as_ref()), serde_json::to_string(&result)?, now])?;
+        crate::reviews::ensure_units(&transaction, &entry_id, now)?;
+        crate::reviews::recompute_entry(&transaction, &entry_id)?;
         transaction.commit()?;
         Ok(result)
     }

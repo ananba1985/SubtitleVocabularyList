@@ -4,6 +4,7 @@ pub mod error;
 pub mod media;
 pub mod ocr;
 pub mod review_policy;
+pub mod reviews;
 pub mod store;
 pub mod tasks;
 pub mod vocabulary;

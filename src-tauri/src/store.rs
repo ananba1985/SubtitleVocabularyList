@@ -21,7 +21,7 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 2 {
+        if version > 3 {
             return Err(AppError::new(
                 "unsupported_schema",
                 "此词库由较新版本创建，请使用对应软件版本打开。",
@@ -37,6 +37,12 @@ impl Store {
             let transaction = connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/002_imports.sql"))?;
             transaction.pragma_update(None, "user_version", 2)?;
+            transaction.commit()?;
+        }
+        if version < 3 {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/003_reviews.sql"))?;
+            transaction.pragma_update(None, "user_version", 3)?;
             transaction.commit()?;
         }
         Ok(Self {
@@ -73,7 +79,7 @@ mod tests {
     fn database_migrates_once_and_enforces_relationships() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 2);
+        assert_eq!(store.schema_version().unwrap(), 3);
         assert_eq!(
             store
                 .connection()
@@ -90,7 +96,7 @@ mod tests {
                 .unwrap()
                 .schema_version()
                 .unwrap(),
-            2
+            3
         );
     }
 
@@ -120,7 +126,37 @@ mod tests {
         connection.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('existing','word','reluctant','reluctant',1,1)",[]).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 2);
+        assert_eq!(store.schema_version().unwrap(), 3);
         assert_eq!(store.get_entry("existing").unwrap().text, "reluctant");
+    }
+
+    #[test]
+    fn version_two_upgrade_keeps_existing_units_examples_and_actions() {
+        let directory = tempfile::tempdir().unwrap();
+        let connection = Connection::open(directory.path().join("vocabulary.sqlite3")).unwrap();
+        connection
+            .execute_batch(include_str!("../migrations/001_initial.sql"))
+            .unwrap();
+        connection
+            .execute_batch(include_str!("../migrations/002_imports.sql"))
+            .unwrap();
+        connection.execute_batch("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('e','word','reluctant','reluctant',100,100);
+            INSERT INTO meanings(id,entry_id,text,origin,created_at) VALUES ('m','e','不情愿的','user',100);
+            INSERT INTO examples(id,location_key,identity_key,text,created_at) VALUES ('x','manual','x','She was reluctant.',100);
+            INSERT INTO entry_examples(entry_id,example_id,meaning_id) VALUES ('e','x','m');
+            INSERT INTO collection_actions(operation_id,request_hash,entry_id,result_json,created_at) VALUES ('op','hash','e','{}',100);
+            INSERT INTO learning_units(id,entry_id,scope_key,dimension) VALUES ('u','e','m','meaning');
+            INSERT INTO review_states(unit_id,state_json,due_at,relearn_at) VALUES ('u','{}',100,100);").unwrap();
+        connection.pragma_update(None, "user_version", 2).unwrap();
+        drop(connection);
+        let store = Store::open(directory.path()).unwrap();
+        assert_eq!(store.schema_version().unwrap(), 3);
+        let entry = store.get_entry("e").unwrap();
+        assert_eq!(entry.collection_count, 1);
+        assert_eq!(entry.examples[0].text, "She was reluctant.");
+        let units = store.review_units("all", "meaning", 0, 50).unwrap();
+        assert_eq!(units[0].id, "u");
+        assert_eq!(units[0].state.due_at, 100);
+        assert!(store.review_question("u", units[0].revision).is_ok());
     }
 }

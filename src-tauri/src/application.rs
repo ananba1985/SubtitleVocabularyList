@@ -60,6 +60,68 @@ pub struct Application {
 
 impl Application {
     #[cfg(all(windows, feature = "desktop"))]
+    pub fn review_audio_start(
+        &self,
+        question_id: String,
+        operation_id: String,
+    ) -> Result<TaskSnapshot, AppError> {
+        let question = self.store.review_audio(&question_id)?;
+        let store = Arc::clone(&self.store);
+        let settings = self.settings()?;
+        let hash = vocabulary::digest(question_id.as_bytes());
+        self.tasks
+            .start("review_audio", &operation_id, &hash, move |context| {
+                context.check_cancelled()?;
+                let path = if let Some(asset_id) = &question.asset_id {
+                    store.media_file(asset_id)?
+                } else {
+                    context.progress("speech", 0, 1, "正在准备听力题的本地英语语音");
+                    let voice = crate::windows_native::system_voices()?
+                        .into_iter()
+                        .find(|voice| {
+                            settings.system_voice.is_empty() || voice.id == settings.system_voice
+                        })
+                        .ok_or_else(|| {
+                            AppError::new(
+                                "resource_missing",
+                                "未发现所选的本地英语声音，跳过此题后可继续词义练习。",
+                            )
+                        })?;
+                    let key =
+                        vocabulary::digest(&serde_json::to_vec(&(&question.target, &voice.id))?);
+                    let path = store.root().join("jobs").join(format!("system-{key}.wav"));
+                    if !valid_wave(&path) {
+                        let temporary = store
+                            .root()
+                            .join("jobs")
+                            .join(format!("review-{}.wav", Uuid::new_v4()));
+                        let result = crate::windows_native::synthesize(
+                            &question.target,
+                            &voice.id,
+                            &temporary,
+                            &context.cancelled,
+                        );
+                        if let Err(error) = result {
+                            let _ = std::fs::remove_file(&temporary);
+                            return Err(error);
+                        }
+                        if !valid_wave(&temporary) {
+                            let _ = std::fs::remove_file(&temporary);
+                            return Err(AppError::new("invalid_data", "未生成有效听力音频。"));
+                        }
+                        if path.exists() {
+                            std::fs::remove_file(&path)?;
+                        }
+                        std::fs::rename(&temporary, &path)?;
+                    }
+                    path
+                };
+                context.check_cancelled()?;
+                store.review_audio_prepared(&question_id)?;
+                Ok(json!({"path":path,"kind":question.audio_kind}))
+            })
+    }
+    #[cfg(all(windows, feature = "desktop"))]
     pub fn speech_start(
         &self,
         text: String,

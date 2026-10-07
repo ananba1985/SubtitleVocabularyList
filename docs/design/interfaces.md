@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.5 |
-| 更新日期 | 2026-10-06 |
+| 文档版本 | 0.6 |
+| 更新日期 | 2026-10-07 |
 | 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
@@ -84,8 +84,15 @@
 | `capture_ocr_submit`、`capture_ocr_cancel` | 前者 `{sessionId,rect:{x,y,width,height}}` → OCR TaskSnapshot，坐标相对本次快照；后者 `{sessionId}` → 取消本次选区，过期标识不能取消新会话 |
 | `speech_voices`、`speech_start` | 前者列出本地英语声音；后者 `{text,operationId}` → 语音准备任务，结果含 path、kind=system、voice |
 | `native_status`、`app_quit` | 前者返回当前快捷键注册与失败信息；后者请求取消后台任务并退出应用 |
+| `review_units` | `{mode:'due'/'all'/'leech',dimension:'meaning'/'listening'/'',offset,limit}` → 分页学习单元、独立状态、可练习标识与专项原因，兼容 CMD-18 的专项列表语义 |
+| `review_question` | `{unitId,expectedRevision}` → CMD-15 的当前题目实现，返回题目 id、维度、题面、可见语境与音频类型；不返回参考答案 |
+| `review_hint` | `{questionId}` → 首字提示，同时持久化提示事实；已提交题目不能补写提示 |
+| `review_audio_start` | `{questionId,operationId}` → 听力音频任务；核心读取私有快照，结果仅含 path、kind；原声检查摘要，无适用原声时准备已标识系统语音 |
+| `review_submit` | `{input:{operationId,questionId,answer,unable}}` → CMD-16 的当前实现，直接返回已保存作答、答案依据及当前安排；未明确匹配进入 needs_confirmation，不需要模型 |
+| `review_correct` | `{input:{operationId,attemptId,expectedRevision,outcome,reason}}` → 修正后的作答与重算状态；请求摘要去重，提示事实不能清除 |
+| `review_history` | `{unitId:string/null,offset,limit}` → 原回答、原判分、有效结果、答案快照及历次修正；支持待确认结果在重启后处理 |
 
-当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。复习、查询与同步命令仍是后续设计。
+当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。复习命令已按上表接入；查询与同步命令仍是后续设计。
 
 设置新增 selectionShortcut、ocrShortcut、systemVoice，旧 JSON 使用默认值读取，不改变数据库 schema。两个快捷键不得相同；更新先尝试注册新值，成功后释放旧值并保存，失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入；当前只保留一份待确认采集结果，连续采集队列仍需完善。
 
@@ -194,3 +201,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.3 | 2026-10-06 | 对齐当前导入、收录、浏览、修改、媒体与任务实现参数，区分后续命令与事件 |
 | 0.4 | 2026-10-06 | 对齐划词事件、系统语音准备、声音与快捷键设置及退出命令 |
 | 0.5 | 2026-10-06 | 对齐截图会话、裁剪、取消与识别命令，明确当前待确认结果边界 |
+| 0.6 | 2026-10-07 | 对齐实际复习列表、题目、提示、听力音频、作答、修正和历史命令 |

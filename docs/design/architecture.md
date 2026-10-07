@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.6 |
+| 文档版本 | 0.7 |
 | 对应产品版本 | 0.1 |
-| 更新日期 | 2026-10-06 |
+| 更新日期 | 2026-10-07 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
 | 需求依据 | [产品需求文档](../requirements/PRD.md) |
 | 管理规范 | [文档管理规范](../README.md) |
@@ -87,7 +87,7 @@ flowchart LR
 
 当前 `desktop.rs` 连接 Tauri 与应用状态，`application.rs` 编排导入、收录和本地解释；`tasks.rs` 保存后台快照及取消状态。`media.rs` 处理本地字幕、PGS OCR、转写与截取；`corpus.rs` 管理来源、候选和原声文件；`vocabulary.rs` 统一合并与持久化。React 界面通过对应命令展示预习、词库、确认和任务，不自行写数据库。
 
-上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 增量使用 `windows_native.rs` 隔离 UI Automation、SAPI 和 GDI 原生接口，`desktop_capture.rs` 管理全局触发、前台顺序和托盘生命周期，`desktop_ocr.rs` 管理截图会话与裁剪；采集结果通过统一收录核心保存。系统语音生成本地 WAV，播放沿用现有播放器。WPF 实际取词和语音证据见[Windows 记录](../testing/windows-capture-results.md)，截图证据见[OCR 记录](../testing/ocr-results.md)。复习初始规则见[策略设计](review-policy.md)，纯函数已验证，持久化与测验仍需接通。查询、复习、同步及最终打包仍待完成。
+上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 增量使用 `windows_native.rs` 隔离 UI Automation、SAPI 和 GDI 原生接口，`desktop_capture.rs` 管理全局触发、前台顺序和托盘生命周期，`desktop_ocr.rs` 管理截图会话与裁剪；采集结果通过统一收录核心保存。系统语音生成本地 WAV，播放沿用现有播放器。WPF 实际取词和语音证据见[Windows 记录](../testing/windows-capture-results.md)，截图证据见[OCR 记录](../testing/ocr-results.md)。`reviews.rs` 已接入私有题目快照、确定性判分和人工确认、同事务作答与修正、收录事件重放及专项列表，策略唯一来源为[策略设计](review-policy.md)。查询、同步及最终打包仍待完成。
 
 ## 5 概念数据视图
 
@@ -177,6 +177,8 @@ flowchart LR
 
 桌面认证、账号绑定、同步字段、接口版本、重试、冲突与媒体大小限制均属于待设计内容。本次文档提交不修改或部署该站点。
 
+2026-10-07 已通过 Sites 工具找到现有 [English Practice](https://english-copy-practice.hxwjb.chatgpt.site)，确认当前账号为所有者，取回部署源代码 main 的 `60b4aa7b1b5c08e13f9ea4f0b544ac8090504b11`。上述字段限制仍存在，站点尚未改造。平台的站点访问服务凭据不提供已登录用户身份，不能代替个人词库认证；需要以真实登录用户批准桌面连接，再签发限定词库同步的凭据，具体实现和真实验收仍属 M-07。
+
 ## 8 部署与离线资源
 
 界面资源随应用提供，本地数据库与个人媒体存入应用数据目录。工具、识别模型、Windows 英语语音和 WebView2 运行时应在离线使用前可用，不能在核心流程中隐式依赖外网下载。
@@ -242,3 +244,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | 0.4 | 2026-10-06 | 记录导入、收录、任务与媒体的实际模块位置及桌面验证边界 |
 | 0.5 | 2026-10-06 | 记录 UI Automation、SAPI、全局快捷键与托盘的实施位置及验证边界 |
 | 0.6 | 2026-10-06 | 记录 GDI 截图会话与复习纯策略的实施位置，关联实际证据 |
+| 0.7 | 2026-10-07 | 记录测验、修正与专项的实施位置，以及现有真实站点的源码和所有者访问核实 |

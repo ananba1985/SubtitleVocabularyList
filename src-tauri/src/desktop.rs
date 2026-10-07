@@ -237,11 +237,19 @@ async fn settings_update(
     background(move || {
         let previous = app.settings()?;
         let native = handle.state::<NativeDesktop>();
-        native.configure(&handle, &settings.selection_shortcut)?;
+        native.configure(
+            &handle,
+            &settings.selection_shortcut,
+            &settings.ocr_shortcut,
+        )?;
         match app.save_settings(settings) {
             Ok(settings) => Ok(settings),
             Err(error) => {
-                let _ = native.configure(&handle, &previous.selection_shortcut);
+                let _ = native.configure(
+                    &handle,
+                    &previous.selection_shortcut,
+                    &previous.ocr_shortcut,
+                );
                 Err(error)
             }
         }
@@ -273,6 +281,33 @@ fn capture_selection(handle: tauri::AppHandle) -> Result<TaskSnapshot, AppError>
 fn app_quit(handle: tauri::AppHandle) {
     desktop_capture::quit(&handle);
 }
+#[tauri::command]
+fn capture_ocr(handle: tauri::AppHandle) -> Result<TaskSnapshot, AppError> {
+    handle.state::<NativeDesktop>().ocr_start(&handle)
+}
+#[tauri::command]
+fn capture_session_get(
+    handle: tauri::AppHandle,
+    session_id: String,
+) -> Result<serde_json::Value, AppError> {
+    handle.state::<NativeDesktop>().ocr_session(&session_id)
+}
+#[tauri::command]
+fn capture_ocr_cancel(handle: tauri::AppHandle, session_id: String) {
+    handle
+        .state::<NativeDesktop>()
+        .ocr_cancel(&handle, &session_id);
+}
+#[tauri::command]
+fn capture_ocr_submit(
+    handle: tauri::AppHandle,
+    session_id: String,
+    rect: crate::ocr::PixelRect,
+) -> Result<TaskSnapshot, AppError> {
+    handle
+        .state::<NativeDesktop>()
+        .ocr_submit(&handle, session_id, rect)
+}
 
 pub fn run() {
     tauri::Builder::default()
@@ -288,11 +323,21 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed
                         && let Some(native) = app.try_state::<NativeDesktop>()
-                        && native.matches(shortcut)
-                        && let Err(error) = native.capture(app)
-                        && error.code != "capture_busy"
                     {
-                        desktop_capture::capture_failed(app, &error);
+                        let result = match native.action(shortcut) {
+                            Some(crate::desktop_capture::CaptureAction::Selection) => {
+                                Some(native.capture(app))
+                            }
+                            Some(crate::desktop_capture::CaptureAction::Ocr) => {
+                                Some(native.ocr_start(app))
+                            }
+                            None => None,
+                        };
+                        if let Some(Err(error)) = result
+                            && error.code != "capture_busy"
+                        {
+                            desktop_capture::capture_failed(app, &error);
+                        }
                     }
                 })
                 .build(),
@@ -329,10 +374,22 @@ pub fn run() {
             let settings = application.settings()?;
             app.manage(application);
             app.manage(NativeDesktop::default());
-            if let Err(error) = app
-                .state::<NativeDesktop>()
-                .configure(app.handle(), &settings.selection_shortcut)
-            {
+            if let Err(error) = app.state::<NativeDesktop>().configure(
+                app.handle(),
+                &settings.selection_shortcut,
+                &settings.ocr_shortcut,
+            ) {
+                if app
+                    .state::<NativeDesktop>()
+                    .configure(app.handle(), &settings.selection_shortcut, "")
+                    .is_err()
+                {
+                    let _ = app.state::<NativeDesktop>().configure(
+                        app.handle(),
+                        "",
+                        &settings.ocr_shortcut,
+                    );
+                }
                 app.state::<NativeDesktop>().remember_error(&error);
             }
             use tauri::{
@@ -356,6 +413,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let Some(id) = window.label().strip_prefix("capture-")
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            {
+                window.app_handle().state::<NativeDesktop>().ocr_dismiss(id);
+            }
             if window.label() == "main"
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
             {
@@ -389,7 +451,11 @@ pub fn run() {
             speech_start,
             native_status,
             capture_selection,
-            app_quit
+            app_quit,
+            capture_ocr,
+            capture_session_get,
+            capture_ocr_cancel,
+            capture_ocr_submit
         ])
         .run(tauri::generate_context!())
         .expect("Cannot start SubtitleVocabularyList");

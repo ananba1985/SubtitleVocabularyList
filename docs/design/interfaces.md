@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.4 |
+| 文档版本 | 0.5 |
 | 更新日期 | 2026-10-06 |
 | 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -80,12 +80,16 @@
 | `explain_start` | `{text,context,operationId}` → 本地解释任务，结果为 meaning、translation、notes 字符串；仅显式采用后进入收录内容 |
 | `settings_get`、`settings_update` | 后者 `{settings}`，本地模型限回环地址，含离线开关与工具位置 |
 | `capture_selection` | 无参数，先记录前台上下文，再返回取词 TaskSnapshot；成功发出 capture_completed，失败不返回旧内容 |
+| `capture_ocr`、`capture_session_get` | 前者无参数 → screen_capture TaskSnapshot，成功结果 sessionId、stage=awaiting_selection；后者 `{sessionId}` → 本次快照路径与物理 ScreenBounds |
+| `capture_ocr_submit`、`capture_ocr_cancel` | 前者 `{sessionId,rect:{x,y,width,height}}` → OCR TaskSnapshot，坐标相对本次快照；后者 `{sessionId}` → 取消本次选区，过期标识不能取消新会话 |
 | `speech_voices`、`speech_start` | 前者列出本地英语声音；后者 `{text,operationId}` → 语音准备任务，结果含 path、kind=system、voice |
 | `native_status`、`app_quit` | 前者返回当前快捷键注册与失败信息；后者请求取消后台任务并退出应用 |
 
-当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。截图、复习、查询与同步命令仍是后续设计。
+当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。复习、查询与同步命令仍是后续设计。
 
-设置新增 selectionShortcut、systemVoice，旧 JSON 使用默认值读取，不改变数据库 schema。快捷键更新先尝试注册新值，成功后释放旧值并保存；失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入。
+设置新增 selectionShortcut、ocrShortcut、systemVoice，旧 JSON 使用默认值读取，不改变数据库 schema。两个快捷键不得相同；更新先尝试注册新值，成功后释放旧值并保存，失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入；当前只保留一份待确认采集结果，连续采集队列仍需完善。
+
+截图使用先快照后选区的独立会话。提交校验矩形和显示器配置，成功裁剪后关闭选区窗口；recognize 失败结果为空。取消选区调用 capture_ocr_cancel，识别已运行时调用 task_cancel。识别成功生成 OCR 文字来源，经显式确认才写入词库；图像在本轮结束后清理。
 
 ## 3 收录请求与提交结果
 
@@ -189,3 +193,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.2 | 2026-10-06 | 根据用户确认，将原声与学习记录纳入必需双向同步契约 |
 | 0.3 | 2026-10-06 | 对齐当前导入、收录、浏览、修改、媒体与任务实现参数，区分后续命令与事件 |
 | 0.4 | 2026-10-06 | 对齐划词事件、系统语音准备、声音与快捷键设置及退出命令 |
+| 0.5 | 2026-10-06 | 对齐截图会话、裁剪、取消与识别命令，明确当前待确认结果边界 |

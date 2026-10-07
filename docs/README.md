@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.5 |
+| 文档版本 | 0.6 |
 | 更新日期 | 2026-10-06 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -22,6 +22,8 @@
 | 原型验证记录 | [testing/prototype-results.md](testing/prototype-results.md) | 实际环境、工具、素材标识、结果和未覆盖项 | 只证明具体原型边界，不代替完整功能验收 |
 | 桌面增量验证 | [testing/desktop-import-results.md](testing/desktop-import-results.md) | 实际界面操作、保存播放、重启取消与未覆盖项 | 区分具体桌面证据与整体验收 |
 | Windows 增量验证 | [testing/windows-capture-results.md](testing/windows-capture-results.md) | 跨进程选区、系统声音、配置与失败取消 | 区分用户实际确认、程序检查和未覆盖环境 |
+| OCR 增量验证 | [testing/ocr-results.md](testing/ocr-results.md) | 实际截图、物理坐标、识别合并与失败边界 | 数学缩放检查与实际屏幕兼容分别记录 |
+| 复习策略设计 | [design/review-policy.md](design/review-policy.md) | 初始间隔、掌握、专项与判分修正规则 | 规则测试不代表测验模块已交付 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 交付与使用 | 可运行版本形成后按需放入 `release/` 或更新根 README | 版本、安装运行方法、依赖资源、变更与已知限制 | 只描述已交付行为，不提前编造安装命令和功能状态 |
 
@@ -104,3 +106,4 @@
 | 0.3 | 2026-10-06 | 索引首轮原型证据，随实施维护范围与完成状态 |
 | 0.4 | 2026-10-06 | 索引桌面导入与收录增量证据 |
 | 0.5 | 2026-10-06 | 索引 Windows 划词与系统语音增量证据 |
+| 0.6 | 2026-10-06 | 索引 OCR 实际证据与初始复习策略 |

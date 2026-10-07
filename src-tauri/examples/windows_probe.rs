@@ -5,6 +5,36 @@ use subtitle_vocabulary_list::windows_native::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().collect();
     match arguments.get(1).map(String::as_str) {
+        Some("screen-crop") => {
+            let output = PathBuf::from(arguments.get(2).ok_or("provide a crop output path")?);
+            let numbers: Vec<u32> = arguments
+                .iter()
+                .skip(3)
+                .map(|value| value.parse())
+                .collect::<Result<_, _>>()?;
+            if numbers.len() != 4 {
+                return Err("provide x y width height in physical pixels".into());
+            }
+            let snapshot = output.with_extension("snapshot.tmp.png");
+            let result = (|| {
+                let bounds = subtitle_vocabulary_list::windows_native::capture_screen(&snapshot)?;
+                let rect = subtitle_vocabulary_list::ocr::PixelRect {
+                    x: numbers[0],
+                    y: numbers[1],
+                    width: numbers[2],
+                    height: numbers[3],
+                };
+                rect.validate(&bounds)?;
+                let image = image::open(&snapshot)?;
+                image
+                    .crop_imm(rect.x, rect.y, rect.width, rect.height)
+                    .save(&output)?;
+                println!("{}", serde_json::to_string(&bounds)?);
+                Ok::<_, Box<dyn std::error::Error>>(())
+            })();
+            let _ = std::fs::remove_file(snapshot);
+            result?;
+        }
         Some("voices") => println!("{}", serde_json::to_string_pretty(&system_voices()?)?),
         Some("speech") => {
             let path = PathBuf::from(arguments.get(2).ok_or("provide a WAV output path")?);

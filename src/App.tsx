@@ -143,12 +143,20 @@ export default function App() {
               }
             </h1>
           </div>
-          <button
-            className="primary"
-            onClick={() => setSeed({ text: "", kind: "word", context: "" })}
-          >
-            ＋ 收录词条
-          </button>
+          <div className="actions">
+            <button
+              className="secondary"
+              onClick={() => call("capture_ocr").catch(report)}
+            >
+              截图收录
+            </button>
+            <button
+              className="primary"
+              onClick={() => setSeed({ text: "", kind: "word", context: "" })}
+            >
+              ＋ 收录词条
+            </button>
+          </div>
         </header>
         {error && (
           <div className="error banner" role="alert">
@@ -219,6 +227,8 @@ export default function App() {
                       explanation: "本地解释",
                       speech: "系统英语语音",
                       selection: "划词采集",
+                      screen_capture: "截图选区准备",
+                      ocr: "截图文字识别",
                     }[task.kind] ?? task.kind}
                   </strong>
                   <span className={`badge ${task.state}`}>
@@ -292,6 +302,19 @@ export default function App() {
                   ? "划词快捷键已注册"
                   : "划词快捷键未启用")}
               。留空可禁用快捷键。
+            </p>
+            <label>
+              截图快捷键
+              <input
+                value={settings.ocrShortcut}
+                onChange={(event) =>
+                  setSettings({ ...settings, ocrShortcut: event.target.value })
+                }
+              />
+            </label>
+            <p className="muted">
+              {native?.ocrRegistered ? "截图快捷键已注册" : "截图快捷键未启用"}
+              。识别在本机执行；拖选区域后进入收录确认。
             </p>
             <label>
               Windows 英语声音

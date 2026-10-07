@@ -105,6 +105,7 @@ export interface Settings {
   modelName: string;
   offlineMode: boolean;
   selectionShortcut: string;
+  ocrShortcut: string;
   systemVoice: string;
   tools: {
     ffmpeg: string;
@@ -129,5 +130,11 @@ export interface SystemVoice {
 }
 export interface NativeStatus {
   selectionRegistered: boolean;
+  ocrRegistered: boolean;
   error: string | null;
+}
+export interface ScreenSession {
+  id: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  imagePath: string;
 }

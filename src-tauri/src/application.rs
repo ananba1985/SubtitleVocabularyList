@@ -22,6 +22,7 @@ pub struct Settings {
     pub model_name: String,
     pub offline_mode: bool,
     pub selection_shortcut: String,
+    pub ocr_shortcut: String,
     pub system_voice: String,
     pub tools: MediaTools,
 }
@@ -34,6 +35,7 @@ impl Default for Settings {
             model_name: "Qwen3.5-9B".into(),
             offline_mode: true,
             selection_shortcut: "Ctrl+Alt+Shift+W".into(),
+            ocr_shortcut: "Ctrl+Alt+Shift+S".into(),
             system_voice: String::new(),
             tools: MediaTools::development(runtime),
         }

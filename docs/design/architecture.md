@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.5 |
+| 文档版本 | 0.6 |
 | 对应产品版本 | 0.1 |
 | 更新日期 | 2026-10-06 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
@@ -87,7 +87,7 @@ flowchart LR
 
 当前 `desktop.rs` 连接 Tauri 与应用状态，`application.rs` 编排导入、收录和本地解释；`tasks.rs` 保存后台快照及取消状态。`media.rs` 处理本地字幕、PGS OCR、转写与截取；`corpus.rs` 管理来源、候选和原声文件；`vocabulary.rs` 统一合并与持久化。React 界面通过对应命令展示预习、词库、确认和任务，不自行写数据库。
 
-上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 增量使用 `windows_native.rs` 隔离 UI Automation 和 SAPI 的原生接口，`desktop_capture.rs` 管理全局触发、前台顺序和托盘生命周期；采集结果通过统一收录核心保存。系统语音生成本地 WAV，播放沿用现有播放器。WPF 实际取词和语音证据见[Windows 记录](../testing/windows-capture-results.md)。截图、查询、复习、同步及最终打包仍待完成。
+上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 增量使用 `windows_native.rs` 隔离 UI Automation、SAPI 和 GDI 原生接口，`desktop_capture.rs` 管理全局触发、前台顺序和托盘生命周期，`desktop_ocr.rs` 管理截图会话与裁剪；采集结果通过统一收录核心保存。系统语音生成本地 WAV，播放沿用现有播放器。WPF 实际取词和语音证据见[Windows 记录](../testing/windows-capture-results.md)，截图证据见[OCR 记录](../testing/ocr-results.md)。复习初始规则见[策略设计](review-policy.md)，纯函数已验证，持久化与测验仍需接通。查询、复习、同步及最终打包仍待完成。
 
 ## 5 概念数据视图
 
@@ -241,3 +241,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | 0.3 | 2026-10-06 | 记录用户确认的许可与完整同步范围，更新媒体原型实现情况 |
 | 0.4 | 2026-10-06 | 记录导入、收录、任务与媒体的实际模块位置及桌面验证边界 |
 | 0.5 | 2026-10-06 | 记录 UI Automation、SAPI、全局快捷键与托盘的实施位置及验证边界 |
+| 0.6 | 2026-10-06 | 记录 GDI 截图会话与复习纯策略的实施位置，关联实际证据 |

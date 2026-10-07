@@ -29,6 +29,232 @@ use windows::{
     core::{Interface, PCWSTR, PWSTR, w},
 };
 
+pub fn screen_bounds() -> Result<crate::ocr::ScreenBounds, AppError> {
+    use windows::Win32::UI::{HiDpi::*, WindowsAndMessaging::*};
+    struct DpiGuard(DPI_AWARENESS_CONTEXT);
+    impl Drop for DpiGuard {
+        fn drop(&mut self) {
+            unsafe {
+                SetThreadDpiAwarenessContext(self.0);
+            }
+        }
+    }
+    let previous =
+        unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    if previous.0.is_null() {
+        return Err(AppError::new(
+            "provider_unavailable",
+            "无法取得物理像素坐标，请检查屏幕配置。",
+        ));
+    }
+    let _dpi = DpiGuard(previous);
+    let (x, y, width, height) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    };
+    if width <= 0 || height <= 0 || i64::from(width) * i64::from(height) > 100_000_000 {
+        return Err(AppError::new("unsupported", "当前屏幕尺寸无法用于截图。"));
+    }
+    Ok(crate::ocr::ScreenBounds {
+        x,
+        y,
+        width: width as u32,
+        height: height as u32,
+    })
+}
+
+pub fn capture_screen(output: &Path) -> Result<crate::ocr::ScreenBounds, AppError> {
+    use windows::Win32::{Graphics::Gdi::*, UI::HiDpi::*};
+    struct DpiGuard(DPI_AWARENESS_CONTEXT);
+    impl Drop for DpiGuard {
+        fn drop(&mut self) {
+            unsafe {
+                SetThreadDpiAwarenessContext(self.0);
+            }
+        }
+    }
+    let previous =
+        unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    if previous.0.is_null() {
+        return Err(AppError::new(
+            "provider_unavailable",
+            "截图坐标配置不可用。",
+        ));
+    }
+    let _dpi = DpiGuard(previous);
+    let bounds = screen_bounds()?;
+    struct BitmapGuard {
+        screen: HDC,
+        memory: HDC,
+        bitmap: HBITMAP,
+        previous: HGDIOBJ,
+    }
+    impl Drop for BitmapGuard {
+        fn drop(&mut self) {
+            unsafe {
+                if !self.previous.0.is_null() {
+                    SelectObject(self.memory, self.previous);
+                }
+                if !self.bitmap.0.is_null() {
+                    let _ = DeleteObject(HGDIOBJ(self.bitmap.0));
+                }
+                if !self.memory.0.is_null() {
+                    let _ = DeleteDC(self.memory);
+                }
+                if !self.screen.0.is_null() {
+                    ReleaseDC(None, self.screen);
+                }
+            }
+        }
+    }
+    let rgba = unsafe {
+        let mut guard = BitmapGuard {
+            screen: GetDC(None),
+            memory: HDC::default(),
+            bitmap: HBITMAP::default(),
+            previous: HGDIOBJ::default(),
+        };
+        if guard.screen.0.is_null() {
+            return Err(AppError::new("provider_unavailable", "无法读取当前屏幕。"));
+        }
+        guard.memory = CreateCompatibleDC(Some(guard.screen));
+        if guard.memory.0.is_null() {
+            return Err(AppError::new(
+                "provider_unavailable",
+                "无法创建截图缓冲区。",
+            ));
+        }
+        let mut info = BITMAPINFO::default();
+        info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        info.bmiHeader.biWidth = bounds.width as i32;
+        info.bmiHeader.biHeight = -(bounds.height as i32);
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB.0;
+        let mut pixels = std::ptr::null_mut();
+        guard.bitmap = CreateDIBSection(
+            Some(guard.screen),
+            &info,
+            DIB_RGB_COLORS,
+            &mut pixels,
+            None,
+            0,
+        )
+        .map_err(native_error)?;
+        guard.previous = SelectObject(guard.memory, HGDIOBJ(guard.bitmap.0));
+        if pixels.is_null() || guard.previous.0.is_null() {
+            return Err(AppError::new(
+                "provider_unavailable",
+                "无法访问截图缓冲区。",
+            ));
+        }
+        BitBlt(
+            guard.memory,
+            0,
+            0,
+            bounds.width as i32,
+            bounds.height as i32,
+            Some(guard.screen),
+            bounds.x,
+            bounds.y,
+            SRCCOPY | CAPTUREBLT,
+        )
+        .map_err(native_error)?;
+        if !GdiFlush().as_bool() {
+            return Err(AppError::new("provider_unavailable", "本次截图未完成。"));
+        }
+        let mut data = std::slice::from_raw_parts(
+            pixels.cast::<u8>(),
+            bounds.width as usize * bounds.height as usize * 4,
+        )
+        .to_vec();
+        for pixel in data.chunks_exact_mut(4) {
+            pixel.swap(0, 2);
+            pixel[3] = 255;
+        }
+        data
+    };
+    image::RgbaImage::from_raw(bounds.width, bounds.height, rgba)
+        .ok_or_else(|| AppError::new("invalid_data", "截图尺寸无效。"))?
+        .save(output)
+        .map_err(|error| AppError::new("io_error", format!("无法保存本次截图：{error}")))?;
+    Ok(bounds)
+}
+
+pub fn fit_capture_window(
+    handle: isize,
+    bounds: &crate::ocr::ScreenBounds,
+) -> Result<(), AppError> {
+    use windows::Win32::{
+        Foundation::{POINT, RECT},
+        Graphics::Gdi::ClientToScreen,
+        UI::{
+            HiDpi::*,
+            WindowsAndMessaging::{
+                GetClientRect, GetWindowRect, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
+            },
+        },
+    };
+    struct DpiGuard(DPI_AWARENESS_CONTEXT);
+    impl Drop for DpiGuard {
+        fn drop(&mut self) {
+            unsafe {
+                SetThreadDpiAwarenessContext(self.0);
+            }
+        }
+    }
+    let previous =
+        unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    if previous.0.is_null() {
+        return Err(AppError::new(
+            "provider_unavailable",
+            "选区窗口像素配置不可用。",
+        ));
+    }
+    let _dpi = DpiGuard(previous);
+    let window = HWND(handle as *mut _);
+    unsafe {
+        let mut client = RECT::default();
+        let mut outer = RECT::default();
+        let mut origin = POINT::default();
+        GetClientRect(window, &mut client).map_err(native_error)?;
+        GetWindowRect(window, &mut outer).map_err(native_error)?;
+        if !ClientToScreen(window, &mut origin).as_bool() {
+            return Err(AppError::new("provider_unavailable", "无法定位选区窗口。"));
+        }
+        let border_x = (outer.right - outer.left) - (client.right - client.left);
+        let border_y = (outer.bottom - outer.top) - (client.bottom - client.top);
+        SetWindowPos(
+            window,
+            None,
+            bounds.x - (origin.x - outer.left),
+            bounds.y - (origin.y - outer.top),
+            bounds.width as i32 + border_x,
+            bounds.height as i32 + border_y,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        )
+        .map_err(native_error)?;
+        GetClientRect(window, &mut client).map_err(native_error)?;
+        let mut origin = POINT::default();
+        if !ClientToScreen(window, &mut origin).as_bool()
+            || origin.x != bounds.x
+            || origin.y != bounds.y
+            || client.right - client.left != bounds.width as i32
+            || client.bottom - client.top != bounds.height as i32
+        {
+            return Err(AppError::new(
+                "provider_unavailable",
+                "选区窗口未覆盖完整屏幕，请重新截图。",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn native_error(error: windows::core::Error) -> AppError {
     AppError::new(
         "provider_unavailable",

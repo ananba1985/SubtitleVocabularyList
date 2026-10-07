@@ -3,6 +3,7 @@ import { call, time } from "../api";
 import type { AppInfo, AudioAsset, CollectionSeed, Entry } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
 import { EntryEditor } from "./EntryEditor";
+import { SystemSpeech } from "./SystemSpeech";
 export function LibraryView({
   info,
   refreshKey,
@@ -20,6 +21,7 @@ export function LibraryView({
     [entry, setEntry] = useState<Entry | null>(null),
     [audioPath, setAudioPath] = useState("");
   const [editing, setEditing] = useState(false);
+  const [playbackKey, setPlaybackKey] = useState(0);
   useEffect(() => {
     let cancelled = false;
     call<Entry[]>("entries_list", { search, offset, limit: 40 })
@@ -40,6 +42,7 @@ export function LibraryView({
   async function play(asset: AudioAsset) {
     try {
       setAudioPath(await call<string>("media_path", { assetId: asset.id }));
+      setPlaybackKey((value) => value + 1);
     } catch (error) {
       report(error);
     }
@@ -151,6 +154,11 @@ export function LibraryView({
                 {{ word: "单词", phrase: "短语", sentence: "整句" }[entry.kind]}
               </span>
               <h2 className="entry-title">{entry.text}</h2>
+              <SystemSpeech
+                key={`word-${entry.id}`}
+                text={entry.text}
+                label="朗读词条（系统语音）"
+              />
               {entry.meanings.map((value) => (
                 <p className="meaning" key={value.id}>
                   {value.text}
@@ -180,9 +188,14 @@ export function LibraryView({
                       </button>
                     ))}
                   </div>
+                  {!example.audio.length && (
+                    <SystemSpeech text={example.text} />
+                  )}
                 </article>
               ))}
-              {audioPath && <AudioPlayer path={audioPath} />}
+              {audioPath && (
+                <AudioPlayer path={audioPath} playbackKey={playbackKey} />
+              )}
             </>
           ) : (
             <div className="empty">

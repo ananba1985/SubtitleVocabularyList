@@ -104,6 +104,8 @@ export interface Settings {
   modelUrl: string;
   modelName: string;
   offlineMode: boolean;
+  selectionShortcut: string;
+  systemVoice: string;
   tools: {
     ffmpeg: string;
     ffprobe: string;
@@ -118,4 +120,14 @@ export interface CollectionSeed {
   context: string;
   sourceId?: string;
   example?: CandidateExample;
+  sourceTitle?: string;
+  locationKey?: string;
+}
+export interface SystemVoice {
+  id: string;
+  name: string;
+}
+export interface NativeStatus {
+  selectionRegistered: boolean;
+  error: string | null;
 }

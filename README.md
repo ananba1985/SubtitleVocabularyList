@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-当前正在实施 0.1。真实桌面已接入剧集导入、按词预习、本地解释、收录合并、词条修改、浏览和独立原声播放。Windows 划词与截图、复习、站点同步及最终安装交付仍在后续计划中，尚未完成完整功能验收。
+当前正在实施 0.1。真实桌面已接入剧集导入、按词预习、本地解释、收录合并、词条修改、浏览、独立原声和 Windows 英语语音。全局划词已在本机 WPF 窗口实际验证。截图 OCR、复习、站点同步及最终安装交付仍需实施，尚未完成完整功能验收。
 
 产品名称、公开仓库名称和本地工作目录名称统一为 **SubtitleVocabularyList**。
 
@@ -21,6 +21,7 @@
 | [测试与验收计划](docs/testing/test-plan.md) | 验证环境、计划场景、需求覆盖与执行证据规则 |
 | [首轮原型验证](docs/testing/prototype-results.md) | 实际核心与工具链测试，真实 PGS 剧集结果和覆盖边界 |
 | [桌面导入与收录验证](docs/testing/desktop-import-results.md) | 项目内剧集副本、实际界面、合并、重启与取消结果 |
+| [Windows 划词与语音验证](docs/testing/windows-capture-results.md) | 用户参与的跨进程取词、系统语音播放、失败与取消结果 |
 | [0.1 开发计划](docs/planning/development-plan.md) | 按依赖安排的实施阶段与完成依据 |
 | [文档管理规范](docs/README.md) | 文档分类、评审状态、变更流程和需求追溯规则 |
 | [开发约束](AGENTS.md) | 开发者与 AI 协作者必须遵守的项目规则 |
@@ -55,3 +56,5 @@
 - `pnpm tauri build --debug --no-bundle`：当前已验证的 Windows 调试程序构建。
 
 媒体原型另需 FFmpeg、ffprobe 与英语 Tesseract。`scripts/setup-tools.ps1` 准备私有的 Whisper 程序和模型，并校验模型摘要；它用于开发资源准备，不是最终用户安装说明。
+
+当前划词默认使用 `Ctrl+Alt+Shift+W`，可在本地设置修改；声音选项列出已安装的 Windows 英语声音。关闭主窗口后应用留在托盘，可从托盘菜单打开或退出。已验证支持范围与未覆盖项见 Windows 验证记录。

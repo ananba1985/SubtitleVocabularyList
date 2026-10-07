@@ -168,7 +168,7 @@ pub(crate) fn insert_example(
     example: &ExampleInput,
     now: i64,
 ) -> Result<String, AppError> {
-    let location = if example.location_key.is_empty() {
+    let mut location = if example.location_key.is_empty() {
         format!(
             "{}:{}:{}",
             example.start_ms.unwrap_or(-1),
@@ -178,6 +178,28 @@ pub(crate) fn insert_example(
     } else {
         example.location_key.clone()
     };
+    if let Some(source_id) = &example.source_id {
+        let kind: String =
+            connection.query_row("SELECT kind FROM sources WHERE id=?", [source_id], |row| {
+                row.get(0)
+            })?;
+        if matches!(kind.as_str(), "selection" | "ocr") {
+            let quote: Option<String> = connection
+                .query_row(
+                    "SELECT text FROM examples WHERE source_id=? AND location_key=?",
+                    params![source_id, location],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if quote.is_some_and(|quote| quote != example.text.trim()) {
+                location = format!(
+                    "{}:quote:{}",
+                    location,
+                    digest(example.text.trim().as_bytes())
+                );
+            }
+        }
+    }
     let key = digest(
         serde_json::to_string(&(example.source_id.as_deref().unwrap_or("manual"), &location))?
             .as_bytes(),
@@ -438,7 +460,14 @@ impl Store {
 
 fn get_entry_on(connection: &Connection, id: &str) -> Result<Entry, AppError> {
     let mut entry = connection.query_row(
-        "SELECT id,kind,text,match_key,revision,created_at,updated_at,(SELECT COUNT(*) FROM collection_actions WHERE entry_id=entries.id),CASE WHEN kind='sentence' THEN (SELECT COUNT(DISTINCT e.source_id||':'||e.location_key) FROM entry_examples ee JOIN examples e ON e.id=ee.example_id WHERE ee.entry_id=entries.id AND e.source_id IS NOT NULL) ELSE (SELECT COUNT(*) FROM occurrences o WHERE o.entry_id=entries.id OR (o.candidate_key=entries.match_key AND o.source_id IN (SELECT e.source_id FROM entry_examples ee JOIN examples e ON e.id=ee.example_id WHERE ee.entry_id=entries.id))) END FROM entries WHERE id=?",
+        "SELECT id,kind,text,match_key,revision,created_at,updated_at,
+          (SELECT COUNT(*) FROM collection_actions WHERE entry_id=entries.id),
+          CASE WHEN kind='sentence' THEN
+            (SELECT COUNT(DISTINCT e.source_id||':'||CASE WHEN instr(e.location_key,':quote:')>0 THEN substr(e.location_key,1,instr(e.location_key,':quote:')-1) ELSE e.location_key END) FROM entry_examples ee JOIN examples e ON e.id=ee.example_id WHERE ee.entry_id=entries.id AND e.source_id IS NOT NULL)
+          ELSE
+            (SELECT COUNT(*) FROM occurrences o WHERE o.entry_id=entries.id OR (o.candidate_key=entries.match_key AND o.source_id IN (SELECT e.source_id FROM entry_examples ee JOIN examples e ON e.id=ee.example_id WHERE ee.entry_id=entries.id)))
+            +(SELECT COUNT(DISTINCT e.source_id||':'||CASE WHEN instr(e.location_key,':quote:')>0 THEN substr(e.location_key,1,instr(e.location_key,':quote:')-1) ELSE e.location_key END) FROM entry_examples ee JOIN examples e ON e.id=ee.example_id JOIN sources s ON s.id=e.source_id WHERE ee.entry_id=entries.id AND s.kind IN ('selection','ocr'))
+          END FROM entries WHERE id=?",
         [id], |row| Ok(Entry { id: row.get(0)?, kind: row.get(1)?, text: row.get(2)?, match_key: row.get(3)?, revision: row.get(4)?, created_at: row.get(5)?, updated_at: row.get(6)?, collection_count: row.get(7)?, occurrence_count: row.get(8)?, meanings: Vec::new(), examples: Vec::new() }),
     ).optional()?.ok_or_else(|| AppError::new("not_found", "词条不存在。"))?;
     entry.meanings = connection
@@ -476,6 +505,53 @@ mod tests {
             target_entry_id: None,
             expected_revision: None,
         }
+    }
+
+    #[test]
+    fn capture_quote_corrections_preserve_versions_without_inflating_occurrences() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let source = store
+            .add_source(&SourceInput {
+                kind: "selection".into(),
+                fingerprint: "capture-fixture".into(),
+                title: "Synthetic application".into(),
+                path_hint: None,
+                duration_ms: None,
+            })
+            .unwrap();
+        let mut input = request("reluctant");
+        input.examples[0].source_id = Some(source);
+        input.examples[0].location_key = "selected-location".into();
+        let first = store.collect(&input).unwrap();
+        assert_eq!(
+            store.get_entry(&first.entry_id).unwrap().occurrence_count,
+            1
+        );
+        input.operation_id = identity();
+        input.target_entry_id = Some(first.entry_id.clone());
+        input.expected_revision = Some(first.revision);
+        let second = store.collect(&input).unwrap();
+        input.operation_id = identity();
+        input.expected_revision = Some(second.revision);
+        input.examples[0].text = "I was reluctant to ask for assistance.".into();
+        store.collect(&input).unwrap();
+        let entry = store.get_entry(&first.entry_id).unwrap();
+        assert_eq!(entry.collection_count, 3);
+        assert_eq!(entry.occurrence_count, 1);
+        assert_eq!(entry.examples.len(), 2);
+        assert!(
+            entry
+                .examples
+                .iter()
+                .any(|quote| quote.text == "I was reluctant to ask for assistance.")
+        );
+        assert!(
+            entry
+                .examples
+                .iter()
+                .any(|quote| quote.text == "I was reluctant to ask for help.")
+        );
     }
 
     #[test]

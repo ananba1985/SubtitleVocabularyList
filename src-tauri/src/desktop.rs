@@ -6,9 +6,14 @@ use crate::{
     tasks::{TaskManager, TaskSnapshot},
     vocabulary::{CollectionInput, Entry, EntryUpdate},
 };
+use crate::{
+    desktop_capture::{self, NativeDesktop, NativeStatus},
+    windows_native::SystemVoice,
+};
 use serde::Serialize;
 use std::{path::PathBuf, sync::Arc};
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 type AppState<'a> = State<'a, Arc<Application>>;
 
@@ -223,8 +228,50 @@ fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
     app.settings()
 }
 #[tauri::command]
-fn settings_update(app: AppState<'_>, settings: Settings) -> Result<Settings, AppError> {
-    app.save_settings(settings)
+async fn settings_update(
+    app: AppState<'_>,
+    handle: tauri::AppHandle,
+    settings: Settings,
+) -> Result<Settings, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        let previous = app.settings()?;
+        let native = handle.state::<NativeDesktop>();
+        native.configure(&handle, &settings.selection_shortcut)?;
+        match app.save_settings(settings) {
+            Ok(settings) => Ok(settings),
+            Err(error) => {
+                let _ = native.configure(&handle, &previous.selection_shortcut);
+                Err(error)
+            }
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+async fn speech_voices() -> Result<Vec<SystemVoice>, AppError> {
+    background(crate::windows_native::system_voices).await
+}
+#[tauri::command]
+fn speech_start(
+    app: AppState<'_>,
+    text: String,
+    operation_id: String,
+) -> Result<TaskSnapshot, AppError> {
+    app.speech_start(text, operation_id)
+}
+#[tauri::command]
+fn native_status(handle: tauri::AppHandle) -> NativeStatus {
+    handle.state::<NativeDesktop>().status()
+}
+#[tauri::command]
+fn capture_selection(handle: tauri::AppHandle) -> Result<TaskSnapshot, AppError> {
+    handle.state::<NativeDesktop>().capture(&handle)
+}
+#[tauri::command]
+fn app_quit(handle: tauri::AppHandle) {
+    desktop_capture::quit(&handle);
 }
 
 pub fn run() {
@@ -236,6 +283,20 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state() == ShortcutState::Pressed
+                        && let Some(native) = app.try_state::<NativeDesktop>()
+                        && native.matches(shortcut)
+                        && let Err(error) = native.capture(app)
+                        && error.code != "capture_busy"
+                    {
+                        desktop_capture::capture_failed(app, &error);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let root = std::env::var_os("SVL_DATA_DIR")
                 .map(PathBuf::from)
@@ -264,8 +325,43 @@ pub fn run() {
                 tools: crate::media::MediaTools::development(runtime),
                 ..Default::default()
             };
-            app.manage(Arc::new(Application::new(store, tasks, defaults)));
+            let application = Arc::new(Application::new(store, tasks, defaults));
+            let settings = application.settings()?;
+            app.manage(application);
+            app.manage(NativeDesktop::default());
+            if let Err(error) = app
+                .state::<NativeDesktop>()
+                .configure(app.handle(), &settings.selection_shortcut)
+            {
+                app.state::<NativeDesktop>().remember_error(&error);
+            }
+            use tauri::{
+                menu::{Menu, MenuItem},
+                tray::TrayIconBuilder,
+            };
+            let show = MenuItem::with_id(app, "show", "打开单词本", true, None::<&str>)?;
+            let exit = MenuItem::with_id(app, "exit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &exit])?;
+            let icon = image::load_from_memory(include_bytes!("../icons/32x32.png"))?.into_rgba8();
+            TrayIconBuilder::with_id("main-tray")
+                .icon(tauri::image::Image::new_owned(icon.into_raw(), 32, 32))
+                .tooltip("SubtitleVocabularyList")
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => desktop_capture::show_main(app),
+                    "exit" => desktop_capture::quit(app),
+                    _ => {}
+                })
+                .build(app)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+            {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
@@ -288,7 +384,12 @@ pub fn run() {
             media_path,
             explain_start,
             settings_get,
-            settings_update
+            settings_update,
+            speech_voices,
+            speech_start,
+            native_status,
+            capture_selection,
+            app_quit
         ])
         .run(tauri::generate_context!())
         .expect("Cannot start SubtitleVocabularyList");

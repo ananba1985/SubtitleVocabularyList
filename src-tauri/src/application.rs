@@ -21,6 +21,8 @@ pub struct Settings {
     pub model_url: String,
     pub model_name: String,
     pub offline_mode: bool,
+    pub selection_shortcut: String,
+    pub system_voice: String,
     pub tools: MediaTools,
 }
 
@@ -31,6 +33,8 @@ impl Default for Settings {
             model_url: "http://127.0.0.1:8096".into(),
             model_name: "Qwen3.5-9B".into(),
             offline_mode: true,
+            selection_shortcut: "Ctrl+Alt+Shift+W".into(),
+            system_voice: String::new(),
             tools: MediaTools::development(runtime),
         }
     }
@@ -53,6 +57,73 @@ pub struct Application {
 }
 
 impl Application {
+    #[cfg(all(windows, feature = "desktop"))]
+    pub fn speech_start(
+        &self,
+        text: String,
+        operation_id: String,
+    ) -> Result<TaskSnapshot, AppError> {
+        if text.trim().is_empty() || text.chars().count() > 20000 || text.contains('\0') {
+            return Err(AppError::new(
+                "invalid_input",
+                "请提供非空、长度合适的英语文本。",
+            ));
+        }
+        let settings = self.settings()?;
+        let store = Arc::clone(&self.store);
+        let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &settings.system_voice))?);
+        self.tasks
+            .start("speech", &operation_id, &hash, move |context| {
+                context.progress("speech", 0, 1, "正在准备 Windows 本地英语语音");
+                context.check_cancelled()?;
+                let voice = crate::windows_native::system_voices()?
+                    .into_iter()
+                    .find(|voice| {
+                        settings.system_voice.is_empty() || voice.id == settings.system_voice
+                    })
+                    .ok_or_else(|| {
+                        AppError::new(
+                            "resource_missing",
+                            "未发现所选的本地英语声音，请重新选择已安装声音或使用默认声音。",
+                        )
+                    })?;
+                let key = vocabulary::digest(&serde_json::to_vec(&(&text, &voice.id))?);
+                let path = store.root().join("jobs").join(format!("system-{key}.wav"));
+                if !valid_wave(&path) {
+                    let temporary = store
+                        .root()
+                        .join("jobs")
+                        .join(format!("system-{}.wav", Uuid::new_v4()));
+                    let result = (|| {
+                        crate::windows_native::synthesize(
+                            &text,
+                            &voice.id,
+                            &temporary,
+                            &context.cancelled,
+                        )?;
+                        context.check_cancelled()?;
+                        if !valid_wave(&temporary) {
+                            return Err(AppError::new(
+                                "invalid_data",
+                                "系统语音没有生成有效音频。",
+                            ));
+                        }
+                        if path.exists() && !valid_wave(&path) {
+                            std::fs::remove_file(&path)?;
+                        }
+                        if let Err(error) = std::fs::rename(&temporary, &path)
+                            && !valid_wave(&path)
+                        {
+                            return Err(error.into());
+                        }
+                        Ok(())
+                    })();
+                    let _ = std::fs::remove_file(&temporary);
+                    result?;
+                }
+                Ok(json!({"path":path,"kind":"system","voice":voice}))
+            })
+    }
     pub fn new(store: Arc<Store>, tasks: Arc<TaskManager>, defaults: Settings) -> Self {
         Self {
             store,
@@ -241,6 +312,20 @@ impl Application {
             Ok(value)
         })
     }
+}
+
+#[cfg(all(windows, feature = "desktop"))]
+fn valid_wave(path: &Path) -> bool {
+    use std::io::Read;
+    if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 128) {
+        return false;
+    }
+    let mut header = [0u8; 12];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut header))
+        .is_ok()
+        && &header[..4] == b"RIFF"
+        && &header[8..] == b"WAVE"
 }
 
 fn provider_error(error: reqwest::Error) -> AppError {

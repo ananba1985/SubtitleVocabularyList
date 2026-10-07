@@ -7,6 +7,7 @@ import type {
   PreparedCollection,
   TaskSnapshot,
 } from "../types";
+import { SystemSpeech } from "./SystemSpeech";
 export function CollectionModal({
   seed,
   onClose,
@@ -23,7 +24,7 @@ export function CollectionModal({
   const [explanation, setExplanation] = useState<Explanation | null>(null),
     [prepared, setPrepared] = useState<PreparedCollection | null>(null);
   const [target, setTarget] = useState("create"),
-    [saveAudio, setSaveAudio] = useState(Boolean(seed.sourceId)),
+    [saveAudio, setSaveAudio] = useState(Boolean(seed.example)),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [task, setTask] = useState<TaskSnapshot | null>(null),
@@ -79,8 +80,8 @@ export function CollectionModal({
                 {
                   text: context,
                   contextMeaning: meaning,
-                  sourceId: null,
-                  locationKey: "",
+                  sourceId: seed.sourceId ?? null,
+                  locationKey: seed.locationKey ?? "",
                   startMs: null,
                   endMs: null,
                   mediaAssetIds: [],
@@ -212,7 +213,7 @@ export function CollectionModal({
           原句
           <textarea
             value={context}
-            readOnly={Boolean(seed.sourceId)}
+            readOnly={Boolean(seed.example)}
             disabled={busy}
             rows={3}
             onChange={(event) => {
@@ -222,11 +223,17 @@ export function CollectionModal({
             placeholder="没有自动上下文时可手动补充"
           />
         </label>
-        {seed.sourceId && (
+        {seed.example && (
           <p className="muted">
             原句来自已选对白；需要纠正文字或时间时，可先在预习面板中修改。
           </p>
         )}
+        {seed.sourceTitle && (
+          <p className="muted">
+            来源：{seed.sourceTitle}。自动语境可在上方补充或修订。
+          </p>
+        )}
+        {!seed.example && text.trim() && <SystemSpeech text={text} />}
         <button
           className="secondary"
           onClick={explain}
@@ -255,7 +262,7 @@ export function CollectionModal({
             </button>
           </div>
         )}
-        {seed.sourceId && (
+        {seed.example && (
           <label className="check-label">
             <input
               type="checkbox"

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.3 |
+| 文档版本 | 0.4 |
 | 更新日期 | 2026-10-06 |
 | 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -79,8 +79,13 @@
 | `preview_start`、`media_path` | 前者 `{sourceId,exampleId,operationId}` → 片段准备任务；后者 `{assetId}` → 经位置、状态与摘要核对的路径 |
 | `explain_start` | `{text,context,operationId}` → 本地解释任务，结果为 meaning、translation、notes 字符串；仅显式采用后进入收录内容 |
 | `settings_get`、`settings_update` | 后者 `{settings}`，本地模型限回环地址，含离线开关与工具位置 |
+| `capture_selection` | 无参数，先记录前台上下文，再返回取词 TaskSnapshot；成功发出 capture_completed，失败不返回旧内容 |
+| `speech_voices`、`speech_start` | 前者列出本地英语声音；后者 `{text,operationId}` → 语音准备任务，结果含 path、kind=system、voice |
+| `native_status`、`app_quit` | 前者返回当前快捷键注册与失败信息；后者请求取消后台任务并退出应用 |
 
-当前原声播放由 WebView2 audio 元素报告真实加载、播放与错误；CMD-13、CMD-14 的统一原生播放与系统语音尚未接入。其他采集、复习、查询与同步命令仍是后续设计。
+当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。截图、复习、查询与同步命令仍是后续设计。
+
+设置新增 selectionShortcut、systemVoice，旧 JSON 使用默认值读取，不改变数据库 schema。快捷键更新先尝试注册新值，成功后释放旧值并保存；失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入。
 
 ## 3 收录请求与提交结果
 
@@ -183,3 +188,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.1 | 2026-10-06 | 建立本地命令、任务、错误、适配和站点同步契约提案 |
 | 0.2 | 2026-10-06 | 根据用户确认，将原声与学习记录纳入必需双向同步契约 |
 | 0.3 | 2026-10-06 | 对齐当前导入、收录、浏览、修改、媒体与任务实现参数，区分后续命令与事件 |
+| 0.4 | 2026-10-06 | 对齐划词事件、系统语音准备、声音与快捷键设置及退出命令 |

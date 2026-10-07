@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.4 |
+| 文档版本 | 0.5 |
 | 对应产品版本 | 0.1 |
 | 更新日期 | 2026-10-06 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
@@ -87,7 +87,7 @@ flowchart LR
 
 当前 `desktop.rs` 连接 Tauri 与应用状态，`application.rs` 编排导入、收录和本地解释；`tasks.rs` 保存后台快照及取消状态。`media.rs` 处理本地字幕、PGS OCR、转写与截取；`corpus.rs` 管理来源、候选和原声文件；`vocabulary.rs` 统一合并与持久化。React 界面通过对应命令展示预习、词库、确认和任务，不自行写数据库。
 
-上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 全局采集、系统语音播放、复习与同步模块仍待实施，最终工具打包和完整离线验收未完成。
+上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 增量使用 `windows_native.rs` 隔离 UI Automation 和 SAPI 的原生接口，`desktop_capture.rs` 管理全局触发、前台顺序和托盘生命周期；采集结果通过统一收录核心保存。系统语音生成本地 WAV，播放沿用现有播放器。WPF 实际取词和语音证据见[Windows 记录](../testing/windows-capture-results.md)。截图、查询、复习、同步及最终打包仍待完成。
 
 ## 5 概念数据视图
 
@@ -152,11 +152,11 @@ flowchart LR
 
 ### 7.2 Windows 采集与语音
 
-取词可评估 Windows UI Automation 与受控剪贴板回退。截图需验证多显示器坐标、屏幕缩放和窗口焦点；具体库与触发方式未确定。
+当前取词使用 Windows UI Automation TextPattern，先获取选区，再显示收录窗口，不读取或改写剪贴板。只声明实际验证的支持范围；不支持的提供方、前台变化和权限问题保持失败。截图仍需验证多显示器坐标、屏幕缩放和窗口焦点，未据划词结果宣称截图兼容。[Microsoft TextPattern 文档](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nn-uiautomationclient-iuiautomationtextpattern)
 
 系统 OCR 的官方桌面支持要求应用具有包身份，通常通过 MSIX 安装。因此 OCR 引擎与打包方式需要一起评估，不能把普通安装程序下的调用行为直接当作已支持。[Windows OCR 文档](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr)
 
-无原声时接入 Windows 已安装的英语语音。需要在最终应用中验证实际播放、取消与声音选择；已枚举到语音资源不等同于音频播放验收。
+无原声时使用 Windows 已安装的英语语音。本轮 SAPI 实际生成、播放器和取消结果已记录；选择英语 token 并以明确 WAV 格式输出，保留 WaitUntilDone 的超时语义，生成结果不直接计为已播放。[Microsoft 流格式文档](https://learn.microsoft.com/en-us/previous-versions/office/developer/speech-technologies/jj149357(v=msdn.10))
 
 ### 7.3 媒体处理与转写
 
@@ -240,3 +240,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | 0.2 | 2026-10-06 | 关联详细设计、测试和开发计划，说明待决策项当前进展，不改变已确认选型 |
 | 0.3 | 2026-10-06 | 记录用户确认的许可与完整同步范围，更新媒体原型实现情况 |
 | 0.4 | 2026-10-06 | 记录导入、收录、任务与媒体的实际模块位置及桌面验证边界 |
+| 0.5 | 2026-10-06 | 记录 UI Automation、SAPI、全局快捷键与托盘的实施位置及验证边界 |

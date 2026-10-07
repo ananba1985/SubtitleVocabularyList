@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { call, message, terminal } from "./api";
-import type { AppInfo, CollectionSeed, Settings, TaskSnapshot } from "./types";
+import type {
+  AppInfo,
+  CollectionSeed,
+  Settings,
+  TaskSnapshot,
+  NativeStatus,
+  SystemVoice,
+} from "./types";
 import { CollectionModal } from "./components/CollectionModal";
 import { LibraryView } from "./components/LibraryView";
 import { EpisodesView } from "./components/EpisodesView";
@@ -15,6 +23,11 @@ export default function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [refreshKey, setRefreshKey] = useState(0);
+  const seedRef = useRef(seed);
+  seedRef.current = seed;
+  const [pendingSeed, setPendingSeed] = useState<CollectionSeed | null>(null),
+    [voices, setVoices] = useState<SystemVoice[]>([]),
+    [native, setNative] = useState<NativeStatus | null>(null);
   const refresh = useCallback(async () => {
     const [nextInfo, nextTasks] = await Promise.all([
       call<AppInfo>("app_info"),
@@ -28,7 +41,39 @@ export default function App() {
     call<Settings>("settings_get")
       .then(setSettings)
       .catch((error) => setError(message(error)));
+    call<SystemVoice[]>("speech_voices")
+      .then(setVoices)
+      .catch(() => setVoices([]));
+    call<NativeStatus>("native_status")
+      .then(setNative)
+      .catch((error) => setError(message(error)));
   }, [refresh]);
+  useEffect(() => {
+    let disposed = false;
+    const stops: (() => void)[] = [];
+    const keep = (stop: () => void) => {
+      if (disposed) stop();
+      else stops.push(stop);
+    };
+    listen<CollectionSeed>("capture_completed", (event) => {
+      setError("");
+      if (seedRef.current) {
+        setPendingSeed(event.payload);
+        setNotice("新采集结果已准备，当前未保存的草稿已保留。");
+      } else setSeed(event.payload);
+    })
+      .then(keep)
+      .catch((error) => setError(message(error)));
+    listen<unknown>("capture_failed", (event) =>
+      setError(message(event.payload)),
+    )
+      .then(keep)
+      .catch((error) => setError(message(error)));
+    return () => {
+      disposed = true;
+      stops.forEach((stop) => stop());
+    };
+  }, []);
   useEffect(() => {
     const timer = setInterval(() => refresh().catch(() => {}), 1000);
     return () => clearInterval(timer);
@@ -121,6 +166,20 @@ export default function App() {
             </button>
           </div>
         )}
+        {pendingSeed && !seed && (
+          <div className="notice banner">
+            <span>有新的采集结果待确认：{pendingSeed.text.slice(0, 80)}</span>
+            <button
+              onClick={() => {
+                setSeed(pendingSeed);
+                setPendingSeed(null);
+              }}
+            >
+              打开确认
+            </button>
+            <button onClick={() => setPendingSeed(null)}>放弃本次采集</button>
+          </div>
+        )}
         {active.length > 0 && tab !== "tasks" && (
           <button className="running-summary" onClick={() => setTab("tasks")}>
             {active[0].message}{" "}
@@ -158,6 +217,8 @@ export default function App() {
                       collection: "词条收录",
                       preview: "原声准备",
                       explanation: "本地解释",
+                      speech: "系统英语语音",
+                      selection: "划词采集",
                     }[task.kind] ?? task.kind}
                   </strong>
                   <span className={`badge ${task.state}`}>
@@ -209,6 +270,50 @@ export default function App() {
         )}
         {tab === "settings" && settings && (
           <section className="settings-panel">
+            <h2>划词与系统语音</h2>
+            <p className="muted">
+              在原应用选择文字后按快捷键。本次文字将在收录窗口中确认；不读取剪贴板。关闭主窗口后应用留在托盘，托盘菜单可打开或退出。
+            </p>
+            <label>
+              划词快捷键
+              <input
+                value={settings.selectionShortcut}
+                onChange={(event) =>
+                  setSettings({
+                    ...settings,
+                    selectionShortcut: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <p className={native?.error ? "error" : "muted"}>
+              {native?.error ??
+                (native?.selectionRegistered
+                  ? "划词快捷键已注册"
+                  : "划词快捷键未启用")}
+              。留空可禁用快捷键。
+            </p>
+            <label>
+              Windows 英语声音
+              <select
+                value={settings.systemVoice}
+                onChange={(event) =>
+                  setSettings({ ...settings, systemVoice: event.target.value })
+                }
+              >
+                <option value="">使用可用的本地英语声音</option>
+                {voices.map((voice) => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!voices.length && (
+              <p className="muted">
+                未发现可用的系统英语声音。已有原声仍可播放。
+              </p>
+            )}
             <h2>本地模型</h2>
             <p className="muted">
               解释通过本机服务执行；服务不可用时仍可收录原文和浏览已有资料。
@@ -251,6 +356,9 @@ export default function App() {
                   .then((value) => {
                     setSettings(value);
                     setNotice("本地设置已保存。");
+                    call<NativeStatus>("native_status")
+                      .then(setNative)
+                      .catch(report);
                   })
                   .catch(report)
               }

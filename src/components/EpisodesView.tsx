@@ -36,6 +36,7 @@ export function EpisodesView({
     [audioPath, setAudioPath] = useState(""),
     [inputPath, setInputPath] = useState(""),
     [busy, setBusy] = useState(false);
+  const [playbackKey, setPlaybackKey] = useState(0);
   const [editing, setEditing] = useState(false),
     [editText, setEditText] = useState(""),
     [editStart, setEditStart] = useState(0),
@@ -146,6 +147,7 @@ export function EpisodesView({
       });
       const result = await waitTask<{ path: string; asset: AudioAsset }>(task);
       setAudioPath(result.path);
+      setPlaybackKey((value) => value + 1);
     } catch (error) {
       report(error);
     } finally {
@@ -441,7 +443,9 @@ export function EpisodesView({
                       </div>
                     </div>
                   )}
-                  {audioPath && <AudioPlayer path={audioPath} />}
+                  {audioPath && (
+                    <AudioPlayer path={audioPath} playbackKey={playbackKey} />
+                  )}
                   <div className="decision-actions">
                     <button
                       className="secondary"

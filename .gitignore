@@ -1,0 +1,31 @@
+# Frontend and native build outputs
+node_modules/
+/dist/
+/target/
+/src-tauri/target/
+
+# Local tools and generated files
+/.tools/
+/.local/
+/temp/
+/cache/
+*.log
+*.tmp
+
+# Personal inputs, runtime data and model files
+/data/
+/user-data/
+/media/
+/models/
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+
+# Editor and operating system files
+.idea/
+.vs/
+Thumbs.db
+Desktop.ini
+.DS_Store

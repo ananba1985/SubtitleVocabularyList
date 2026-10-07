@@ -230,7 +230,14 @@ export default function App() {
             refreshKey={refreshKey}
           />
         )}
-        {tab === "sync" && <SyncView />}
+        {tab === "sync" && (
+          <SyncView
+            onChanged={() => {
+              setRefreshKey((k) => k + 1);
+              refresh().catch(report);
+            }}
+          />
+        )}
         {tab === "tasks" && (
           <section className="task-list">
             {tasks.map((task) => (

@@ -211,3 +211,31 @@ export interface ConnectionStatus {
   accountScope: string | null;
   expiresAt: number;
 }
+export interface SyncStatus {
+  cursor: number;
+  pending: number;
+  conflicts: number;
+}
+export interface SyncResult {
+  pulled: number;
+  pushed: number;
+  conflicts: number;
+  cursor: number;
+}
+export interface SyncBundle {
+  schemaVersion: number;
+  deleted: boolean;
+  entry: { id: string; kind: string; text: string; revision: number };
+  tables: Record<string, Record<string, unknown>[]>;
+}
+export interface SyncConflict {
+  id: string;
+  remoteId: string;
+  localId: string | null;
+  text: string;
+  reason: string;
+  remoteRevision: number;
+  local: SyncBundle | null;
+  remote: SyncBundle;
+  candidates: Entry[];
+}

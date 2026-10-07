@@ -712,3 +712,6 @@ h3 {
     padding: 20px;
   }
 }
+.sync-comparison { display:grid; grid-template-columns:1fr 1fr;gap:1.4rem;margin:1rem 0; }
+.sync-comparison section { min-width:0;overflow-wrap:anywhere; }
+@media(max-width:800px){.sync-comparison{grid-template-columns:1fr;}}

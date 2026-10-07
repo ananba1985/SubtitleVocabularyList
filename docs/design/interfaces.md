@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.8 |
+| 文档版本 | 0.9 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -97,6 +97,9 @@
 | `review_history` | `{unitId:string/null,offset,limit}` → 原回答、原判分、有效结果、答案快照及历次修正；支持待确认结果在重启后处理 |
 | `connection_start`、`connection_check` | CMD-24、CMD-25 已接入；结果为 siteUrl、state、deviceName、requestId、displayCode、authorizationUrl、accountScope、expiresAt，不返回设备令牌；离线配置拒绝网络操作 |
 | `connection_status`、`connection_open` | CMD-27 读取 DPAPI 本机凭据；CMD-26 校验 origin 并打开 HTTPS 连接页，登录与批准由真人完成 |
+| `sync_start` | CMD-21：`{operationId}` → TaskSnapshot；使用已批准账号，交换全部资料。结果为 pulled、pushed、conflicts、cursor；存在冲突不能宣称全部资料一致 |
+| `sync_status`、`sync_conflicts` | CMD-22：无参数 → 当前账号 cursor、pending、conflicts，或完整待确认版本、目标候选及实际当前本地内容；不返回设备令牌 |
+| `sync_resolve` | CMD-23 的实际名称：`{input,operationId}` → TaskSnapshot；input 包含 conflictId、choice、targetEntryId、expectedRemoteRevision、expectedLocalRevision、expectedTargetRevision。文字可选 local/remote；同形词可选 merge/new；移除可选 archive/restore。过期展示版本拒绝处理 |
 
 当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。复习命令已按上表接入；查询与同步命令仍是后续设计。
 
@@ -106,7 +109,7 @@
 
 schema 4 的 Entry.examples 对原句去重，每项增加 `contexts:[{scopeKey,meaningId,contextMeaning}]`，返回全部已确认关联；旧 contextMeaning 兼容字段保留最早一条。收录请求保持原结构，核心自行复用原句和媒体并追加关联范围。
 
-只读完整资料包导出目前是 Rust 库/私有检查入口，不是已接通的桌面同步命令。HTTP 服务端初版见[同步设计](synchronization.md)，CMD-21 至 CMD-23 的桌面推拉和冲突界面仍待实施。
+只读完整资料包导出保留为 Rust 库/私有检查入口；桌面同步通过上述独立命令执行，HTTP 路由和字段唯一维护在[同步设计](synchronization.md)。新增 `sync_probe` 私有检查入口调用正式 HTTP 适配器，要求已获浏览器批准的 DPAPI 连接，不生成或伪造个人身份。
 
 ## 3 收录请求与提交结果
 
@@ -186,11 +189,11 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 首次对齐 | 将旧站点词键映射到本地实体；匹配歧义需确认，不能重复建立词条 |
 | 冲突处理 | 保留两端版本及变更来源，用户处理后提交新的明确修改 |
 
-账号连接的实际路由已按[同步设计](synchronization.md)部署，完整资料包的版本与游标仍需实施。现有 `/api/vocabulary` 的限制见架构设计，自行发送平台身份头或更改 Origin 不能代替真实认证。
+账号连接、资料包、游标、回执与媒体路由已按[同步设计](synchronization.md)部署。网页 `/api/vocabulary` 已桥接完整资料包，新增例句、原声关联和判分修正进入同一变更流。自行发送平台身份头或更改 Origin 不能代替真实认证。
 
 ### 7.2 数据边界与重试
 
-词条、释义、类型、例句、原声音频和学习记录已确认必须双向同步。复习状态需要随学习记录保持一致；实际字段版本、删除传播和首次对齐规则仍属于 OPEN-04 的协议设计部分。
+词条、释义、类型、例句、原声音频和学习记录已确认必须双向同步。字段、版本、软归档与首次对齐按[同步设计](synchronization.md)实施，复习状态由保留的原事件及历次修正重算。
 
 本地提交与待同步记录关联保存，远端确认前保留待处理状态。远端已提交但响应丢失时，以原变更标识重试，服务返回已处理回执。拉取后内容按统一合并规则应用，不增加新的主动收录计数。
 
@@ -214,3 +217,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.6 | 2026-10-07 | 对齐实际复习列表、题目、提示、听力音频、作答、修正和历史命令 |
 | 0.7 | 2026-10-07 | 增加实际连接请求、检查、浏览器和本机状态契约，保持完整同步待实施状态 |
 | 0.8 | 2026-10-07 | 补充 contexts 读取与关联规则；HTTP 同步服务端初版和桌面未接通分别标注 |
+| 0.9 | 2026-10-07 | 对齐实际推拉、状态、冲突及带版本处理命令，记录网页桥接与正式适配检查入口 |

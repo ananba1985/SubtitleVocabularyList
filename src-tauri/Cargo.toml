@@ -47,6 +47,10 @@ windows = { version = "=0.62.2", optional = true, features = ["Win32_Foundation"
 name = "windows_probe"
 required-features = ["desktop"]
 
+[[example]]
+name = "sync_probe"
+required-features = ["desktop"]
+
 [dev-dependencies]
 tempfile = "3"
 

@@ -276,6 +276,7 @@ impl Store {
         )?;
         crate::reviews::ensure_units(&transaction, &input.id, Utc::now().timestamp_millis())?;
         transaction.execute("UPDATE review_states SET revision=revision+1 WHERE unit_id IN (SELECT id FROM learning_units WHERE entry_id=?)", [&input.id])?;
+        crate::synchronization::mark_dirty(&transaction, &input.id)?;
         transaction.commit()?;
         get_entry_on(&connection, &input.id)
     }
@@ -429,6 +430,7 @@ impl Store {
         transaction.execute("INSERT INTO collection_actions(operation_id,request_hash,entry_id,source_id,result_json,created_at) VALUES (?,?,?,?,?,?)", params![input.operation_id, request_hash, entry_id, input.examples.first().and_then(|e| e.source_id.as_ref()), serde_json::to_string(&result)?, now])?;
         crate::reviews::ensure_units(&transaction, &entry_id, now)?;
         crate::reviews::recompute_entry(&transaction, &entry_id)?;
+        crate::synchronization::mark_dirty(&transaction, &entry_id)?;
         transaction.commit()?;
         Ok(result)
     }
@@ -441,7 +443,7 @@ impl Store {
     pub fn find_entries(&self, kind: &str, text: &str) -> Result<Vec<Entry>, AppError> {
         let connection = self.connection()?;
         let mut query = connection.prepare(
-            "SELECT id FROM entries WHERE kind=? AND match_key=? ORDER BY created_at,id",
+            "SELECT id FROM entries WHERE kind=? AND match_key=? AND archived=0 ORDER BY created_at,id",
         )?;
         let ids = query
             .query_map(params![kind, normalize(text)], |row| {
@@ -465,7 +467,7 @@ impl Store {
                 .replace('%', "!%")
                 .replace('_', "!_")
         );
-        let mut query = connection.prepare("SELECT id FROM entries WHERE match_key LIKE ? ESCAPE '!' ORDER BY updated_at DESC,id LIMIT ? OFFSET ?")?;
+        let mut query = connection.prepare("SELECT id FROM entries WHERE archived=0 AND match_key LIKE ? ESCAPE '!' ORDER BY updated_at DESC,id LIMIT ? OFFSET ?")?;
         let ids = query
             .query_map(params![pattern, limit.clamp(1, 100), offset], |row| {
                 row.get::<_, String>(0)

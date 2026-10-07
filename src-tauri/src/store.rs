@@ -21,7 +21,7 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 4 {
+        if version > 5 {
             return Err(AppError::new(
                 "unsupported_schema",
                 "此词库由较新版本创建，请使用对应软件版本打开。",
@@ -49,6 +49,12 @@ impl Store {
             let transaction = connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/004_example_contexts.sql"))?;
             transaction.pragma_update(None, "user_version", 4)?;
+            transaction.commit()?;
+        }
+        if version < 5 {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/005_sync.sql"))?;
+            transaction.pragma_update(None, "user_version", 5)?;
             transaction.commit()?;
         }
         Ok(Self {
@@ -85,7 +91,7 @@ mod tests {
     fn database_migrates_once_and_enforces_relationships() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 4);
+        assert_eq!(store.schema_version().unwrap(), 5);
         assert_eq!(
             store
                 .connection()
@@ -102,7 +108,7 @@ mod tests {
                 .unwrap()
                 .schema_version()
                 .unwrap(),
-            4
+            5
         );
     }
 
@@ -132,7 +138,7 @@ mod tests {
         connection.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('existing','word','reluctant','reluctant',1,1)",[]).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 4);
+        assert_eq!(store.schema_version().unwrap(), 5);
         assert_eq!(store.get_entry("existing").unwrap().text, "reluctant");
     }
 
@@ -156,7 +162,7 @@ mod tests {
         connection.pragma_update(None, "user_version", 2).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 4);
+        assert_eq!(store.schema_version().unwrap(), 5);
         let entry = store.get_entry("e").unwrap();
         assert_eq!(entry.collection_count, 1);
         assert_eq!(entry.examples[0].text, "She was reluctant.");
@@ -164,5 +170,74 @@ mod tests {
         assert_eq!(units[0].id, "u");
         assert_eq!(units[0].state.due_at, 100);
         assert!(store.review_question("u", units[0].revision).is_ok());
+    }
+
+    #[test]
+    fn version_four_upgrade_preserves_media_and_history_and_marks_existing_words() {
+        let directory = tempfile::tempdir().unwrap();
+        let connection = Connection::open(directory.path().join("vocabulary.sqlite3")).unwrap();
+        for migration in [
+            include_str!("../migrations/001_initial.sql"),
+            include_str!("../migrations/002_imports.sql"),
+            include_str!("../migrations/003_reviews.sql"),
+            include_str!("../migrations/004_example_contexts.sql"),
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        connection.execute_batch("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('e','word','breakfast','breakfast',100,100);
+            INSERT INTO meanings(id,entry_id,text,origin,created_at) VALUES ('m','e','早餐','user',100);
+            INSERT INTO examples(id,location_key,identity_key,text,created_at) VALUES ('x','manual','x','Kids, breakfast!',100);
+            INSERT INTO entry_examples(entry_id,example_id,scope_key,meaning_id,context_meaning,created_at) VALUES ('e','x','m','m','早餐',100);
+            INSERT INTO media_assets(id,recipe_key,digest,relative_path,format,duration_ms,state,created_at) VALUES ('a','recipe','digest','media/fixture.wav','wav',1000,'ready',100);
+            INSERT INTO example_media(example_id,asset_id) VALUES ('x','a');
+            INSERT INTO collection_actions(operation_id,request_hash,entry_id,result_json,created_at) VALUES ('collect','hash','e','{}',100);
+            INSERT INTO learning_units(id,entry_id,scope_key,dimension,created_at) VALUES ('u','e','m','meaning',100);
+            INSERT INTO review_states(unit_id,state_json,due_at,relearn_at) VALUES ('u','{}',100,100);
+            INSERT INTO review_attempts(id,operation_id,request_hash,unit_id,question_json,answer,hinted,outcome,grader,policy_version,state_before_json,created_at) VALUES ('answer','submit','hash','u','{}','早餐',0,'correct','exact_or_confirm','svl-review-1','{}',101);
+            INSERT INTO review_corrections(id,operation_id,attempt_id,expected_revision,outcome,reason,created_at,request_hash) VALUES ('correction','correct','answer',1,'incorrect','合成迁移检查',102,'hash');").unwrap();
+        connection.pragma_update(None, "user_version", 4).unwrap();
+        drop(connection);
+        std::fs::create_dir_all(directory.path().join("media")).unwrap();
+        std::fs::write(
+            directory.path().join("media/fixture.wav"),
+            b"private fixture audio",
+        )
+        .unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        assert_eq!(store.schema_version().unwrap(), 5);
+        let entry = store.get_entry("e").unwrap();
+        assert_eq!(entry.collection_count, 1);
+        assert_eq!(entry.examples[0].contexts[0].context_meaning, "早餐");
+        assert_eq!(entry.examples[0].audio[0].id, "a");
+        let c = store.connection().unwrap();
+        let answer: String = c
+            .query_row(
+                "SELECT answer FROM review_attempts WHERE id='answer'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let correction: String = c
+            .query_row(
+                "SELECT reason FROM review_corrections WHERE id='correction'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let epoch: i64 = c
+            .query_row(
+                "SELECT epoch FROM sync_dirty_entries WHERE entry_id='e'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            (answer.as_str(), correction.as_str(), epoch),
+            ("早餐", "合成迁移检查", 1)
+        );
+        assert_eq!(
+            std::fs::read(directory.path().join("media/fixture.wav")).unwrap(),
+            b"private fixture audio"
+        );
     }
 }

@@ -8,6 +8,10 @@ pub mod reviews;
 pub mod site_connection;
 pub mod store;
 pub mod sync_data;
+pub mod sync_merge;
+#[cfg(test)]
+mod sync_tests;
+pub mod synchronization;
 pub mod tasks;
 pub mod vocabulary;
 
@@ -17,6 +21,8 @@ pub mod credentials;
 mod desktop_capture;
 #[cfg(all(windows, feature = "desktop"))]
 mod desktop_ocr;
+#[cfg(all(windows, feature = "desktop"))]
+mod sync_http;
 #[cfg(all(windows, feature = "desktop"))]
 pub mod windows_native;
 

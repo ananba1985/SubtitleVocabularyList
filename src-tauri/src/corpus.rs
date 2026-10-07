@@ -413,6 +413,12 @@ impl Store {
             |row| row.get(0),
         )?;
         if collected > 0 {
+            let affected = {
+                let mut q = transaction
+                    .prepare("SELECT DISTINCT entry_id FROM entry_examples WHERE example_id=?")?;
+                q.query_map([id], |r| r.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
             let archived_id = Uuid::new_v4().to_string();
             transaction.execute("INSERT INTO examples(id,source_id,location_key,identity_key,text,start_ms,end_ms,revision,created_at,archived) SELECT ?,source_id,location_key||':history:'||revision,identity_key||':history:'||revision,text,start_ms,end_ms,revision,created_at,1 FROM examples WHERE id=?",params![archived_id,id])?;
             transaction.execute(
@@ -420,6 +426,9 @@ impl Store {
                 params![archived_id, id],
             )?;
             transaction.execute("INSERT INTO example_media(example_id,asset_id) SELECT ?,asset_id FROM example_media WHERE example_id=?",params![archived_id,id])?;
+            for entry in affected {
+                crate::synchronization::mark_dirty(&transaction, &entry)?;
+            }
         }
         let old_links: std::collections::HashMap<String, String> = {
             let mut query=transaction.prepare("SELECT candidate_key,entry_id FROM occurrences WHERE source_id=? AND example_id=? AND entry_id IS NOT NULL")?;

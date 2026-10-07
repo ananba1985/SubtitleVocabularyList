@@ -45,8 +45,11 @@ async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
             data_directory: app.store.root().display().to_string(),
             schema_version: connection
                 .pragma_query_value(None, "user_version", |row| row.get(0))?,
-            entry_count: connection
-                .query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0))?,
+            entry_count: connection.query_row(
+                "SELECT COUNT(*) FROM entries WHERE archived=0",
+                [],
+                |row| row.get(0),
+            )?,
             source_count: connection.query_row(
                 "SELECT COUNT(*) FROM sources WHERE imported_at IS NOT NULL",
                 [],
@@ -302,6 +305,28 @@ fn connection_open(app: AppState<'_>) -> Result<(), AppError> {
     app.connection_open()
 }
 #[tauri::command]
+fn sync_status(app: AppState<'_>) -> Result<crate::synchronization::SyncStatus, AppError> {
+    app.sync_status()
+}
+#[tauri::command]
+fn sync_conflicts(
+    app: AppState<'_>,
+) -> Result<Vec<crate::synchronization::SyncConflict>, AppError> {
+    app.sync_conflicts()
+}
+#[tauri::command]
+fn sync_start(app: AppState<'_>, operation_id: String) -> Result<TaskSnapshot, AppError> {
+    app.inner().sync_start(operation_id)
+}
+#[tauri::command]
+fn sync_resolve(
+    app: AppState<'_>,
+    input: crate::synchronization::ResolutionInput,
+    operation_id: String,
+) -> Result<TaskSnapshot, AppError> {
+    app.inner().sync_resolve(input, operation_id)
+}
+#[tauri::command]
 async fn settings_update(
     app: AppState<'_>,
     handle: tauri::AppHandle,
@@ -531,6 +556,10 @@ pub fn run() {
             connection_start,
             connection_check,
             connection_open,
+            sync_status,
+            sync_conflicts,
+            sync_start,
+            sync_resolve,
             settings_update,
             speech_voices,
             speech_start,

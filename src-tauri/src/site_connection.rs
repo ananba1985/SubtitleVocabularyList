@@ -320,6 +320,8 @@ mod desktop {
 }
 #[cfg(all(windows, feature = "desktop"))]
 pub use desktop::ConnectionStatus;
+#[cfg(all(windows, feature = "desktop"))]
+pub(crate) use desktop::client as desktop_client;
 
 #[cfg(test)]
 mod tests {

@@ -60,6 +60,8 @@ pub struct Application {
     import_guard: Arc<Mutex<()>>,
     #[cfg(all(windows, feature = "desktop"))]
     pub(crate) connection_guard: Arc<Mutex<()>>,
+    #[cfg(all(windows, feature = "desktop"))]
+    pub(crate) sync_guard: Arc<Mutex<()>>,
 }
 
 impl Application {
@@ -201,6 +203,8 @@ impl Application {
             import_guard: Arc::new(Mutex::new(())),
             #[cfg(all(windows, feature = "desktop"))]
             connection_guard: Arc::new(Mutex::new(())),
+            #[cfg(all(windows, feature = "desktop"))]
+            sync_guard: Arc::new(Mutex::new(())),
         }
     }
 

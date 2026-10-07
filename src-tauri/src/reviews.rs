@@ -767,7 +767,7 @@ impl Store {
         let mut query=connection.prepare("SELECT u.id,u.entry_id,e.text,e.kind,u.scope_key,u.dimension,r.state_json,r.revision,
             (SELECT COUNT(*) FROM collection_actions c WHERE c.entry_id=u.entry_id AND c.created_at>COALESCE(json_extract(r.state_json,'$.leechClearedAt'),0))
             FROM learning_units u JOIN entries e ON e.id=u.entry_id JOIN review_states r ON r.unit_id=u.id
-            WHERE (?='' OR u.dimension=?) AND (u.scope_key<>'entry' OR NOT EXISTS(SELECT 1 FROM meanings m WHERE m.entry_id=u.entry_id))
+            WHERE e.archived=0 AND (?='' OR u.dimension=?) AND (u.scope_key<>'entry' OR NOT EXISTS(SELECT 1 FROM meanings m WHERE m.entry_id=u.entry_id))
             AND (?<>'due' OR r.due_at<=?) AND (?<>'leech' OR COALESCE(json_extract(r.state_json,'$.leechActive'),0)=1 OR
             ((SELECT COUNT(*) FROM collection_actions c WHERE c.entry_id=u.entry_id AND c.created_at>COALESCE(json_extract(r.state_json,'$.leechClearedAt'),0))>=3 AND COALESCE(json_extract(r.state_json,'$.streak'),0)<3))
             ORDER BY r.due_at,u.id LIMIT ? OFFSET ?")?;
@@ -1037,6 +1037,7 @@ impl Store {
             recompute(&transaction, &unit_id)?;
         }
         let result = attempt_on(&transaction, &id)?;
+        crate::synchronization::mark_dirty(&transaction, &snapshot.entry_id)?;
         transaction.commit()?;
         Ok(result)
     }
@@ -1077,6 +1078,7 @@ impl Store {
         )?;
         recompute(&transaction, &attempt.unit_id)?;
         let result = attempt_on(&transaction, &input.attempt_id)?;
+        crate::synchronization::mark_dirty(&transaction, &attempt.question.entry_id)?;
         transaction.commit()?;
         Ok(result)
     }

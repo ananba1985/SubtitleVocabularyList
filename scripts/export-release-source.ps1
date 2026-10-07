@@ -82,7 +82,7 @@ licenses 包含 Rust 与前端依赖的许可、版本和补取许可的固定�
 [IO.File]::WriteAllText((Join-Path $svlStage 'README.txt'),$svlReadme,[Text.UTF8Encoding]::new($false))
 $svlManifest=Get-ChildItem -LiteralPath $svlStage -Recurse -File | ForEach-Object {@{path=$_.FullName.Substring($svlStage.Length+1).Replace('\','/');size=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant()}}
 [IO.File]::WriteAllText((Join-Path $svlStage 'source-manifest.json'),(@{commit=$svlCommit;files=@($svlManifest)}|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
-$svlOutput=[IO.Path]::GetFullPath((Join-Path $svlWorkspace $OutputDirectory))
+$svlOutput=if([IO.Path]::IsPathRooted($OutputDirectory)){[IO.Path]::GetFullPath($OutputDirectory)}else{[IO.Path]::GetFullPath((Join-Path $svlWorkspace $OutputDirectory))}
 New-Item -ItemType Directory -Path $svlOutput -Force | Out-Null
 $svlArchive=Join-Path $svlOutput 'SubtitleVocabularyList_0.1.0_source-materials.zip'
 Compress-Archive -Path (Join-Path $svlStage '*') -DestinationPath $svlArchive -Force

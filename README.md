@@ -32,6 +32,7 @@
 | [保存中断与恢复验证](docs/testing/recovery-results.md) | 真实进程终止、旧资料保持、重试与取消提交边界 |
 | [本地工作流性能验证](docs/testing/performance-results.md) | 1000 条词库的后台读取、实际本机处理、资源采样与模型失败隔离 |
 | [当前验收覆盖审计](docs/testing/acceptance-status.md) | 全部需求、42 个场景的实际证据和未关闭条件 |
+| [媒体输入支持矩阵](docs/testing/media-support-matrix.md) | 六种视频后缀、已测编码、字幕与递归目录规则 |
 | [安装与使用说明](docs/release/installation.md) | 当前候选包、数据目录、系统资源和基本使用流程 |
 | [0.1 开发计划](docs/planning/development-plan.md) | 按依赖安排的实施阶段与完成依据 |
 | [文档管理规范](docs/README.md) | 文档分类、评审状态、变更流程和需求追溯规则 |

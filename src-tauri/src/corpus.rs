@@ -187,6 +187,11 @@ pub fn video_inputs(paths: &[String]) -> Result<Vec<PathBuf>, AppError> {
             }
         } else {
             // Keep explicit files so a bad file gets an independent failure result.
+            let path = if path.is_file() {
+                path.canonicalize().unwrap_or(path)
+            } else {
+                path
+            };
             if seen.insert(path.clone()) {
                 result.push(path);
             }
@@ -602,6 +607,31 @@ pub(crate) fn validate_media_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_and_explicit_file_share_identity_while_bad_files_remain_independent() {
+        let directory = tempfile::tempdir().unwrap();
+        let nested = directory.path().join("nested with spaces");
+        std::fs::create_dir(&nested).unwrap();
+        let video = nested.join("clip.MP4");
+        std::fs::write(&video, b"Synthetic file-list fixture").unwrap();
+        std::fs::write(directory.path().join("ignore.txt"), b"Not a video").unwrap();
+        let missing = directory.path().join("missing.mkv");
+        let paths = vec![
+            directory.path().to_string_lossy().into_owned(),
+            video.to_string_lossy().into_owned(),
+            nested
+                .join(".")
+                .join("clip.MP4")
+                .to_string_lossy()
+                .into_owned(),
+            missing.to_string_lossy().into_owned(),
+        ];
+        let inputs = video_inputs(&paths).unwrap();
+        assert_eq!(inputs.len(), 2);
+        assert!(inputs.contains(&video.canonicalize().unwrap()));
+        assert!(inputs.contains(&missing));
+    }
     fn corpus() -> ImportedMedia {
         ImportedMedia {
             title: "Synthetic episode".into(),

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.16 |
+| 文档版本 | 0.17 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -34,6 +34,7 @@
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
 | 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、本地处理、进程计数与模型不可用 | 采样与核心调用不代替长期 SLO 或 GUI 响应 |
 | 当前验收覆盖审计 | [testing/acceptance-status.md](testing/acceptance-status.md) | 全部需求、42 个计划场景、阶段门槛和缺失条件 | “增量已验证”不代表完整版本已达成 |
+| 媒体输入支持矩阵 | [testing/media-support-matrix.md](testing/media-support-matrix.md) | 已测容器/编码、字幕、目录与去重 | 后缀不是全部编码或保护内容的保证 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
 | 台式机交接与验证 | [本地任务目标](development/desktop-agent-goal.md)、[台式机记录](testing/desktop-machine-results.md) | 已有环境、当前证据、剩余范围与持续目标完成条件 | 机器切换不自动关闭未完成能力或未通过场景 |
@@ -129,3 +130,4 @@
 | 0.14 | 2026-10-07 | 索引真实保存中断、恢复与取消提交边界 |
 | 0.15 | 2026-10-07 | 索引后台核心性能与模型失败隔离的实测样本和工程基准 |
 | 0.16 | 2026-10-07 | 索引逐项验收审计与用户条件，不自动关闭持续目标 |
+| 0.17 | 2026-10-07 | 索引媒体样本和实际目录路径去重验证 |

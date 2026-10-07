@@ -85,6 +85,11 @@ $svlManifest=Get-ChildItem -LiteralPath $svlStage -Recurse -File | ForEach-Objec
 $svlOutput=if([IO.Path]::IsPathRooted($OutputDirectory)){[IO.Path]::GetFullPath($OutputDirectory)}else{[IO.Path]::GetFullPath((Join-Path $svlWorkspace $OutputDirectory))}
 New-Item -ItemType Directory -Path $svlOutput -Force | Out-Null
 $svlArchive=Join-Path $svlOutput 'SubtitleVocabularyList_0.1.0_source-materials.zip'
+# npm archives can carry Unix epoch timestamps, outside ZIP's 1980-2107 range.
+# Adjust copied metadata only; dependency source bytes and hashes stay intact.
+foreach($svlFile in Get-ChildItem -LiteralPath $svlStage -Recurse -File){
+    if($svlFile.LastWriteTime.Year -lt 1980 -or $svlFile.LastWriteTime.Year -gt 2107){$svlFile.LastWriteTime=[datetime]::new(1980,1,2)}
+}
 Compress-Archive -Path (Join-Path $svlStage '*') -DestinationPath $svlArchive -Force
 if(-not $svlStage.StartsWith((Join-Path $svlWorkspace '.tools/source-materials-'),[StringComparison]::OrdinalIgnoreCase)){throw 'Unexpected generated staging directory.'}
 $svlGenerated=@(Get-ChildItem -LiteralPath $svlStage -Recurse -Force)

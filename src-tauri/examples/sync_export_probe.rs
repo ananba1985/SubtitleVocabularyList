@@ -1,5 +1,5 @@
 //! Exports a private inspection packet; never print its contents to logs.
-use subtitle_vocabulary_list::store::Store;
+use subtitle_vocabulary_list_core::store::Store;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 4 {

@@ -1,6 +1,6 @@
 //! Explicitly sends the supplied synthetic query through the production online adapter.
 use std::{sync::Arc, thread, time::Duration};
-use subtitle_vocabulary_list::{
+use subtitle_vocabulary_list_core::{
     application::{Application, Settings},
     store::Store,
     tasks::TaskManager,

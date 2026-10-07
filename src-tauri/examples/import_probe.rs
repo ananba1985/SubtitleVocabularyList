@@ -1,5 +1,5 @@
 use std::{path::PathBuf, sync::atomic::AtomicBool};
-use subtitle_vocabulary_list::media::{MediaTools, extract_clip, import_media};
+use subtitle_vocabulary_list_core::media::{MediaTools, extract_clip, import_media};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().collect();

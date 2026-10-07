@@ -1,6 +1,6 @@
 //! Validates bundled tools with a private fixture, without global tool discovery.
 use std::{path::PathBuf, sync::atomic::AtomicBool};
-use subtitle_vocabulary_list::{
+use subtitle_vocabulary_list_core::{
     media::{self, ImportOptions, MediaTools},
     ocr,
 };

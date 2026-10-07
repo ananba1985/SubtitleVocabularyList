@@ -1,3 +1,4 @@
+use crate::sync_transport::{CHUNK_BYTES, MAX_PACKET_BYTES, Transport, read_json};
 use crate::{
     application::Application,
     credentials::{self, SiteCredential},
@@ -9,15 +10,23 @@ use crate::{
     tasks::TaskSnapshot,
     vocabulary::digest,
 };
-use reqwest::blocking::{Client, Response};
+use reqwest::blocking::Client;
 use serde_json::{Value, json};
-use std::{io::Read, sync::Arc};
+use std::{
+    io::Read,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 struct HttpRemote {
     app: Arc<Application>,
     site: String,
     credential: SiteCredential,
     client: Client,
+    supports_chunks: bool,
+    cancelled: Option<Arc<AtomicBool>>,
 }
 fn failure(code: &str, message: &str) -> AppError {
     AppError::new(code, message)
@@ -31,32 +40,6 @@ fn mime(format: &str) -> &'static str {
         "flac" => "audio/flac",
         _ => "audio/webm",
     }
-}
-fn read_json(response: Response) -> Result<(u16, Value), AppError> {
-    let status = response.status().as_u16();
-    let mut bytes = vec![];
-    response
-        .take(1_010_001)
-        .read_to_end(&mut bytes)
-        .map_err(|_| failure("network_error", "站点响应中断，待同步内容保留。"))?;
-    if bytes.len() > 1_010_000 {
-        return Err(failure("invalid_data", "同步响应过大，已保留当前资料。"));
-    }
-    if status == 401 || status == 403 || (300..400).contains(&status) {
-        return Err(failure(
-            "auth_required",
-            "站点账号连接需要重新批准，本地内容与同步进度保留。",
-        ));
-    }
-    if !matches!(status, 200..=299 | 409) {
-        return Err(failure(
-            "network_error",
-            &format!("同步未完成（HTTP {status}），本地资料与待处理内容保留。"),
-        ));
-    }
-    let value = serde_json::from_slice(&bytes)
-        .map_err(|_| failure("invalid_data", "站点同步响应不是有效资料。"))?;
-    Ok((status, value))
 }
 impl HttpRemote {
     fn new(app: Arc<Application>) -> Result<Self, AppError> {
@@ -78,6 +61,8 @@ impl HttpRemote {
             site,
             credential,
             client: crate::site_connection::desktop_client()?,
+            supports_chunks: false,
+            cancelled: None,
         })
     }
     fn scope(&self) -> String {
@@ -88,6 +73,16 @@ impl HttpRemote {
         )
     }
     fn check(&self) -> Result<(), AppError> {
+        if self
+            .cancelled
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            return Err(failure(
+                "cancelled",
+                "同步已取消，完整资料与待发送内容保留。",
+            ));
+        }
         let settings = self.app.settings()?;
         if settings.offline_mode {
             return Err(failure(
@@ -127,19 +122,14 @@ impl HttpRemote {
                 "同步账号或协议与已批准连接不一致。",
             ));
         }
+        self.supports_chunks = v["packetTransport"].as_str() == Some("chunks-1")
+            && v["packetChunkBytes"].as_u64() == Some(CHUNK_BYTES as u64)
+            && v["maxPacketBytes"].as_u64() == Some(MAX_PACKET_BYTES as u64);
         Ok(())
     }
     fn get(&mut self, path: &str) -> Result<Value, AppError> {
-        self.check()?;
-        let (_, v) = read_json(
-            self.client
-                .get(format!("{}{path}", self.site))
-                .bearer_auth(&self.credential.token)
-                .send()
-                .map_err(|_| failure("network_error", "拉取未完成，本地资料与游标保留。"))?,
-        )?;
-        self.check()?;
-        Ok(v)
+        Transport::new(&self.client, &self.site, &self.credential.token)
+            .fetch(path, || self.check())
     }
 }
 impl Remote for HttpRemote {
@@ -154,29 +144,10 @@ impl Remote for HttpRemote {
         )?)
     }
     fn push(&mut self, request: &Push) -> Result<PushReply, AppError> {
-        self.check()?;
-        if serde_json::to_vec(request)?.len() > 996_000 {
-            return Err(failure(
-                "capacity_exceeded",
-                "此词条完整资料超过站点当前容量，未删减任何例句、原声或历史。",
-            ));
-        }
-        let (status, v) = read_json(
-            self.client
-                .put(format!(
-                    "{}/api/svl/v1/entries/{}",
-                    self.site,
-                    request.bundle.entry["id"].as_str().unwrap()
-                ))
-                .bearer_auth(&self.credential.token)
-                .json(request)
-                .send()
-                .map_err(|_| {
-                    failure(
-                        "network_error",
-                        "推送响应丢失或中断，已冻结的同一内容可安全重试。",
-                    )
-                })?,
+        let (status, v) = Transport::new(&self.client, &self.site, &self.credential.token).push(
+            request,
+            self.supports_chunks,
+            || self.check(),
         )?;
         self.check()?;
         if v["entryId"] != request.bundle.entry["id"] {
@@ -307,6 +278,7 @@ impl Application {
         let guard = Arc::clone(&self.sync_guard);
         let hash = digest(scope.as_bytes());
         self.tasks.start("sync", &operation, &hash, move |context| {
+            remote.cancelled = Some(Arc::clone(&context.cancelled));
             let _guard = guard
                 .try_lock()
                 .map_err(|_| failure("sync_busy", "已有同步正在进行，请等待完成或取消。"))?;
@@ -364,6 +336,161 @@ mod live_recovery_tests {
     };
     use std::{path::PathBuf, sync::atomic::AtomicBool};
     use uuid::Uuid;
+
+    #[test]
+    #[ignore = "Requires a real approved connection, private audio, and the chunks-1 service"]
+    fn actual_large_history_and_original_audio_roundtrip() {
+        let credential_root = PathBuf::from(
+            std::env::var_os("SVL_LIVE_CREDENTIAL_ROOT").expect("approved private credential root"),
+        );
+        let test_root = PathBuf::from(
+            std::env::var_os("SVL_LIVE_TEST_ROOT").expect("dedicated private integration root"),
+        );
+        let audio = std::fs::read(
+            std::env::var_os("SVL_LIVE_AUDIO_FIXTURE").expect("private original clip"),
+        )
+        .unwrap();
+        assert!(!test_root.exists(), "Use a fresh dedicated test directory");
+        let credential = credentials::load(
+            &credential_root,
+            "https://english-copy-practice.hxwjb.chatgpt.site",
+        )
+        .unwrap()
+        .expect("real approval");
+        let first = application(&test_root.join("first"), &credential);
+        let entry = crate::sync_test_fixture::large_entry(&first.store, Some(&audio), 3000);
+        let bundle = first.store.sync_export(&entry).unwrap();
+        let size = serde_json::to_vec(&bundle).unwrap().len();
+        assert!(size > 2_000_000 && size < MAX_PACKET_BYTES - 4096);
+        let mut remote = InterruptedRemote {
+            inner: HttpRemote::new(Arc::clone(&first)).unwrap(),
+            lose_ack: true,
+            lose_download: false,
+        };
+        remote.inner.account().unwrap();
+        assert!(remote.inner.supports_chunks);
+        let scope = remote.inner.scope();
+        let cancel = AtomicBool::new(false);
+        assert_eq!(
+            first
+                .store
+                .synchronize(&scope, &mut remote, &cancel, |_, _| {})
+                .unwrap_err()
+                .code,
+            "network_error"
+        );
+        assert_eq!(
+            first.store.synchronization_status(&scope).unwrap().pending,
+            1
+        );
+        first
+            .store
+            .synchronize(&scope, &mut remote, &cancel, |_, _| {})
+            .unwrap();
+        let saved: RemoteDocument = serde_json::from_value(
+            remote
+                .inner
+                .get(&format!("/api/svl/v1/entries/{entry}"))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved.revision, 1);
+        assert_eq!(saved.bundle.tables["review_attempts"].len(), 3000);
+        assert_eq!(saved.bundle.tables["collection_actions"].len(), 1);
+        let second = application(&test_root.join("second"), &credential);
+        let mut receiver = HttpRemote::new(Arc::clone(&second)).unwrap();
+        receiver.account().unwrap();
+        second
+            .store
+            .synchronize(&scope, &mut receiver, &cancel, |_, _| {})
+            .unwrap();
+        let document = second.store.sync_export(&entry).unwrap();
+        assert_eq!(document.tables["review_attempts"].len(), 3000);
+        assert_eq!(document.tables["collection_actions"].len(), 1);
+        for (old, new) in bundle.tables["review_attempts"]
+            .iter()
+            .zip(&document.tables["review_attempts"])
+        {
+            for field in [
+                "id",
+                "operation_id",
+                "request_hash",
+                "answer",
+                "outcome",
+                "created_at",
+            ] {
+                assert_eq!(old[field], new[field]);
+            }
+            let old_question: Value =
+                serde_json::from_str(old["question_json"].as_str().unwrap()).unwrap();
+            let new_question: Value =
+                serde_json::from_str(new["question_json"].as_str().unwrap()).unwrap();
+            for field in ["target", "dimension", "expected", "context", "audioKind"] {
+                assert_eq!(old_question[field], new_question[field]);
+            }
+        }
+        let asset = document.tables["media_assets"][0]["id"].as_str().unwrap();
+        assert_eq!(
+            digest(&std::fs::read(second.store.media_file(asset).unwrap()).unwrap()),
+            digest(&audio)
+        );
+        let stable = first
+            .store
+            .synchronize(&scope, &mut remote, &cancel, |_, _| {})
+            .unwrap();
+        assert_eq!(stable.pushed, 0);
+        let mut deleted = saved.bundle.clone();
+        deleted.deleted = true;
+        assert!(matches!(
+            remote
+                .inner
+                .push(&Push {
+                    change_id: Uuid::new_v4().to_string(),
+                    base_revision: 1,
+                    bundle: deleted
+                })
+                .unwrap(),
+            PushReply::Saved { i: 2 }
+        ));
+        second
+            .store
+            .synchronize(&scope, &mut receiver, &cancel, |_, _| {})
+            .unwrap();
+        let conflict = second
+            .store
+            .synchronization_conflicts(&scope)
+            .unwrap()
+            .into_iter()
+            .find(|c| c.remote_id == entry)
+            .unwrap();
+        second
+            .store
+            .synchronization_resolve(
+                &scope,
+                &ResolutionInput {
+                    conflict_id: conflict.id,
+                    expected_remote_revision: conflict.remote_revision,
+                    expected_local_revision: conflict
+                        .local
+                        .as_ref()
+                        .and_then(|b| b.entry["revision"].as_i64()),
+                    choice: "archive".into(),
+                    target_entry_id: None,
+                    expected_target_revision: None,
+                },
+                &mut receiver,
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(
+            second.store.sync_export(&entry).unwrap().tables["review_attempts"].len(),
+            3000
+        );
+        println!(
+            "{}",
+            json!({"bundleBytes":size,"answers":3000,"collections":1,"audioDigestMatched":true,"lostReceiptRetried":true,"archivedFixture":true})
+        );
+    }
 
     struct InterruptedRemote {
         inner: HttpRemote,

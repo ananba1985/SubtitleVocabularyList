@@ -1,5 +1,5 @@
 use std::{path::PathBuf, sync::atomic::AtomicBool};
-use subtitle_vocabulary_list::windows_native::{
+use subtitle_vocabulary_list_core::windows_native::{
     foreground_origin, selected_text, synthesize, system_voices,
 };
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,8 +17,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let snapshot = output.with_extension("snapshot.tmp.png");
             let result = (|| {
-                let bounds = subtitle_vocabulary_list::windows_native::capture_screen(&snapshot)?;
-                let rect = subtitle_vocabulary_list::ocr::PixelRect {
+                let bounds =
+                    subtitle_vocabulary_list_core::windows_native::capture_screen(&snapshot)?;
+                let rect = subtitle_vocabulary_list_core::ocr::PixelRect {
                     x: numbers[0],
                     y: numbers[1],
                     width: numbers[2],

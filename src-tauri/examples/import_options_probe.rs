@@ -1,6 +1,6 @@
 //! Exercises the actual import task and cache against an explicitly supplied private store.
 use std::{path::PathBuf, sync::Arc, thread, time::Duration};
-use subtitle_vocabulary_list::{
+use subtitle_vocabulary_list_core::{
     application::{Application, Settings},
     media::{ImportOptions, MediaTools},
     store::Store,

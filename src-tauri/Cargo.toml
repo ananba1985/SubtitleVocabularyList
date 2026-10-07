@@ -7,7 +7,7 @@ rust-version = "1.90"
 license = "GPL-3.0-only"
 
 [lib]
-name = "subtitle_vocabulary_list"
+name = "subtitle_vocabulary_list_core"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [[bin]]

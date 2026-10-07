@@ -1,7 +1,7 @@
 //! Runs the production sync adapter against an explicitly supplied private store.
 //! The store must already contain a browser-approved, current-user protected connection.
 use std::{sync::Arc, thread, time::Duration};
-use subtitle_vocabulary_list::{
+use subtitle_vocabulary_list_core::{
     application::{Application, Settings},
     store::Store,
     tasks::TaskManager,

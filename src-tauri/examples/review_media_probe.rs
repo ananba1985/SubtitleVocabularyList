@@ -1,7 +1,7 @@
 //! Installs an already parsed private corpus for real review/audio integration checks.
 //! Does not run transcription again or contain media, credentials or personal vocabulary.
 use std::{path::PathBuf, sync::atomic::AtomicBool};
-use subtitle_vocabulary_list::{
+use subtitle_vocabulary_list_core::{
     application::example_input_from_corpus,
     corpus::file_hash,
     media::{ImportedMedia, MediaTools},

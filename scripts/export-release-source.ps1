@@ -22,13 +22,22 @@ $svlMetadata=$svlMetadataText | ConvertFrom-Json
 $svlIds=$svlMetadata.resolve.nodes.id
 $svlCrates=Join-Path $svlStage 'cargo'
 New-Item -ItemType Directory -Path $svlCrates -Force | Out-Null
+$svlChecksums=@{}
+$svlLock=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/Cargo.lock') -Raw
+foreach($svlEntry in [regex]::Split($svlLock,'(?m)^\[\[package\]\]\r?$')){
+    $svlName=[regex]::Match($svlEntry,'(?m)^name = "([^"]+)"').Groups[1].Value
+    $svlVersion=[regex]::Match($svlEntry,'(?m)^version = "([^"]+)"').Groups[1].Value
+    $svlChecksum=[regex]::Match($svlEntry,'(?m)^checksum = "([a-f0-9]{64})"').Groups[1].Value
+    if($svlChecksum){$svlChecksums[$svlName+'@'+$svlVersion]=$svlChecksum}
+}
 foreach($svlPackage in $svlMetadata.packages | Where-Object {$_.source -and $_.id -in $svlIds}){
     if($svlPackage.source -notlike 'registry+*'){throw ('Review nonregistry dependency source: '+$svlPackage.name)}
     $svlSource=Split-Path $svlPackage.manifest_path
     $svlRegistry=Split-Path $svlSource
     $svlRegistryName=Split-Path $svlRegistry -Leaf
     $svlCache=Join-Path (Split-Path (Split-Path $svlRegistry)) ('cache/'+$svlRegistryName+'/'+$svlPackage.name+'-'+$svlPackage.version+'.crate')
-    $svlExpected=(Get-Content -LiteralPath (Join-Path $svlSource '.cargo-checksum.json') -Raw | ConvertFrom-Json).package
+    $svlExpected=$svlChecksums[$svlPackage.name+'@'+$svlPackage.version]
+    if(-not $svlExpected){throw ('Missing locked dependency checksum: '+$svlPackage.name)}
     if((Get-FileHash -LiteralPath $svlCache).Hash.ToLowerInvariant() -ne $svlExpected){throw ('Dependency source checksum mismatch: '+$svlPackage.name)}
     Copy-Item -LiteralPath $svlCache -Destination $svlCrates
 }
@@ -60,7 +69,7 @@ SubtitleVocabularyList 0.1.0 源码与构建材料
 应用 ZIP 包含固定依赖锁文件、数据库迁移和 scripts/build-offline-*.ps1。
 media-ocr-asr 包含构建时使用的八份上游原始源码包及实际 FFmpeg 配置。
 构建脚本记录 Windows/MSVC 适配改动；从原始包重新应用这些改动后构建。
-cargo 包含锁定版本的原始 .crate 源码归档；摘要与 Cargo 缓存校验值核对。
+cargo 包含锁定版本的原始 .crate 源码归档；摘要与 Cargo.lock 校验值核对。
 npm 包含前端运行依赖的已安装发行源码；各自版权与许可保留。
 licenses 包含 Rust 与前端依赖的许可、版本和补取许可的固定上游来源。
 媒体工具许可和模型来源还可在安装目录 tools 中查看。

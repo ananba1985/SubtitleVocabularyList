@@ -1,0 +1,13 @@
+:root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #182928; background: #f5f7f4; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.app-shell { min-height: 100vh; display: grid; grid-template-columns: 270px 1fr; }
+aside { padding: 36px 26px; background: #163e36; color: #edf5ed; }
+.brand { font-size: 27px; font-weight: 700; letter-spacing: -1px; }
+.brand span { display: block; font-size: 15px; letter-spacing: 0; margin-top: 8px; }
+aside p { color: #b4cfc4; font-size: 13px; line-height: 1.8; }
+section { padding: 70px 56px; max-width: 1050px; }
+.eyebrow { color: #42705f; font-size: 13px; letter-spacing: 2px; }
+h1 { font-size: clamp(25px, 3vw, 39px); line-height: 1.5; font-weight: 650; }
+.status { margin-top: 35px; padding: 18px 22px; border: 1px solid #d6e3d9; border-radius: 12px; background: white; }
+section > p:last-child { color: #63766f; line-height: 1.9; }

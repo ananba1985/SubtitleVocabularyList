@@ -1,0 +1,44 @@
+[package]
+name = "subtitle-vocabulary-list"
+version = "0.1.0"
+description = "Offline Windows vocabulary notebook with original dialogue audio"
+edition = "2024"
+rust-version = "1.90"
+license = "GPL-3.0-only"
+
+[lib]
+name = "subtitle_vocabulary_list"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "SubtitleVocabularyList"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tauri", "dep:tauri-build"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", optional = true , features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.1", optional = true, features = ["tray-icon", "protocol-asset"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+unicode-normalization = "0.1"
+regex = "1"
+libbitsub-core = "=1.12.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1

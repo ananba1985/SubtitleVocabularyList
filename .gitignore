@@ -3,12 +3,16 @@ node_modules/
 /dist/
 /target/
 /src-tauri/target/
+/src-tauri/gen/
 
 # Local tools and generated files
 /.tools/
 /.local/
 /temp/
 /cache/
+/output/
+/.playwright-cli/
+/.playwright/
 *.log
 *.tmp
 

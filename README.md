@@ -52,6 +52,8 @@
 
 本机验证使用 Node.js 22、pnpm 10、Rust 1.95 和 Visual C++ 工具链。执行 `pnpm install` 后，可使用以下入口：
 
+新 Windows 机器的开发与媒体环境脚本见[开发环境说明](docs/development/windows-environment.md)，包含已实际验证的依赖版本、资源位置与权限要求。
+
 - `pnpm build`：前端类型检查与构建。
 - `pnpm test:core`：不启动界面的 Rust 核心测试。
 - `pnpm desktop:dev`：开发中的桌面程序，已接入导入、预习与词库界面。

@@ -7,7 +7,7 @@
 | Tauri | Windows 桌面宿主，Rust 2.12.1，CLI/API 版本见锁文件 | [tauri-apps/tauri](https://github.com/tauri-apps/tauri)，MIT 或 Apache-2.0 |
 | Tauri Dialog 与 Single Instance 插件 | 本机文件、目录选择和单实例激活，版本见锁文件 | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace)，MIT 或 Apache-2.0 |
 | Tauri Global Shortcut 插件 | 全局快捷键注册，Rust 2.4.0；底层 global-hotkey 0.8.0 | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace)、[tauri-apps/global-hotkey](https://github.com/tauri-apps/global-hotkey)，MIT 或 Apache-2.0 |
-| windows | Windows UI Automation、SAPI 与进程窗口 API 绑定，0.62.2 | [microsoft/windows-rs](https://github.com/microsoft/windows-rs)，MIT 或 Apache-2.0 |
+| windows | Windows UI Automation、SAPI、GDI 截图与进程窗口 API 绑定，0.62.2 | [microsoft/windows-rs](https://github.com/microsoft/windows-rs)，MIT 或 Apache-2.0 |
 | reqwest | 本机模型 HTTP 适配，0.12.28，采用 rustls | [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest)，MIT 或 Apache-2.0 |
 | walkdir | 导入目录递归扫描，2.5.0 | [BurntSushi/walkdir](https://github.com/BurntSushi/walkdir)，Unlicense 或 MIT |
 | Prettier | 开发源码格式化，3.9.9，不随应用作为运行工具调用 | [prettier/prettier](https://github.com/prettier/prettier)，MIT |
@@ -15,11 +15,11 @@
 | Vite 与 TypeScript | 开发构建与类型检查，版本见 pnpm 锁文件 | [Vite](https://github.com/vitejs/vite)、[TypeScript](https://github.com/microsoft/TypeScript)，分别为 MIT 与 Apache-2.0 |
 | rusqlite 与 SQLite | 本地持久化，rusqlite 0.37.0；SQLite 随其 bundled 功能编译 | [rusqlite](https://github.com/rusqlite/rusqlite)，MIT；[SQLite](https://www.sqlite.org/copyright.html)，public domain |
 | libbitsub-core | PGS 解码与图像呈现，1.12.1 | [altqx/libbitsub](https://github.com/altqx/libbitsub)，MIT；参考审查提交 a280c0c2dc4dad0d7ae5aff138a967a07b25d83f |
-| image | PGS 图像输出与处理，版本见 Cargo 锁文件 | [image-rs/image](https://github.com/image-rs/image)，MIT 或 Apache-2.0 |
+| image | PGS 图像输出、屏幕快照与裁剪处理，版本见 Cargo 锁文件 | [image-rs/image](https://github.com/image-rs/image)，MIT 或 Apache-2.0 |
 | whisper.cpp | 离线英语转写，当前原型使用 1.8.3 的 Windows x64 CPU 发行文件 | [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)，MIT |
 | 英语 Whisper 模型 | ggml-base.en，资源下载与校验见 setup-tools.ps1 | [转换模型来源](https://huggingface.co/ggerganov/whisper.cpp)、[原始 Whisper](https://github.com/openai/whisper)，按上游模型许可保留说明 |
-| Tesseract | 当前调用本机 5.4.0 英语 OCR | [tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract)，Apache-2.0；实际二进制的依赖分别核对 |
-| FFmpeg 与 ffprobe | 当前调用本机 FFmpeg 2022-12-15 构建，启用了 GPL 与 version3 | [FFmpeg 许可说明](https://ffmpeg.org/legal.html)，以实际构建配置和随附材料为准 |
+| Tesseract | 首台机器使用 5.4.0；新增桌面开发环境使用上游 5.5.3 的 Windows 英语 OCR | [tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract)，Apache-2.0；实际二进制的依赖分别核对 |
+| FFmpeg 与 ffprobe | 首台机器使用 2022-12-15 构建；新增桌面开发环境使用 Gyan 9.0.2 essentials Windows 构建，启用 GPL | [FFmpeg 许可说明](https://ffmpeg.org/legal.html)、[Gyan 构建](https://www.gyan.dev/ffmpeg/builds/)，以实际配置和随附材料为准 |
 | Windows 系统语音与 WebView2 | 使用系统能力及运行时 | Microsoft 系统组件按其许可使用，不纳入本项目代码许可 |
 
 Rust 与前端的确切依赖版本分别保存在 `src-tauri/Cargo.lock` 与 `pnpm-lock.yaml`。后续新增依赖更新本说明；最终分发核对包含实际用到的传递依赖。当前未复制 Pot 项目源码。

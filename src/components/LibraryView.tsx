@@ -4,6 +4,7 @@ import type { AppInfo, AudioAsset, CollectionSeed, Entry } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
 import { EntryEditor } from "./EntryEditor";
 import { SystemSpeech } from "./SystemSpeech";
+import { OnlineLookup } from "./OnlineLookup";
 export function LibraryView({
   info,
   refreshKey,
@@ -154,6 +155,10 @@ export function LibraryView({
                 {{ word: "单词", phrase: "短语", sentence: "整句" }[entry.kind]}
               </span>
               <h2 className="entry-title">{entry.text}</h2>
+              <OnlineLookup
+                key={`${entry.id}:${entry.text}`}
+                text={entry.text}
+              />
               <SystemSpeech
                 key={`word-${entry.id}`}
                 text={entry.text}

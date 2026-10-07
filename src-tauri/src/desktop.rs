@@ -70,8 +70,17 @@ fn import_start(
     app: AppState<'_>,
     paths: Vec<String>,
     operation_id: String,
+    options: Option<crate::media::ImportOptions>,
 ) -> Result<TaskSnapshot, AppError> {
-    app.import_start(paths, operation_id)
+    app.import_with_options(paths, operation_id, options.unwrap_or_default())
+}
+#[tauri::command]
+async fn media_inspect(
+    app: AppState<'_>,
+    path: String,
+) -> Result<crate::media::MediaInspection, AppError> {
+    let tools = app.settings()?.tools;
+    background(move || crate::media::inspect(&tools, std::path::Path::new(&path))).await
 }
 #[tauri::command]
 fn task_get(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
@@ -279,6 +288,19 @@ fn explain_start(
     operation_id: String,
 ) -> Result<TaskSnapshot, AppError> {
     app.explain_start(text, context, operation_id)
+}
+#[tauri::command]
+fn online_query_start(
+    app: AppState<'_>,
+    text: String,
+    provider: Option<String>,
+    operation_id: String,
+) -> Result<TaskSnapshot, AppError> {
+    app.online_query_start(
+        text,
+        provider.unwrap_or_else(|| "dictionary".into()),
+        operation_id,
+    )
 }
 #[tauri::command]
 fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
@@ -528,6 +550,7 @@ pub fn run() {
             app_info,
             sources_list,
             import_start,
+            media_inspect,
             task_get,
             tasks_list,
             task_cancel,
@@ -551,6 +574,7 @@ pub fn run() {
             preview_start,
             media_path,
             explain_start,
+            online_query_start,
             settings_get,
             connection_status,
             connection_start,

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { call, message, uid, waitTask } from "../api";
 import type {
   CollectionInput,
@@ -8,6 +8,7 @@ import type {
   TaskSnapshot,
 } from "../types";
 import { SystemSpeech } from "./SystemSpeech";
+import { OnlineLookup } from "./OnlineLookup";
 export function CollectionModal({
   seed,
   onClose,
@@ -29,6 +30,9 @@ export function CollectionModal({
     [error, setError] = useState("");
   const [task, setTask] = useState<TaskSnapshot | null>(null),
     [operationId, setOperationId] = useState(uid);
+  useEffect(() => {
+    setExplanation(null);
+  }, [text, context]);
   const submitted = useRef<{
     signature: string;
     prepared: PreparedCollection;
@@ -234,6 +238,14 @@ export function CollectionModal({
           </p>
         )}
         {!seed.example && text.trim() && <SystemSpeech text={text} />}
+        <OnlineLookup
+          key={text}
+          text={text}
+          onMeaning={(value) => {
+            setMeaning(value);
+            change();
+          }}
+        />
         <button
           className="secondary"
           onClick={explain}

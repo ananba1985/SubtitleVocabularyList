@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.9 |
+| 文档版本 | 0.10 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -70,7 +70,9 @@
 | 命令 | 当前请求与结果 |
 | --- | --- |
 | `app_info`、`sources_list` | 应用目录、数据库版本及计数；来源列表含文字来源、对白与候选数量 |
-| `import_start` | `{paths: string[], operationId}` → TaskSnapshot；递归扫描支持视频目录，文件逐项成功或失败 |
+| `import_start` | `{paths: string[], operationId, options?}` → TaskSnapshot；options 包含 audioStream、subtitleStream、subtitleMode（auto/embedded/external/speech）、externalSubtitle。目录文件逐项处理，错误选择不静默改轨 |
+| `media_inspect` | `{path}` → 音轨、字幕轨的索引/语言/名称/编码及同名外置字幕；为选择提供数据，不直接收录 |
+| `online_query_start` | CMD-20：`{text,provider?,operationId}` → 任务；provider 为 dictionary（Wiktionary）或 translation（MyMemory），无参默认前者。只发送 text，拒绝离线模式，返回 query、source、sourceUrl、definitions；建议需人工采用 |
 | `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回最近 30 次任务快照 |
 | `candidates_list` | `{sourceId, search?, kind?, onlyPending?, offset?, limit?}` → 候选数组 |
 | `candidate_examples`、`candidate_decide` | 前者 `{sourceId,key}`；后者 `{sourceId,key,exampleId,decision}`，当前决定为 familiar 或 uncertain |
@@ -173,7 +175,7 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 辅助判分 | 已提交回答、题目快照和答案依据 | 建议结果与理由；不确定时进入人工确认 |
 | 播放与系统语音 | 已保存音频或英语文本与声音选择 | 播放标识、实际状态，区分原声与系统语音 |
 
-本地模型地址与兼容接入方式唯一维护在 [架构设计](architecture.md)。接口适配核对服务模型和实际响应，并处理超时、取消、结构不完整及必要兼容参数。查询服务及识别引擎未选定前，不写成已有可调用地址。
+本地模型地址与兼容接入方式唯一维护在 [架构设计](architecture.md)。接口适配核对服务模型和实际响应，并处理超时、取消、结构不完整及必要兼容参数。联网查询已选择上述两个服务，人工触发并如实注明来源；失败保留原文和草稿，未使用这些服务执行本地识别。
 
 ## 7 站点同步契约提案
 
@@ -218,3 +220,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.7 | 2026-10-07 | 增加实际连接请求、检查、浏览器和本机状态契约，保持完整同步待实施状态 |
 | 0.8 | 2026-10-07 | 补充 contexts 读取与关联规则；HTTP 同步服务端初版和桌面未接通分别标注 |
 | 0.9 | 2026-10-07 | 对齐实际推拉、状态、冲突及带版本处理命令，记录网页桥接与正式适配检查入口 |
+| 0.10 | 2026-10-07 | 增加实际导入选择、轨道检查和手动在线查询参数及外发边界 |

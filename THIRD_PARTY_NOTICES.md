@@ -9,6 +9,7 @@
 | Tauri Global Shortcut 插件 | 全局快捷键注册，Rust 2.4.0；底层 global-hotkey 0.8.0 | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace)、[tauri-apps/global-hotkey](https://github.com/tauri-apps/global-hotkey)，MIT 或 Apache-2.0 |
 | windows | Windows UI Automation、SAPI、GDI 截图与进程窗口 API 绑定，0.62.2 | [microsoft/windows-rs](https://github.com/microsoft/windows-rs)，MIT 或 Apache-2.0 |
 | reqwest | 本机模型 HTTP 适配，0.12.28，采用 rustls | [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest)，MIT 或 Apache-2.0 |
+| scraper | 用户手动请求的 Wiktionary 英语词典 HTML 解析，0.27.0；关闭 CLI 默认功能 | [rust-scraper/scraper](https://github.com/rust-scraper/scraper)，ISC；传递依赖按 Cargo 锁文件及各自许可保留 |
 | walkdir | 导入目录递归扫描，2.5.0 | [BurntSushi/walkdir](https://github.com/BurntSushi/walkdir)，Unlicense 或 MIT |
 | Prettier | 开发源码格式化，3.9.9，不随应用作为运行工具调用 | [prettier/prettier](https://github.com/prettier/prettier)，MIT |
 | React 与 React DOM | 本地界面，19.3.0 | [facebook/react](https://github.com/facebook/react)，MIT |

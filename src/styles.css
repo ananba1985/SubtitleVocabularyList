@@ -715,3 +715,4 @@ h3 {
 .sync-comparison { display:grid; grid-template-columns:1fr 1fr;gap:1.4rem;margin:1rem 0; }
 .sync-comparison section { min-width:0;overflow-wrap:anywhere; }
 @media(max-width:800px){.sync-comparison{grid-template-columns:1fr;}}
+.import-options{display:grid;gap:12px;width:100%;padding-top:16px}.import-options label{display:grid;gap:6px}.import-options select{width:100%;max-width:100%}

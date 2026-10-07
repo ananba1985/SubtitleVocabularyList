@@ -1,6 +1,7 @@
 pub mod application;
 pub mod corpus;
 pub mod error;
+pub mod lookup;
 pub mod media;
 pub mod ocr;
 pub mod review_policy;

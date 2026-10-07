@@ -8,8 +8,11 @@ import type {
   CollectionSeed,
   SourceSummary,
   TaskSnapshot,
+  ImportOptions,
+  MediaInspection,
 } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
+import { OnlineLookup } from "./OnlineLookup";
 export function EpisodesView({
   sourceCount,
   refreshKey,
@@ -37,6 +40,14 @@ export function EpisodesView({
     [inputPath, setInputPath] = useState(""),
     [busy, setBusy] = useState(false);
   const [playbackKey, setPlaybackKey] = useState(0);
+  const defaultOptions: ImportOptions = {
+    audioStream: null,
+    subtitleStream: null,
+    subtitleMode: "auto",
+    externalSubtitle: null,
+  };
+  const [inspection, setInspection] = useState<MediaInspection | null>(null),
+    [options, setOptions] = useState<ImportOptions>(defaultOptions);
   const [editing, setEditing] = useState(false),
     [editText, setEditText] = useState(""),
     [editStart, setEditStart] = useState(0),
@@ -104,10 +115,14 @@ export function EpisodesView({
       cancelled = true;
     };
   }, [candidate?.key, sourceId, refreshKey]);
-  async function importPaths(paths: string[]) {
+  async function importPaths(paths: string[], choice = options) {
     setBusy(true);
     try {
-      await call<TaskSnapshot>("import_start", { paths, operationId: uid() });
+      await call<TaskSnapshot>("import_start", {
+        paths,
+        options: choice,
+        operationId: uid(),
+      });
       notify("导入已开始，可以继续浏览或查看任务进度。");
     } catch (error) {
       report(error);
@@ -115,6 +130,38 @@ export function EpisodesView({
       setBusy(false);
     }
   }
+  async function inspectPath(path: string) {
+    setBusy(true);
+    setInspection(null);
+    setOptions(defaultOptions);
+    try {
+      const result = await call<MediaInspection>("media_inspect", { path });
+      setInspection(result);
+      setInputPath(path);
+      setOptions({
+        ...defaultOptions,
+        externalSubtitle: result.externalSubtitle,
+      });
+    } catch (error) {
+      report(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function chooseSubtitle() {
+    const path = await open({
+      title: "选择外置字幕",
+      filters: [{ name: "字幕", extensions: ["srt", "vtt", "ass", "ssa"] }],
+    });
+    if (typeof path === "string")
+      setOptions({
+        ...options,
+        subtitleMode: "external",
+        externalSubtitle: path,
+      });
+  }
+  const trackLabel = (track: MediaInspection["audioTracks"][number]) =>
+    `轨道 ${track.index} · ${track.tags.language ?? "语言未标注"} · ${track.tags.title ?? track.codec_name}`;
   async function choose(directory: boolean) {
     try {
       const selected = await open({
@@ -130,8 +177,15 @@ export function EpisodesView({
               },
             ],
       });
-      if (selected)
-        await importPaths(Array.isArray(selected) ? selected : [selected]);
+      if (selected) {
+        const paths = Array.isArray(selected) ? selected : [selected];
+        if (!directory && paths.length === 1) await inspectPath(paths[0]);
+        else
+          await importPaths(paths, {
+            ...defaultOptions,
+            subtitleMode: options.subtitleMode === "speech" ? "speech" : "auto",
+          });
+      }
     } catch (error) {
       report(error);
     }
@@ -226,7 +280,11 @@ export function EpisodesView({
             aria-label="视频或目录路径"
             placeholder="也可以粘贴本机视频或目录路径"
             value={inputPath}
-            onChange={(event) => setInputPath(event.target.value)}
+            onChange={(event) => {
+              setInputPath(event.target.value);
+              setInspection(null);
+              setOptions(defaultOptions);
+            }}
           />
           <button
             disabled={busy || !inputPath.trim()}
@@ -234,7 +292,103 @@ export function EpisodesView({
           >
             导入路径
           </button>
+          <button
+            disabled={busy || !inputPath.trim()}
+            onClick={() => inspectPath(inputPath.trim())}
+          >
+            查看轨道与字幕
+          </button>
         </div>
+        {inspection && (
+          <div className="import-options">
+            <label>
+              对白音轨
+              <select
+                aria-label="对白音轨"
+                value={options.audioStream ?? "auto"}
+                disabled={busy}
+                onChange={(e) =>
+                  setOptions({
+                    ...options,
+                    audioStream:
+                      e.target.value === "auto" ? null : Number(e.target.value),
+                  })
+                }
+              >
+                <option value="auto">自动：优先英语音轨</option>
+                {inspection.audioTracks.map((track) => (
+                  <option key={track.index} value={track.index}>
+                    {trackLabel(track)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              对白文字来源
+              <select
+                aria-label="对白文字来源"
+                value={options.subtitleMode}
+                disabled={busy}
+                onChange={(e) =>
+                  setOptions({
+                    ...options,
+                    subtitleMode: e.target
+                      .value as ImportOptions["subtitleMode"],
+                  })
+                }
+              >
+                <option value="auto">
+                  自动：同名外置字幕、内嵌字幕或本地转写
+                </option>
+                <option value="embedded">选择内嵌字幕轨</option>
+                <option value="external">选择外置字幕</option>
+                <option value="speech">本地语音转写</option>
+              </select>
+            </label>
+            {options.subtitleMode === "embedded" && (
+              <label>
+                字幕轨
+                <select
+                  aria-label="字幕轨"
+                  value={options.subtitleStream ?? "auto"}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setOptions({
+                      ...options,
+                      subtitleStream:
+                        e.target.value === "auto"
+                          ? null
+                          : Number(e.target.value),
+                    })
+                  }
+                >
+                  <option value="auto">优先英语字幕</option>
+                  {inspection.subtitleTracks.map((track) => (
+                    <option key={track.index} value={track.index}>
+                      {trackLabel(track)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {options.subtitleMode === "external" && (
+              <div>
+                <p className="directory">
+                  {options.externalSubtitle ?? "尚未选择外置字幕"}
+                </p>
+                <button
+                  disabled={busy}
+                  onClick={() => chooseSubtitle().catch(report)}
+                >
+                  选择字幕文件
+                </button>
+              </div>
+            )}
+            <p className="muted">
+              核对后点击“导入路径”。更换音轨或字幕会保存为独立预习资料，旧收录及原声保留。
+            </p>
+          </div>
+        )}
       </div>
       {sources.length > 0 ? (
         <>
@@ -295,7 +449,10 @@ export function EpisodesView({
               : sources.find((source) => source.id === sourceId)?.textSource ===
                   "local_speech"
                 ? "本地语音转写，可纠错"
-                : "原始文本字幕"}
+                : sources.find((source) => source.id === sourceId)
+                      ?.textSource === "external_text"
+                  ? "外置文本字幕"
+                  : "原始文本字幕"}
           </p>
           <div className="split-view">
             <section className="list-panel">
@@ -345,6 +502,7 @@ export function EpisodesView({
                     {candidate.kind === "phrase" ? "短语" : "单词"}
                   </span>
                   <h2 className="entry-title">{candidate.text}</h2>
+                  <OnlineLookup key={candidate.key} text={candidate.text} />
                   <div className="context-nav">
                     <button
                       disabled={index === 0}

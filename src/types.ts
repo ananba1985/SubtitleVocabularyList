@@ -60,6 +60,25 @@ export interface SourceSummary {
   candidateCount: number;
   importedAt: number;
 }
+export interface ImportOptions {
+  audioStream: number | null;
+  subtitleStream: number | null;
+  subtitleMode: "auto" | "embedded" | "external" | "speech";
+  externalSubtitle: string | null;
+}
+export interface MediaInspection {
+  audioTracks: {
+    index: number;
+    codec_name: string;
+    tags: Record<string, string>;
+  }[];
+  subtitleTracks: {
+    index: number;
+    codec_name: string;
+    tags: Record<string, string>;
+  }[];
+  externalSubtitle: string | null;
+}
 export interface Candidate {
   key: string;
   text: string;

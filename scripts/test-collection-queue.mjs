@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {collectionQueue} from '../src/collectionQueue.ts';
+const a={text:'reluctant',kind:'word',context:'First quote.'},b={...a,text:'routine'},c={...a,text:'rhythm'};
+let state={current:null,pending:[]};
+for(const seed of [a,b,c])state=collectionQueue(state,{type:'receive',seed});
+assert.equal(state.current,a);assert.deepEqual(state.pending,[b,c]);
+state=collectionQueue(state,{type:'close'});
+state=collectionQueue(state,{type:'receive',seed:a});
+assert.deepEqual(state.pending,[b,c,a]);assert.equal(state.current,null);
+state=collectionQueue(state,{type:'next'});assert.equal(state.current,b);assert.deepEqual(state.pending,[c,a]);
+state=collectionQueue(state,{type:'close'});state=collectionQueue(state,{type:'discard'});
+assert.deepEqual(state.pending,[a]);
+state=collectionQueue(state,{type:'open',seed:b});assert.equal(state.current,b);assert.deepEqual(state.pending,[a]);
+console.log('PASS rapid captures preserve the active draft, FIFO pending results and explicit discard/open.');

@@ -35,6 +35,119 @@ impl MediaTools {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportOptions {
+    pub audio_stream: Option<usize>,
+    pub subtitle_stream: Option<usize>,
+    pub subtitle_mode: String,
+    pub external_subtitle: Option<PathBuf>,
+}
+impl Default for ImportOptions {
+    fn default() -> Self {
+        Self {
+            audio_stream: None,
+            subtitle_stream: None,
+            subtitle_mode: "auto".into(),
+            external_subtitle: None,
+        }
+    }
+}
+impl ImportOptions {
+    pub fn resolve(&self, input: &Path) -> Result<Self, AppError> {
+        if !matches!(
+            self.subtitle_mode.as_str(),
+            "auto" | "embedded" | "external" | "speech"
+        ) {
+            return Err(AppError::new("invalid_input", "字幕处理方式无效。"));
+        }
+        let mut options = self.clone();
+        if options.subtitle_mode != "embedded" {
+            options.subtitle_stream = None;
+        }
+        if matches!(options.subtitle_mode.as_str(), "embedded" | "speech") {
+            options.external_subtitle = None;
+        }
+        if options.subtitle_mode == "auto" && options.external_subtitle.is_none() {
+            options.external_subtitle = find_external_subtitle(input);
+        }
+        if options.subtitle_mode == "external" && options.external_subtitle.is_none() {
+            return Err(AppError::new("invalid_input", "请先选择外置字幕。"));
+        }
+        if options.subtitle_mode == "speech" {
+            options.subtitle_stream = None;
+            options.external_subtitle = None;
+        }
+        if let Some(path) = &options.external_subtitle {
+            if std::fs::metadata(path).is_ok_and(|m| m.len() > 16 * 1024 * 1024) {
+                return Err(AppError::new(
+                    "invalid_input",
+                    "外置字幕超过 16 MiB，请检查文件。",
+                ));
+            }
+            if !path.is_file()
+                || !path.extension().is_some_and(|ext| {
+                    matches!(
+                        ext.to_string_lossy().to_ascii_lowercase().as_str(),
+                        "srt" | "vtt" | "ass" | "ssa"
+                    )
+                })
+            {
+                return Err(AppError::new(
+                    "invalid_input",
+                    "外置字幕不存在或格式不支持，请选择 SRT、VTT、ASS 或 SSA 文件。",
+                ));
+            }
+        }
+        Ok(options)
+    }
+}
+
+pub fn find_external_subtitle(input: &Path) -> Option<PathBuf> {
+    let parent = input.parent()?;
+    let stem = input.file_stem()?.to_string_lossy();
+    for language in [".en", ".eng", ""] {
+        for extension in ["srt", "vtt", "ass", "ssa"] {
+            let path = parent.join(format!("{stem}{language}.{extension}"));
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaInspection {
+    pub audio_tracks: Vec<Stream>,
+    pub subtitle_tracks: Vec<Stream>,
+    pub external_subtitle: Option<PathBuf>,
+}
+pub fn inspect(tools: &MediaTools, input: &Path) -> Result<MediaInspection, AppError> {
+    if !input.is_file() {
+        return Err(AppError::new(
+            "invalid_input",
+            "请先选择一个可读取的视频文件。",
+        ));
+    }
+    let probe = probe(tools, input, &AtomicBool::new(false))?;
+    Ok(MediaInspection {
+        audio_tracks: probe
+            .streams
+            .iter()
+            .filter(|s| s.codec_type == "audio")
+            .cloned()
+            .collect(),
+        subtitle_tracks: probe
+            .streams
+            .into_iter()
+            .filter(|s| s.codec_type == "subtitle")
+            .collect(),
+        external_subtitle: find_external_subtitle(input),
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stream {
     pub index: usize,
@@ -200,6 +313,22 @@ pub fn import_media(
     cancelled: &AtomicBool,
     progress: &dyn Fn(&str, usize, usize),
 ) -> Result<ImportedMedia, AppError> {
+    let options = ImportOptions {
+        subtitle_mode: if force_speech { "speech" } else { "auto" }.into(),
+        ..Default::default()
+    };
+    import_media_with_options(tools, input, directory, &options, cancelled, progress)
+}
+
+pub fn import_media_with_options(
+    tools: &MediaTools,
+    input: &Path,
+    directory: &Path,
+    options: &ImportOptions,
+    cancelled: &AtomicBool,
+    progress: &dyn Fn(&str, usize, usize),
+) -> Result<ImportedMedia, AppError> {
+    let options = options.resolve(input)?;
     std::fs::create_dir_all(directory)?;
     progress("probe", 0, 1);
     let probe = probe(tools, input, cancelled)?;
@@ -212,17 +341,35 @@ pub fn import_media(
         return Err(AppError::new("invalid_data", "素材没有有效时长。"));
     }
     let duration_ms = (duration * 1000.0).round() as i64;
-    let audio_stream = probe
-        .streams
-        .iter()
-        .find(|s| s.codec_type == "audio" && english(s))
-        .or_else(|| probe.streams.iter().find(|s| s.codec_type == "audio"))
-        .ok_or_else(|| AppError::new("unsupported", "素材没有可用音轨。"))?;
+    let audio_stream = if let Some(index) = options.audio_stream {
+        probe
+            .streams
+            .iter()
+            .find(|s| s.codec_type == "audio" && s.index == index)
+    } else {
+        probe
+            .streams
+            .iter()
+            .find(|s| s.codec_type == "audio" && english(s))
+            .or_else(|| probe.streams.iter().find(|s| s.codec_type == "audio"))
+    }
+    .ok_or_else(|| AppError::new("unsupported", "素材没有所选的可用音轨，请重新检查轨道。"))?;
     let subtitles: Vec<_> = probe
         .streams
         .iter()
-        .filter(|s| s.codec_type == "subtitle" && english(s))
+        .filter(|s| {
+            s.codec_type == "subtitle"
+                && options
+                    .subtitle_stream
+                    .map_or_else(|| english(s), |index| s.index == index)
+        })
         .collect();
+    if options.subtitle_mode == "embedded" && subtitles.is_empty() {
+        return Err(AppError::new(
+            "unsupported",
+            "素材没有所选字幕轨，请选择其他轨道或本地转写。",
+        ));
+    }
     let text_subtitle = subtitles.iter().find(|s| {
         matches!(
             s.codec_name.as_str(),
@@ -259,7 +406,28 @@ pub fn import_media(
     progress("audio", 1, 1);
     let mut warnings = Vec::new();
     let mut subtitle_index = None;
-    let (segments, text_source) = if !force_speech && let Some(stream) = text_subtitle {
+    let external = if matches!(options.subtitle_mode.as_str(), "auto" | "external")
+        && let Some(path) = &options.external_subtitle
+    {
+        match external_segments(tools, path, directory, cancelled) {
+            Ok(segments) => Some(segments),
+            Err(error) if options.subtitle_mode == "auto" && error.code != "cancelled" => {
+                warnings.push(format!(
+                    "外置字幕不可用，继续检查内嵌字幕或本地转写：{}",
+                    error.message
+                ));
+                None
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        None
+    };
+    let (segments, text_source) = if let Some(segments) = external {
+        (segments, "external_text".into())
+    } else if options.subtitle_mode != "speech"
+        && let Some(stream) = text_subtitle
+    {
         subtitle_index = Some(stream.index);
         let path = directory.join("original-subtitles.srt");
         let subtitles = (|| {
@@ -288,7 +456,7 @@ pub fn import_media(
         })();
         match subtitles {
             Ok(segments) => (segments, "embedded_text".to_owned()),
-            Err(error) if error.code != "cancelled" => {
+            Err(error) if options.subtitle_mode == "auto" && error.code != "cancelled" => {
                 warnings.push(format!(
                     "文本字幕不可用，改用本地语音转写：{}",
                     error.message
@@ -300,7 +468,9 @@ pub fn import_media(
             }
             Err(error) => return Err(error),
         }
-    } else if !force_speech && let Some(stream) = pgs_subtitle {
+    } else if options.subtitle_mode != "speech"
+        && let Some(stream) = pgs_subtitle
+    {
         subtitle_index = Some(stream.index);
         let path = directory.join("original-subtitles.sup");
         run_tool(
@@ -322,7 +492,7 @@ pub fn import_media(
         )?;
         match ocr_pgs(tools, &path, directory, duration_ms, cancelled, progress) {
             Ok(segments) => (segments, "pgs_ocr".to_owned()),
-            Err(error) if error.code != "cancelled" => {
+            Err(error) if options.subtitle_mode == "auto" && error.code != "cancelled" => {
                 warnings.push(format!(
                     "图片字幕识别未完成，改用本地语音转写：{}",
                     error.message
@@ -335,6 +505,12 @@ pub fn import_media(
             Err(error) => return Err(error),
         }
     } else {
+        if options.subtitle_mode == "embedded" {
+            return Err(AppError::new(
+                "unsupported",
+                "所选字幕格式无法读取，请选择本地转写。",
+            ));
+        }
         (
             transcribe(tools, &audio, directory, cancelled, progress)?,
             "local_speech".to_owned(),
@@ -377,6 +553,73 @@ pub fn import_media(
     )?;
     progress("ready", 1, 1);
     Ok(result)
+}
+
+fn external_segments(
+    tools: &MediaTools,
+    input: &Path,
+    directory: &Path,
+    cancelled: &AtomicBool,
+) -> Result<Vec<Segment>, AppError> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(input)?
+        .take(16 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(AppError::new(
+            "invalid_data",
+            "外置字幕超过 16 MiB，请检查文件。",
+        ));
+    }
+    let text = if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
+        let little = bytes[0] == 0xff;
+        if (bytes.len() - 2) % 2 != 0 {
+            return Err(AppError::new("invalid_data", "UTF-16 字幕不完整。"));
+        }
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|c| {
+                if little {
+                    u16::from_le_bytes([c[0], c[1]])
+                } else {
+                    u16::from_be_bytes([c[0], c[1]])
+                }
+            })
+            .collect();
+        String::from_utf16(&units)
+            .map_err(|_| AppError::new("invalid_data", "字幕编码无效，请转换为 UTF-8。"))?
+    } else {
+        String::from_utf8(bytes)
+            .map_err(|_| AppError::new("invalid_data", "字幕编码不支持，请转换为 UTF-8。"))?
+    };
+    let extension = input
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    let normalized = directory.join(format!("external-input.{extension}"));
+    std::fs::write(&normalized, text.trim_start_matches('\u{feff}'))?;
+    let output = directory.join("original-subtitles.srt");
+    run_tool(
+        &tools.ffmpeg,
+        &strings(&[
+            "-nostdin",
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            &normalized.to_string_lossy(),
+            "-f",
+            "srt",
+            &output.to_string_lossy(),
+        ]),
+        cancelled,
+    )?;
+    let segments = parse_srt(&std::fs::read_to_string(output)?)?;
+    if segments.is_empty() {
+        return Err(AppError::new("invalid_data", "外置字幕没有有效对白。"));
+    }
+    Ok(segments)
 }
 
 fn timestamp(text: &str) -> Result<i64, AppError> {

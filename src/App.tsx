@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { call, message, terminal } from "./api";
 import type {
@@ -14,6 +14,7 @@ import { LibraryView } from "./components/LibraryView";
 import { EpisodesView } from "./components/EpisodesView";
 import { ReviewView } from "./components/ReviewView";
 import { SyncView } from "./components/SyncView";
+import { collectionQueue } from "./collectionQueue";
 
 type Tab =
   "library" | "episodes" | "reviews" | "leech" | "sync" | "tasks" | "settings";
@@ -22,14 +23,20 @@ export default function App() {
     [info, setInfo] = useState<AppInfo | null>(null),
     [tasks, setTasks] = useState<TaskSnapshot[]>([]),
     [settings, setSettings] = useState<Settings | null>(null);
-  const [seed, setSeed] = useState<CollectionSeed | null>(null),
-    [error, setError] = useState(""),
+  const [collection, dispatchCollection] = useReducer(collectionQueue, {
+    current: null,
+    pending: [],
+  });
+  const seed = collection.current,
+    pendingSeed = collection.pending[0];
+  const setSeed = (value: CollectionSeed | null) =>
+    dispatchCollection(
+      value ? { type: "open", seed: value } : { type: "close" },
+    );
+  const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [refreshKey, setRefreshKey] = useState(0);
-  const seedRef = useRef(seed);
-  seedRef.current = seed;
-  const [pendingSeed, setPendingSeed] = useState<CollectionSeed | null>(null),
-    [voices, setVoices] = useState<SystemVoice[]>([]),
+  const [voices, setVoices] = useState<SystemVoice[]>([]),
     [native, setNative] = useState<NativeStatus | null>(null);
   const refresh = useCallback(async () => {
     const [nextInfo, nextTasks] = await Promise.all([
@@ -60,10 +67,7 @@ export default function App() {
     };
     listen<CollectionSeed>("capture_completed", (event) => {
       setError("");
-      if (seedRef.current) {
-        setPendingSeed(event.payload);
-        setNotice("新采集结果已准备，当前未保存的草稿已保留。");
-      } else setSeed(event.payload);
+      dispatchCollection({ type: "receive", seed: event.payload });
     })
       .then(keep)
       .catch((error) => setError(message(error)));
@@ -185,16 +189,20 @@ export default function App() {
         )}
         {pendingSeed && !seed && (
           <div className="notice banner">
-            <span>有新的采集结果待确认：{pendingSeed.text.slice(0, 80)}</span>
+            <span>
+              有 {collection.pending.length} 条采集结果待确认：
+              {pendingSeed.text.slice(0, 80)}
+            </span>
             <button
               onClick={() => {
-                setSeed(pendingSeed);
-                setPendingSeed(null);
+                dispatchCollection({ type: "next" });
               }}
             >
               打开确认
             </button>
-            <button onClick={() => setPendingSeed(null)}>放弃本次采集</button>
+            <button onClick={() => dispatchCollection({ type: "discard" })}>
+              放弃这一条
+            </button>
           </div>
         )}
         {active.length > 0 && tab !== "tasks" && (

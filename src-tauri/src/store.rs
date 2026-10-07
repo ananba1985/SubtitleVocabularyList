@@ -21,7 +21,7 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 3 {
+        if version > 4 {
             return Err(AppError::new(
                 "unsupported_schema",
                 "此词库由较新版本创建，请使用对应软件版本打开。",
@@ -43,6 +43,12 @@ impl Store {
             let transaction = connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/003_reviews.sql"))?;
             transaction.pragma_update(None, "user_version", 3)?;
+            transaction.commit()?;
+        }
+        if version < 4 {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/004_example_contexts.sql"))?;
+            transaction.pragma_update(None, "user_version", 4)?;
             transaction.commit()?;
         }
         Ok(Self {
@@ -79,7 +85,7 @@ mod tests {
     fn database_migrates_once_and_enforces_relationships() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 3);
+        assert_eq!(store.schema_version().unwrap(), 4);
         assert_eq!(
             store
                 .connection()
@@ -96,7 +102,7 @@ mod tests {
                 .unwrap()
                 .schema_version()
                 .unwrap(),
-            3
+            4
         );
     }
 
@@ -126,7 +132,7 @@ mod tests {
         connection.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('existing','word','reluctant','reluctant',1,1)",[]).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 3);
+        assert_eq!(store.schema_version().unwrap(), 4);
         assert_eq!(store.get_entry("existing").unwrap().text, "reluctant");
     }
 
@@ -150,7 +156,7 @@ mod tests {
         connection.pragma_update(None, "user_version", 2).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 3);
+        assert_eq!(store.schema_version().unwrap(), 4);
         let entry = store.get_entry("e").unwrap();
         assert_eq!(entry.collection_count, 1);
         assert_eq!(entry.examples[0].text, "She was reluctant.");

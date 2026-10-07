@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "entry": {"id":"uuid","kind":"entry_kind","text":"text4000","match_key":"text4000","revision":"positive_int","created_at":"int","updated_at":"int"},
+  "tables": {
+    "meanings": {"id":"uuid","entry_id":"uuid","text":"text10000","origin":"text64","revision":"positive_int","created_at":"int"},
+    "sources": {"id":"uuid","kind":"text32","title":"text1000","fingerprint":"text1000","duration_ms":"int?","created_at":"int"},
+    "examples": {"id":"uuid","source_id":"uuid?","location_key":"text2000","identity_key":"text256","text":"text20000","start_ms":"int?","end_ms":"int?","revision":"positive_int","created_at":"int","archived":"flag"},
+    "entry_examples": {"entry_id":"uuid","example_id":"uuid","scope_key":"text128","meaning_id":"uuid?","context_meaning":"text20000","created_at":"int"},
+    "occurrences": {"id":"uuid","source_id":"uuid","example_id":"uuid","candidate_key":"text4000","raw_text":"text4000","token_start":"int","token_end":"int","entry_id":"uuid?","kind":"entry_kind"},
+    "media_assets": {"id":"uuid","recipe_key":"digest","digest":"digest","kind":"original","format":"audio_format","duration_ms":"int","state":"media_state","created_at":"int"},
+    "example_media": {"example_id":"uuid","asset_id":"uuid"},
+    "collection_actions": {"operation_id":"uuid","request_hash":"digest","entry_id":"uuid","source_id":"uuid?","result_json":"json_object","created_at":"int"},
+    "learning_units": {"id":"uuid","entry_id":"uuid","scope_key":"scope_key","dimension":"dimension","created_at":"int"},
+    "review_attempts": {"id":"uuid","operation_id":"uuid","request_hash":"digest","unit_id":"uuid","question_json":"json_object","answer":"text20000","hinted":"flag","outcome":"outcome","grader":"text64","policy_version":"policy","state_before_json":"json_object","revision":"positive_int","created_at":"int","state_after_json":"json_object"},
+    "review_corrections": {"id":"uuid","operation_id":"uuid","attempt_id":"uuid","expected_revision":"positive_int","outcome":"effective_outcome","reason":"text4000","created_at":"int","request_hash":"digest"},
+    "review_states": {"unit_id":"uuid","revision":"positive_int","state_json":"json_object","due_at":"int","relearn_at":"int"}
+  }
+}

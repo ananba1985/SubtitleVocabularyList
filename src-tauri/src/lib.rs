@@ -7,6 +7,7 @@ pub mod review_policy;
 pub mod reviews;
 pub mod site_connection;
 pub mod store;
+pub mod sync_data;
 pub mod tasks;
 pub mod vocabulary;
 

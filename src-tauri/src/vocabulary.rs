@@ -96,11 +96,19 @@ pub struct Example {
     pub id: String,
     pub text: String,
     pub context_meaning: String,
+    pub contexts: Vec<ExampleContext>,
     pub source_id: Option<String>,
     pub source_title: Option<String>,
     pub start_ms: Option<i64>,
     pub end_ms: Option<i64>,
     pub audio: Vec<AudioAsset>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExampleContext {
+    pub scope_key: String,
+    pub meaning_id: Option<String>,
+    pub context_meaning: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,7 +159,10 @@ pub(crate) fn validate(input: &CollectionInput) -> Result<(), AppError> {
         ));
     }
     for example in &input.examples {
-        if example.text.trim().is_empty() || example.text.chars().count() > 20000 {
+        if example.text.trim().is_empty()
+            || example.text.chars().count() > 20000
+            || example.context_meaning.chars().count() > 20000
+        {
             return Err(AppError::new("invalid_input", "例句不能为空或过长。"));
         }
         match (example.start_ms, example.end_ms) {
@@ -375,7 +386,20 @@ impl Store {
         let mut example_ids = Vec::new();
         for example in &input.examples {
             let id = insert_example(&transaction, example, now)?;
-            transaction.execute("INSERT OR IGNORE INTO entry_examples(entry_id,example_id,meaning_id,context_meaning) VALUES (?,?,?,?)", params![entry_id, id, meaning_id, example.context_meaning.trim()])?;
+            let context_meaning = example.context_meaning.trim();
+            let existing_scope:Option<String>=transaction.query_row("SELECT scope_key FROM entry_examples WHERE entry_id=? AND example_id=? AND meaning_id IS ? AND context_meaning=? LIMIT 1",params![entry_id,id,meaning_id,context_meaning],|r|r.get(0)).optional()?;
+            let scope_key = if let Some(scope) = existing_scope {
+                scope
+            } else {
+                let base = meaning_id.as_deref().unwrap_or("entry");
+                let occupied:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM entry_examples WHERE entry_id=? AND example_id=? AND scope_key=?)",params![entry_id,id,base],|r|r.get(0))?;
+                if occupied {
+                    format!("{base}:ctx:{}", digest(context_meaning.as_bytes()))
+                } else {
+                    base.into()
+                }
+            };
+            transaction.execute("INSERT OR IGNORE INTO entry_examples(entry_id,example_id,scope_key,meaning_id,context_meaning,created_at) VALUES (?,?,?,?,?,?)", params![entry_id, id,scope_key, meaning_id, context_meaning,now])?;
             for asset in &example.media_asset_ids {
                 transaction.execute(
                     "INSERT OR IGNORE INTO example_media(example_id,asset_id) VALUES (?,?)",
@@ -473,8 +497,14 @@ fn get_entry_on(connection: &Connection, id: &str) -> Result<Entry, AppError> {
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    entry.examples = connection.prepare("SELECT e.id,e.text,ee.context_meaning,e.source_id,s.title,e.start_ms,e.end_ms FROM entry_examples ee JOIN examples e ON e.id=ee.example_id LEFT JOIN sources s ON s.id=e.source_id WHERE ee.entry_id=? ORDER BY e.created_at,e.id")?.query_map([id], |row| Ok(Example { id: row.get(0)?, text: row.get(1)?, context_meaning: row.get(2)?, source_id: row.get(3)?, source_title: row.get(4)?, start_ms: row.get(5)?, end_ms: row.get(6)?, audio: Vec::new() }))?.collect::<Result<Vec<_>, _>>()?;
+    entry.examples = connection.prepare("SELECT DISTINCT e.id,e.text,e.source_id,s.title,e.start_ms,e.end_ms,e.created_at FROM entry_examples ee JOIN examples e ON e.id=ee.example_id LEFT JOIN sources s ON s.id=e.source_id WHERE ee.entry_id=? ORDER BY e.created_at,e.id")?.query_map([id], |row| Ok(Example { id: row.get(0)?, text: row.get(1)?, context_meaning:String::new(),contexts:vec![], source_id: row.get(2)?, source_title: row.get(3)?, start_ms: row.get(4)?, end_ms: row.get(5)?, audio: Vec::new() }))?.collect::<Result<Vec<_>, _>>()?;
     for example in &mut entry.examples {
+        example.contexts=connection.prepare("SELECT scope_key,meaning_id,context_meaning FROM entry_examples WHERE entry_id=? AND example_id=? ORDER BY created_at,scope_key")?.query_map(params![id,example.id],|r|Ok(ExampleContext {scope_key:r.get(0)?,meaning_id:r.get(1)?,context_meaning:r.get(2)?}))?.collect::<Result<Vec<_>,_>>()?;
+        example.context_meaning = example
+            .contexts
+            .first()
+            .map(|c| c.context_meaning.clone())
+            .unwrap_or_default();
         example.audio = connection.prepare("SELECT a.id,a.relative_path,a.duration_ms,a.kind,a.state FROM example_media em JOIN media_assets a ON a.id=em.asset_id WHERE em.example_id=? ORDER BY a.created_at,a.id")?.query_map([&example.id], |row| Ok(AudioAsset { id: row.get(0)?, relative_path: row.get(1)?, duration_ms: row.get(2)?, kind: row.get(3)?, state: row.get(4)? }))?.collect::<Result<Vec<_>, _>>()?;
     }
     Ok(entry)
@@ -545,6 +575,102 @@ mod tests {
                 .iter()
                 .any(|quote| quote.text == "I was reluctant to ask for help.")
         );
+    }
+
+    #[test]
+    fn same_quote_new_meaning_keeps_both_contexts_and_one_audio_for_both_review_scopes() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let bytes = b"synthetic audio metadata fixture";
+        let asset_id = identity();
+        let checksum = digest(bytes);
+        std::fs::write(directory.path().join("media/fixture.m4a"), bytes).unwrap();
+        store.connection().unwrap().execute("INSERT INTO media_assets(id,recipe_key,digest,relative_path,format,duration_ms,state,created_at) VALUES (?,?,?,'media/fixture.m4a','m4a',1000,'ready',1)",params![asset_id,checksum,checksum]).unwrap();
+        let mut input = request("bank");
+        input.meaning = "银行".into();
+        input.examples[0].text = "I went to the bank.".into();
+        input.examples[0].context_meaning = "这里指银行".into();
+        input.examples[0].media_asset_ids.push(asset_id.clone());
+        let first = store.collect(&input).unwrap();
+        let unit = store
+            .review_units("all", "meaning", 0, 50)
+            .unwrap()
+            .remove(0);
+        let q = store.review_question(&unit.id, unit.revision).unwrap();
+        store
+            .review_submit(&crate::reviews::AnswerInput {
+                operation_id: identity(),
+                question_id: q.id,
+                answer: "银行".into(),
+                unable: false,
+            })
+            .unwrap();
+        input.operation_id = identity();
+        input.target_entry_id = Some(first.entry_id.clone());
+        input.expected_revision = Some(first.revision);
+        input.meaning = "河岸".into();
+        input.examples[0].context_meaning = "这次理解为河岸".into();
+        store.collect(&input).unwrap();
+        store.collect(&input).unwrap();
+        let entry = store.get_entry(&first.entry_id).unwrap();
+        assert_eq!(entry.collection_count, 2);
+        assert_eq!(entry.meanings.len(), 2);
+        assert_eq!(entry.examples.len(), 1);
+        assert_eq!(entry.examples[0].audio.len(), 1);
+        assert_eq!(entry.examples[0].contexts.len(), 2);
+        assert_eq!(entry.examples[0].context_meaning, "这里指银行");
+        assert!(
+            entry.examples[0]
+                .contexts
+                .iter()
+                .any(|c| c.context_meaning == "这次理解为河岸")
+        );
+        for unit in store.review_units("all", "listening", 0, 50).unwrap() {
+            let q = store.review_question(&unit.id, unit.revision).unwrap();
+            assert_eq!(
+                store.review_audio(&q.id).unwrap().asset_id.as_deref(),
+                Some(asset_id.as_str())
+            );
+        }
+        assert_eq!(store.review_history(None, 0, 50).unwrap().len(), 1);
+        drop(store);
+        let reopened = Store::open(directory.path()).unwrap();
+        assert_eq!(
+            reopened.get_entry(&first.entry_id).unwrap().examples[0]
+                .contexts
+                .len(),
+            2
+        );
+    }
+    #[test]
+    fn same_meaning_context_revision_is_appended_without_duplicate_source_or_retry() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let source = store
+            .add_source(&SourceInput {
+                kind: "selection".into(),
+                title: "fixture".into(),
+                fingerprint: "scope-fixture".into(),
+                path_hint: None,
+                duration_ms: None,
+            })
+            .unwrap();
+        let mut input = request("reluctant");
+        input.examples[0].source_id = Some(source);
+        input.examples[0].location_key = "same-position".into();
+        let first = store.collect(&input).unwrap();
+        input.operation_id = identity();
+        input.target_entry_id = Some(first.entry_id.clone());
+        input.expected_revision = Some(first.revision);
+        input.examples[0].context_meaning = "不情愿地求助".into();
+        store.collect(&input).unwrap();
+        store.collect(&input).unwrap();
+        let entry = store.get_entry(&first.entry_id).unwrap();
+        assert_eq!(entry.examples.len(), 1);
+        assert_eq!(entry.meanings.len(), 1);
+        assert_eq!(entry.examples[0].contexts.len(), 2);
+        assert_eq!(entry.occurrence_count, 1);
+        assert_eq!(entry.collection_count, 2);
     }
 
     #[test]

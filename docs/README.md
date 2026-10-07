@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.10 |
+| 文档版本 | 0.11 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -27,6 +27,8 @@
 | 测验增量验证 | [testing/review-results.md](testing/review-results.md) | 题目、持久化、判分修正、实际听力与重启证据 | 区分核心夹具、真实 WebView2、听感与离线整体验收 |
 | 完整同步设计 | [design/synchronization.md](design/synchronization.md) | 真实账号连接、资料包、增量、回执、冲突与原声传输 | 合同与本地测试不能代替真实站点验收 |
 | 同步增量验证 | [testing/synchronization-results.md](testing/synchronization-results.md) | 实际连接、部署、完整交换和未完成项 | 区分本地契约、真实身份、数据交换与整体交付 |
+| 同例句多语境增量 | [testing/example-context-results.md](testing/example-context-results.md) | 多释义关联、原声复用、升级、资料包及实际桌面结果 | 不把完整字段契约当成完整同步 |
+| 笔记本继续开发交接 | [development/laptop-handoff.md](development/laptop-handoff.md) | 当前代码、检查点、站点恢复、未完成项和停止状态 | 完整目标保留，按用户要求在其他环境继续 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
 | 台式机交接与验证 | [本地任务目标](development/desktop-agent-goal.md)、[台式机记录](testing/desktop-machine-results.md) | 已有环境、当前证据、剩余范围与持续目标完成条件 | 机器切换不自动关闭未完成能力或未通过场景 |
@@ -116,3 +118,4 @@
 | 0.8 | 2026-10-07 | 索引台式机实际验证结果与本地持续任务交接 |
 | 0.9 | 2026-10-07 | 索引测验、专项、原声与系统语音题的增量验证 |
 | 0.10 | 2026-10-07 | 索引完整同步设计与账号连接实际验证 |
+| 0.11 | 2026-10-07 | 索引同句多语境、资料包初版及笔记本恢复交接 |

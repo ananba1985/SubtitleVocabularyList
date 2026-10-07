@@ -172,7 +172,11 @@ export function LibraryView({
               {entry.examples.map((example) => (
                 <article className="example-card" key={example.id}>
                   <p className="quote">{example.text}</p>
-                  <p>{example.contextMeaning}</p>
+                  {example.contexts.map((context) => (
+                    <p key={context.scopeKey}>
+                      {context.contextMeaning || "此语境释义待补充"}
+                    </p>
+                  ))}
                   <small>
                     {example.sourceTitle ?? "手动收录"}
                     {example.startMs !== null && ` · ${time(example.startMs)}`}

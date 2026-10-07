@@ -29,6 +29,11 @@ export interface Example {
   id: string;
   text: string;
   contextMeaning: string;
+  contexts: {
+    scopeKey: string;
+    meaningId: string | null;
+    contextMeaning: string;
+  }[];
   sourceId: string | null;
   sourceTitle: string | null;
   startMs: number | null;

@@ -21,7 +21,7 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 1 {
+        if version > 2 {
             return Err(AppError::new(
                 "unsupported_schema",
                 "此词库由较新版本创建，请使用对应软件版本打开。",
@@ -31,6 +31,12 @@ impl Store {
             let transaction = connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/001_initial.sql"))?;
             transaction.pragma_update(None, "user_version", 1)?;
+            transaction.commit()?;
+        }
+        if version < 2 {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/002_imports.sql"))?;
+            transaction.pragma_update(None, "user_version", 2)?;
             transaction.commit()?;
         }
         Ok(Self {
@@ -67,7 +73,7 @@ mod tests {
     fn database_migrates_once_and_enforces_relationships() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 1);
+        assert_eq!(store.schema_version().unwrap(), 2);
         assert_eq!(
             store
                 .connection()
@@ -84,7 +90,7 @@ mod tests {
                 .unwrap()
                 .schema_version()
                 .unwrap(),
-            1
+            2
         );
     }
 
@@ -101,5 +107,20 @@ mod tests {
         assert!(
             matches!(Store::open(directory.path()), Err(error) if error.code == "unsupported_schema")
         );
+    }
+
+    #[test]
+    fn version_one_upgrade_keeps_existing_vocabulary() {
+        let directory = tempfile::tempdir().unwrap();
+        let connection = Connection::open(directory.path().join("vocabulary.sqlite3")).unwrap();
+        connection
+            .execute_batch(include_str!("../migrations/001_initial.sql"))
+            .unwrap();
+        connection.pragma_update(None, "user_version", 1).unwrap();
+        connection.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('existing','word','reluctant','reluctant',1,1)",[]).unwrap();
+        drop(connection);
+        let store = Store::open(directory.path()).unwrap();
+        assert_eq!(store.schema_version().unwrap(), 2);
+        assert_eq!(store.get_entry("existing").unwrap().text, "reluctant");
     }
 }

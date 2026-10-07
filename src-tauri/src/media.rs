@@ -262,27 +262,44 @@ pub fn import_media(
     let (segments, text_source) = if !force_speech && let Some(stream) = text_subtitle {
         subtitle_index = Some(stream.index);
         let path = directory.join("original-subtitles.srt");
-        run_tool(
-            &tools.ffmpeg,
-            &strings(&[
-                "-nostdin",
-                "-y",
-                "-v",
-                "error",
-                "-i",
-                &input.to_string_lossy(),
-                "-map",
-                &format!("0:{}", stream.index),
-                "-f",
-                "srt",
-                &path.to_string_lossy(),
-            ]),
-            cancelled,
-        )?;
-        (
-            parse_srt(&std::fs::read_to_string(path)?)?,
-            "embedded_text".to_owned(),
-        )
+        let subtitles = (|| {
+            run_tool(
+                &tools.ffmpeg,
+                &strings(&[
+                    "-nostdin",
+                    "-y",
+                    "-v",
+                    "error",
+                    "-i",
+                    &input.to_string_lossy(),
+                    "-map",
+                    &format!("0:{}", stream.index),
+                    "-f",
+                    "srt",
+                    &path.to_string_lossy(),
+                ]),
+                cancelled,
+            )?;
+            let segments = parse_srt(&std::fs::read_to_string(path)?)?;
+            if segments.is_empty() {
+                return Err(AppError::new("invalid_data", "文本字幕没有有效对白。"));
+            }
+            Ok(segments)
+        })();
+        match subtitles {
+            Ok(segments) => (segments, "embedded_text".to_owned()),
+            Err(error) if error.code != "cancelled" => {
+                warnings.push(format!(
+                    "文本字幕不可用，改用本地语音转写：{}",
+                    error.message
+                ));
+                (
+                    transcribe(tools, &audio, directory, cancelled, progress)?,
+                    "local_speech".to_owned(),
+                )
+            }
+            Err(error) => return Err(error),
+        }
     } else if !force_speech && let Some(stream) = pgs_subtitle {
         subtitle_index = Some(stream.index);
         let path = directory.join("original-subtitles.sup");

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",
+    "@tauri-apps/plugin-dialog": "2",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -22,9 +23,14 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "prettier": "3",
     "typescript": "~5.9.3",
     "vite": "~6.4.4"
   },
   "packageManager": "pnpm@10.6.5",
-  "pnpm": { "onlyBuiltDependencies": ["esbuild"] }
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
 }

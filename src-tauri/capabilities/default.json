@@ -3,5 +3,5 @@
   "identifier": "main-capability",
   "description": "Main vocabulary window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

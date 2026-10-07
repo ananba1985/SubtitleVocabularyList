@@ -119,7 +119,22 @@ pub struct Entry {
     pub examples: Vec<Example>,
 }
 
-fn validate(input: &CollectionInput) -> Result<(), AppError> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeaningUpdate {
+    pub id: Option<String>,
+    pub text: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryUpdate {
+    pub id: String,
+    pub expected_revision: i64,
+    pub text: String,
+    pub meanings: Vec<MeaningUpdate>,
+}
+
+pub(crate) fn validate(input: &CollectionInput) -> Result<(), AppError> {
     if Uuid::parse_str(&input.operation_id).is_err() {
         return Err(AppError::new("invalid_input", "收录操作标识无效。"));
     }
@@ -186,6 +201,49 @@ pub(crate) fn insert_example(
 }
 
 impl Store {
+    pub fn update_entry(&self, input: &EntryUpdate) -> Result<Entry, AppError> {
+        if input.text.trim().is_empty()
+            || input.text.chars().count() > 4000
+            || input.meanings.iter().any(|meaning| {
+                meaning.text.trim().is_empty() || meaning.text.chars().count() > 10000
+            })
+        {
+            return Err(AppError::new("invalid_input", "请确认非空原文与释义。"));
+        }
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let version: Option<i64> = transaction
+            .query_row(
+                "SELECT revision FROM entries WHERE id=?",
+                [&input.id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if version != Some(input.expected_revision) {
+            return Err(AppError::new("conflict", "词条已变化，请刷新后再修改。"));
+        }
+        for meaning in &input.meanings {
+            if let Some(id) = &meaning.id {
+                let count=transaction.execute("UPDATE meanings SET text=?,origin='user',revision=revision+1 WHERE id=? AND entry_id=?",params![meaning.text.trim(),id,input.id])?;
+                if count == 0 {
+                    return Err(AppError::new("not_found", "待修改释义不存在。"));
+                }
+            } else {
+                transaction.execute("INSERT OR IGNORE INTO meanings(id,entry_id,text,origin,created_at) VALUES (?,?,?,'user',?)",params![identity(),input.id,meaning.text.trim(),Utc::now().timestamp_millis()])?;
+            }
+        }
+        transaction.execute(
+            "UPDATE entries SET text=?,match_key=?,revision=revision+1,updated_at=? WHERE id=?",
+            params![
+                input.text.trim(),
+                normalize(&input.text),
+                Utc::now().timestamp_millis(),
+                input.id
+            ],
+        )?;
+        transaction.commit()?;
+        get_entry_on(&connection, &input.id)
+    }
     pub fn add_source(&self, source: &SourceInput) -> Result<String, AppError> {
         if source.kind.trim().is_empty() || source.fingerprint.trim().is_empty() {
             return Err(AppError::new("invalid_input", "来源类型与标识不能为空。"));
@@ -236,23 +294,20 @@ impl Store {
         }
         for example in &input.examples {
             for asset_id in &example.media_asset_ids {
-                let path: Option<(String, String)> = transaction
+                let record: Option<(String, String, String)> = transaction
                     .query_row(
-                        "SELECT relative_path,state FROM media_assets WHERE id=?",
+                        "SELECT relative_path,digest,state FROM media_assets WHERE id=?",
                         [asset_id],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                     )
                     .optional()?;
-                match path {
-                    Some((path, state))
-                        if state == "ready" && self.root().join(&path).is_file() => {}
-                    _ => {
-                        return Err(AppError::new(
-                            "resource_missing",
-                            "原声音频尚未保存成功，草稿已保留，请重试或明确选择先保存文字。",
-                        ));
-                    }
-                }
+                let (path, digest, state) = record.ok_or_else(|| {
+                    AppError::new(
+                        "resource_missing",
+                        "原声音频尚未保存成功，草稿已保留，请重试或明确选择先保存文字。",
+                    )
+                })?;
+                crate::corpus::validate_media_file(self.root(), &path, &digest, &state)?;
             }
         }
         let created = input.target_entry_id.is_none();
@@ -383,7 +438,7 @@ impl Store {
 
 fn get_entry_on(connection: &Connection, id: &str) -> Result<Entry, AppError> {
     let mut entry = connection.query_row(
-        "SELECT id,kind,text,match_key,revision,created_at,updated_at,(SELECT COUNT(*) FROM collection_actions WHERE entry_id=entries.id),(SELECT COUNT(*) FROM occurrences WHERE entry_id=entries.id) FROM entries WHERE id=?",
+        "SELECT id,kind,text,match_key,revision,created_at,updated_at,(SELECT COUNT(*) FROM collection_actions WHERE entry_id=entries.id),CASE WHEN kind='sentence' THEN (SELECT COUNT(DISTINCT e.source_id||':'||e.location_key) FROM entry_examples ee JOIN examples e ON e.id=ee.example_id WHERE ee.entry_id=entries.id AND e.source_id IS NOT NULL) ELSE (SELECT COUNT(*) FROM occurrences o WHERE o.entry_id=entries.id OR (o.candidate_key=entries.match_key AND o.source_id IN (SELECT e.source_id FROM entry_examples ee JOIN examples e ON e.id=ee.example_id WHERE ee.entry_id=entries.id))) END FROM entries WHERE id=?",
         [id], |row| Ok(Entry { id: row.get(0)?, kind: row.get(1)?, text: row.get(2)?, match_key: row.get(3)?, revision: row.get(4)?, created_at: row.get(5)?, updated_at: row.get(6)?, collection_count: row.get(7)?, occurrence_count: row.get(8)?, meanings: Vec::new(), examples: Vec::new() }),
     ).optional()?.ok_or_else(|| AppError::new("not_found", "词条不存在。"))?;
     entry.meanings = connection
@@ -501,6 +556,43 @@ mod tests {
         assert_eq!(
             store.get_entry(&first.entry_id).unwrap().collection_count,
             1
+        );
+    }
+
+    #[test]
+    fn corrupt_audio_rejects_collection_and_valid_audio_survives_entry_edit() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let path = directory.path().join("media/test.m4a");
+        std::fs::write(&path, b"synthetic audio").unwrap();
+        let digest = digest(b"synthetic audio");
+        store.connection().unwrap().execute("INSERT INTO media_assets(id,recipe_key,digest,relative_path,kind,format,duration_ms,state,created_at) VALUES ('audio','test',?,'media/test.m4a','original','m4a',1000,'ready',0)", [&digest]).unwrap();
+        let mut input = request("reluctant");
+        input.examples[0].media_asset_ids.push("audio".into());
+        std::fs::write(&path, b"damaged").unwrap();
+        assert_eq!(store.collect(&input).unwrap_err().code, "resource_missing");
+        assert!(store.list_entries("", 0, 50).unwrap().is_empty());
+        std::fs::write(&path, b"synthetic audio").unwrap();
+        let result = store.collect(&input).unwrap();
+        let entry = store.get_entry(&result.entry_id).unwrap();
+        let update = EntryUpdate {
+            id: entry.id.clone(),
+            expected_revision: entry.revision,
+            text: "Reluctant".into(),
+            meanings: vec![MeaningUpdate {
+                id: Some(entry.meanings[0].id.clone()),
+                text: "不情愿的".into(),
+            }],
+        };
+        let updated = store.update_entry(&update).unwrap();
+        assert_eq!(updated.collection_count, 1);
+        assert_eq!(updated.examples[0].id, entry.examples[0].id);
+        assert_eq!(updated.examples[0].audio[0].id, "audio");
+        assert_eq!(updated.meanings[0].text, "不情愿的");
+        assert_eq!(store.update_entry(&update).unwrap_err().code, "conflict");
+        assert_eq!(
+            store.media_file("audio").unwrap(),
+            path.canonicalize().unwrap()
         );
     }
 

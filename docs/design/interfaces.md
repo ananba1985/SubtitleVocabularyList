@@ -3,14 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.2 |
+| 文档版本 | 0.3 |
 | 更新日期 | 2026-10-06 |
-| 状态 | 初版待评审；应用命令与适配契约提案，未实现 |
+| 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
 | 关联设计 | [数据模型](data-model.md)、[应用流程](application-flows.md) |
 
-本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。命令名称为本项目提案，不代表现有站点已经提供这些接口。认证方式与同步范围仍需按 OPEN-04、TECH-06 对齐。
+本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。下列目录保留完整 0.1 的逻辑契约；当前已实现参数另列，不把后续提案当作现有接口。站点认证与协议仍需按 OPEN-04、TECH-06 对齐。
 
 ## 1 命令与数据约定
 
@@ -59,22 +59,45 @@
 
 全局取词与截图触发直接进入同一核心采集入口，先取得原应用上下文再显示窗口。CMD-06、CMD-07 不是让弹窗取得焦点后重新猜测原窗口的操作。
 
+### 2.1 当前已实现参数
+
+实现位置为 `src-tauri/src/desktop.rs`，类型位于对应 Rust 模块及 `src/types.ts`。当前分页使用 offset/limit，成功 TaskSnapshot 使用 `id` 作为任务标识；后续命令不能假定已经存在。
+
+| 命令 | 当前请求与结果 |
+| --- | --- |
+| `app_info`、`sources_list` | 应用目录、数据库版本及计数；来源列表含文字来源、对白与候选数量 |
+| `import_start` | `{paths: string[], operationId}` → TaskSnapshot；递归扫描支持视频目录，文件逐项成功或失败 |
+| `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回最近 30 次任务快照 |
+| `candidates_list` | `{sourceId, search?, kind?, onlyPending?, offset?, limit?}` → 候选数组 |
+| `candidate_examples`、`candidate_decide` | 前者 `{sourceId,key}`；后者 `{sourceId,key,exampleId,decision}`，当前决定为 familiar 或 uncertain |
+| `source_example_update` | `{sourceId,exampleId,revision,text,startMs,endMs}` → 修订后的对白；保留已收录旧引用 |
+| `entries_list`、`entry_get` | 前者 `{search?,offset?,limit?}`；后者 `{entryId}`，返回释义、例句、原声及计数 |
+| `entry_update` | `{input:{id,expectedRevision,text,meanings:[{id,text}]}}` → 新词条版本；新释义 id 为 null；当前通过版本校验保护修改，未实现更新操作回执 |
+| `collection_prepare` | `{input: CollectionInput}` → `{draftId,matches,input}`；input 含 operationId、kind、text、meaning、examples、targetEntryId、expectedRevision |
+| `collection_from_example` | `{sourceId,exampleId,text,kind,meaning,operationId}` → 同一 PreparedCollection，核心取得当前对白 |
+| `collection_commit` | `{draftId,targetEntryId,expectedRevision,saveAudio}` → TaskSnapshot；创建时目标与版本为 null，操作标识来自准备好的 input |
+| `preview_start`、`media_path` | 前者 `{sourceId,exampleId,operationId}` → 片段准备任务；后者 `{assetId}` → 经位置、状态与摘要核对的路径 |
+| `explain_start` | `{text,context,operationId}` → 本地解释任务，结果为 meaning、translation、notes 字符串；仅显式采用后进入收录内容 |
+| `settings_get`、`settings_update` | 后者 `{settings}`，本地模型限回环地址，含离线开关与工具位置 |
+
+当前原声播放由 WebView2 audio 元素报告真实加载、播放与错误；CMD-13、CMD-14 的统一原生播放与系统语音尚未接入。其他采集、复习、查询与同步命令仍是后续设计。
+
 ## 3 收录请求与提交结果
 
 草稿包含类型、原文、用户确认释义、例句、来源位置、音频准备情况以及匹配建议。修改原文或类型后，需要重新核对匹配建议。
 
-提交请求提案如下，示例标识仅用于说明结构：
+当前提交请求如下，示例标识仅用于说明结构，业务操作标识保存在已准备的草稿 input 中：
 
 ```json
 {
-  "operationId": "00000000-0000-4000-8000-000000000001",
   "draftId": "00000000-0000-4000-8000-000000000002",
-  "target": { "mode": "create" },
-  "audioChoice": "save_original_if_available"
+  "targetEntryId": null,
+  "expectedRevision": null,
+  "saveAudio": true
 }
 ```
 
-`target.mode` 为 `create` 或 `merge`。合并时必须提供 `entryId` 和 `expectedRevision`；草稿信息由核心读取，并在提交前再次校验。没有原声与存在但保存失败属于不同结果。
+targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 expectedRevision。草稿信息由核心读取，并在提交前再次校验。没有原声与存在但保存失败属于不同结果。当前草稿保存在运行中的应用内存，失败可在窗口中重试；关闭程序后需要重新准备未提交草稿。
 
 收录任务的成功结果包含词条标识、主动收录标识、提交后版本、新增和复用的例句与音频标识。失败保留草稿；同一操作正在执行或已执行完成时，重试返回对应任务或已提交结果，不产生另一条主动收录记录。
 
@@ -89,6 +112,8 @@
 | `playback_changed` | 播放标识、音频类型、状态与错误；反馈实际播放情况 |
 
 事件可能被错过或迟到。界面重新打开时查询真实任务与实体版本，不能仅凭曾经收到成功事件就推断文件和数据库已经保存。结果数据较大时使用结果引用与分页读取。
+
+当前 `task_updated` 发出完整 TaskSnapshot，未实现递增事件序号；界面通过任务查询刷新并核对持久化终态。library_changed 与 playback_changed 尚未实现，保存后的视图重新查询，播放直接读取 audio 元素状态。程序启动将遗留非终态任务标为 interrupted 失败，保留部分结果；重试建立新的任务执行，同一业务操作仍去重。
 
 ## 5 错误契约
 
@@ -157,3 +182,4 @@
 | --- | --- | --- |
 | 0.1 | 2026-10-06 | 建立本地命令、任务、错误、适配和站点同步契约提案 |
 | 0.2 | 2026-10-06 | 根据用户确认，将原声与学习记录纳入必需双向同步契约 |
+| 0.3 | 2026-10-06 | 对齐当前导入、收录、浏览、修改、媒体与任务实现参数，区分后续命令与事件 |

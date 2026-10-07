@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-当前正在实施 0.1，已建立 Tauri 桌面工程、本地数据库和收录核心，正在验证采集与剧集导入。应用尚未完成完整功能验收；设计和验证记录随实施更新。
+当前正在实施 0.1。真实桌面已接入剧集导入、按词预习、本地解释、收录合并、词条修改、浏览和独立原声播放。Windows 划词与截图、复习、站点同步及最终安装交付仍在后续计划中，尚未完成完整功能验收。
 
 产品名称、公开仓库名称和本地工作目录名称统一为 **SubtitleVocabularyList**。
 
@@ -20,6 +20,7 @@
 | [接口契约设计](docs/design/interfaces.md) | 本地命令、任务、错误及外部适配与同步契约 |
 | [测试与验收计划](docs/testing/test-plan.md) | 验证环境、计划场景、需求覆盖与执行证据规则 |
 | [首轮原型验证](docs/testing/prototype-results.md) | 实际核心与工具链测试，真实 PGS 剧集结果和覆盖边界 |
+| [桌面导入与收录验证](docs/testing/desktop-import-results.md) | 项目内剧集副本、实际界面、合并、重启与取消结果 |
 | [0.1 开发计划](docs/planning/development-plan.md) | 按依赖安排的实施阶段与完成依据 |
 | [文档管理规范](docs/README.md) | 文档分类、评审状态、变更流程和需求追溯规则 |
 | [开发约束](AGENTS.md) | 开发者与 AI 协作者必须遵守的项目规则 |
@@ -50,7 +51,7 @@
 
 - `pnpm build`：前端类型检查与构建。
 - `pnpm test:core`：不启动界面的 Rust 核心测试。
-- `pnpm desktop:dev`：开发中的桌面程序；业务界面仍在接入。
+- `pnpm desktop:dev`：开发中的桌面程序，已接入导入、预习与词库界面。
 - `pnpm tauri build --debug --no-bundle`：当前已验证的 Windows 调试程序构建。
 
 媒体原型另需 FFmpeg、ffprobe 与英语 Tesseract。`scripts/setup-tools.ps1` 准备私有的 Whisper 程序和模型，并校验模型摘要；它用于开发资源准备，不是最终用户安装说明。

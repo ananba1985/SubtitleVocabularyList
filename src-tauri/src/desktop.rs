@@ -3,6 +3,7 @@ use crate::{
     corpus::{Candidate, CandidateExample, SourceSummary},
     error::AppError,
     reviews::{AnswerInput, Attempt, CorrectionInput, Question, ReviewUnit},
+    site_connection::ConnectionStatus,
     store::Store,
     tasks::{TaskManager, TaskSnapshot},
     vocabulary::{CollectionInput, Entry, EntryUpdate},
@@ -281,6 +282,26 @@ fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
     app.settings()
 }
 #[tauri::command]
+fn connection_status(app: AppState<'_>) -> Result<ConnectionStatus, AppError> {
+    app.connection_status()
+}
+#[tauri::command]
+fn connection_start(
+    app: AppState<'_>,
+    operation_id: String,
+    replace: bool,
+) -> Result<TaskSnapshot, AppError> {
+    app.connection_start(operation_id, replace)
+}
+#[tauri::command]
+fn connection_check(app: AppState<'_>, operation_id: String) -> Result<TaskSnapshot, AppError> {
+    app.connection_check(operation_id)
+}
+#[tauri::command]
+fn connection_open(app: AppState<'_>) -> Result<(), AppError> {
+    app.connection_open()
+}
+#[tauri::command]
 async fn settings_update(
     app: AppState<'_>,
     handle: tauri::AppHandle,
@@ -506,6 +527,10 @@ pub fn run() {
             media_path,
             explain_start,
             settings_get,
+            connection_status,
+            connection_start,
+            connection_check,
+            connection_open,
             settings_update,
             speech_voices,
             speech_start,

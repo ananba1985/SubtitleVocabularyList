@@ -107,6 +107,7 @@ export interface Settings {
   selectionShortcut: string;
   ocrShortcut: string;
   systemVoice: string;
+  siteUrl: string;
   tools: {
     ffmpeg: string;
     ffprobe: string;
@@ -193,4 +194,15 @@ export interface ReviewAttempt {
   createdAt: number;
   state: ReviewState;
   corrections: { outcome: ReviewOutcome; reason: string; createdAt: number }[];
+}
+export interface ConnectionStatus {
+  siteUrl: string;
+  state: string;
+  offline: boolean;
+  deviceName: string;
+  requestId: string | null;
+  displayCode: string | null;
+  authorizationUrl: string | null;
+  accountScope: string | null;
+  expiresAt: number;
 }

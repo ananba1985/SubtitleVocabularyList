@@ -24,6 +24,7 @@ pub struct Settings {
     pub selection_shortcut: String,
     pub ocr_shortcut: String,
     pub system_voice: String,
+    pub site_url: String,
     pub tools: MediaTools,
 }
 
@@ -37,6 +38,7 @@ impl Default for Settings {
             selection_shortcut: "Ctrl+Alt+Shift+W".into(),
             ocr_shortcut: "Ctrl+Alt+Shift+S".into(),
             system_voice: String::new(),
+            site_url: "https://english-copy-practice.hxwjb.chatgpt.site".into(),
             tools: MediaTools::development(runtime),
         }
     }
@@ -56,6 +58,8 @@ pub struct Application {
     drafts: Mutex<HashMap<String, CollectionInput>>,
     defaults: Settings,
     import_guard: Arc<Mutex<()>>,
+    #[cfg(all(windows, feature = "desktop"))]
+    pub(crate) connection_guard: Arc<Mutex<()>>,
 }
 
 impl Application {
@@ -195,6 +199,8 @@ impl Application {
             drafts: Mutex::new(HashMap::new()),
             defaults,
             import_guard: Arc::new(Mutex::new(())),
+            #[cfg(all(windows, feature = "desktop"))]
+            connection_guard: Arc::new(Mutex::new(())),
         }
     }
 
@@ -215,6 +221,7 @@ impl Application {
     }
 
     pub fn save_settings(&self, settings: Settings) -> Result<Settings, AppError> {
+        crate::site_connection::site_origin(&settings.site_url)?;
         let url = reqwest::Url::parse(&settings.model_url)
             .map_err(|_| AppError::new("invalid_input", "本地模型地址无效。"))?;
         if !matches!(url.scheme(), "http" | "https")

@@ -13,8 +13,10 @@ import { CollectionModal } from "./components/CollectionModal";
 import { LibraryView } from "./components/LibraryView";
 import { EpisodesView } from "./components/EpisodesView";
 import { ReviewView } from "./components/ReviewView";
+import { SyncView } from "./components/SyncView";
 
-type Tab = "library" | "episodes" | "reviews" | "leech" | "tasks" | "settings";
+type Tab =
+  "library" | "episodes" | "reviews" | "leech" | "sync" | "tasks" | "settings";
 export default function App() {
   const [tab, setTab] = useState<Tab>("library"),
     [info, setInfo] = useState<AppInfo | null>(null),
@@ -106,6 +108,7 @@ export default function App() {
               ["episodes", "观看前预习"],
               ["reviews", "主动回忆测验"],
               ["leech", "易忘词专项"],
+              ["sync", "站点同步"],
               ["tasks", "后台任务"],
               ["settings", "本地设置"],
             ] as [Tab, string][]
@@ -142,6 +145,7 @@ export default function App() {
                   episodes: "观看前预习",
                   reviews: "主动回忆测验",
                   leech: "易忘词专项",
+                  sync: "站点同步",
                   tasks: "后台任务",
                   settings: "本地设置",
                 }[tab]
@@ -226,6 +230,7 @@ export default function App() {
             refreshKey={refreshKey}
           />
         )}
+        {tab === "sync" && <SyncView />}
         {tab === "tasks" && (
           <section className="task-list">
             {tasks.map((task) => (
@@ -242,6 +247,8 @@ export default function App() {
                       screen_capture: "截图选区准备",
                       ocr: "截图文字识别",
                       review_audio: "听力题音频准备",
+                      site_connection: "站点连接请求",
+                      site_connection_check: "站点认证检查",
                     }[task.kind] ?? task.kind}
                   </strong>
                   <span className={`badge ${task.state}`}>
@@ -384,6 +391,15 @@ export default function App() {
                 }
               />
               离线模式，本机模型仍可使用
+            </label>
+            <label>
+              英语练习站点地址
+              <input
+                value={settings.siteUrl}
+                onChange={(event) =>
+                  setSettings({ ...settings, siteUrl: event.target.value })
+                }
+              />
             </label>
             <button
               className="primary"

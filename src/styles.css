@@ -510,6 +510,11 @@ h3 {
   padding-top: 20px;
   border-top: 1px solid #e0e5dc;
 }
+.connection-code {
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: 4px;
+}
 .capture-overlay {
   position: fixed;
   inset: 0;

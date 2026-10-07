@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.6 |
+| 文档版本 | 0.7 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -56,6 +56,10 @@
 | CMD-21 | `sync_start` | 已配置连接、此次范围与操作标识，返回同步任务 | FR-12 |
 | CMD-22 | `sync_status` | 连接标识，返回已确认状态、待同步和冲突摘要 | FR-12 |
 | CMD-23 | `sync_resolve_conflict` | 冲突标识、两端版本与用户选择，返回处理结果 | FR-12 |
+| CMD-24 | `connection_start` | `{operationId,replace}` → 真实站点待批准连接任务 | FR-12 |
+| CMD-25 | `connection_check` | `{operationId}` → 真实账号批准/过期/拒绝/撤销状态任务 | FR-12 |
+| CMD-26 | `connection_open` | 无参数 → 打开已保存请求的系统浏览器连接页 | FR-12 |
+| CMD-27 | `connection_status` | 无参数 → 仅本机保存状态，不发送网络请求 | FR-12、NFR-05 |
 
 全局取词与截图触发直接进入同一核心采集入口，先取得原应用上下文再显示窗口。CMD-06、CMD-07 不是让弹窗取得焦点后重新猜测原窗口的操作。
 
@@ -91,6 +95,8 @@
 | `review_submit` | `{input:{operationId,questionId,answer,unable}}` → CMD-16 的当前实现，直接返回已保存作答、答案依据及当前安排；未明确匹配进入 needs_confirmation，不需要模型 |
 | `review_correct` | `{input:{operationId,attemptId,expectedRevision,outcome,reason}}` → 修正后的作答与重算状态；请求摘要去重，提示事实不能清除 |
 | `review_history` | `{unitId:string/null,offset,limit}` → 原回答、原判分、有效结果、答案快照及历次修正；支持待确认结果在重启后处理 |
+| `connection_start`、`connection_check` | CMD-24、CMD-25 已接入；结果为 siteUrl、state、deviceName、requestId、displayCode、authorizationUrl、accountScope、expiresAt，不返回设备令牌；离线配置拒绝网络操作 |
+| `connection_status`、`connection_open` | CMD-27 读取 DPAPI 本机凭据；CMD-26 校验 origin 并打开 HTTPS 连接页，登录与批准由真人完成 |
 
 当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。复习命令已按上表接入；查询与同步命令仍是后续设计。
 
@@ -176,7 +182,7 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 首次对齐 | 将旧站点词键映射到本地实体；匹配歧义需确认，不能重复建立词条 |
 | 冲突处理 | 保留两端版本及变更来源，用户处理后提交新的明确修改 |
 
-认证方式、实际路径、版本字段与游标形式需要与站点实现对齐。现有 `/api/vocabulary` 的限制见架构设计，本文不把自行发送认证头或更改 Origin 当成可行认证方案。
+账号连接的实际路由已按[同步设计](synchronization.md)部署，完整资料包的版本与游标仍需实施。现有 `/api/vocabulary` 的限制见架构设计，自行发送平台身份头或更改 Origin 不能代替真实认证。
 
 ### 7.2 数据边界与重试
 
@@ -202,3 +208,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.4 | 2026-10-06 | 对齐划词事件、系统语音准备、声音与快捷键设置及退出命令 |
 | 0.5 | 2026-10-06 | 对齐截图会话、裁剪、取消与识别命令，明确当前待确认结果边界 |
 | 0.6 | 2026-10-07 | 对齐实际复习列表、题目、提示、听力音频、作答、修正和历史命令 |
+| 0.7 | 2026-10-07 | 增加实际连接请求、检查、浏览器和本机状态契约，保持完整同步待实施状态 |

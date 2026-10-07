@@ -28,6 +28,8 @@
 | [完整同步设计](docs/design/synchronization.md) | 真实连接、完整资料、冻结重试、别名、冲突和媒体契约 |
 | [同步增量验证](docs/testing/synchronization-results.md) | 当前核心与真实双向、原声、历史、冲突及未覆盖项 |
 | [导入选择与查询验证](docs/testing/import-query-results.md) | 多轨/外置/转写、连续采集、实际模型和手动联网请求 |
+| [离线安装与升级验证](docs/testing/offline-release-results.md) | 随包工具、实际安装、原声播放、旧库迁移与发布余项 |
+| [安装与使用说明](docs/release/installation.md) | 当前候选包、数据目录、系统资源和基本使用流程 |
 | [0.1 开发计划](docs/planning/development-plan.md) | 按依赖安排的实施阶段与完成依据 |
 | [文档管理规范](docs/README.md) | 文档分类、评审状态、变更流程和需求追溯规则 |
 | [开发约束](AGENTS.md) | 开发者与 AI 协作者必须遵守的项目规则 |

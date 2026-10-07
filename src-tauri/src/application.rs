@@ -219,12 +219,14 @@ impl Application {
                 |row| row.get(0),
             )
             .optional()?;
-        value
+        let mut settings: Settings = value
             .map(|value| Ok(serde_json::from_str(&value)?))
-            .unwrap_or_else(|| Ok(self.defaults.clone()))
+            .unwrap_or_else(|| Ok::<Settings, AppError>(self.defaults.clone()))?;
+        settings.tools = self.defaults.tools.clone();
+        Ok(settings)
     }
 
-    pub fn save_settings(&self, settings: Settings) -> Result<Settings, AppError> {
+    pub fn save_settings(&self, mut settings: Settings) -> Result<Settings, AppError> {
         crate::site_connection::site_origin(&settings.site_url)?;
         let url = reqwest::Url::parse(&settings.model_url)
             .map_err(|_| AppError::new("invalid_input", "本地模型地址无效。"))?;
@@ -239,7 +241,10 @@ impl Application {
                 "本地模型请使用本机回环地址。",
             ));
         }
-        self.store.connection()?.execute("INSERT INTO settings(key,value_json) VALUES ('application',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",[serde_json::to_string(&settings)?])?;
+        settings.tools = self.defaults.tools.clone();
+        let mut stored = serde_json::to_value(&settings)?;
+        stored.as_object_mut().unwrap().remove("tools");
+        self.store.connection()?.execute("INSERT INTO settings(key,value_json) VALUES ('application',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",[serde_json::to_string(&stored)?])?;
         Ok(settings)
     }
 
@@ -548,4 +553,61 @@ pub fn example_input_from_corpus(
         end_ms: Some(example.end_ms),
         media_asset_ids: vec![],
     })
+}
+
+#[cfg(test)]
+mod runtime_settings_tests {
+    use super::*;
+    #[test]
+    fn upgrade_rebinds_tools_to_current_installation_and_keeps_user_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let old = Settings {
+            offline_mode: false,
+            model_name: "my-local-model".into(),
+            system_voice: "my-system-voice".into(),
+            tools: MediaTools::bundled("old-install/tools"),
+            ..Default::default()
+        };
+        store
+            .connection()
+            .unwrap()
+            .execute(
+                "INSERT INTO settings(key,value_json) VALUES ('application',?)",
+                [serde_json::to_string(&old).unwrap()],
+            )
+            .unwrap();
+        let new_tools = MediaTools::bundled(directory.path().join("new-install/tools"));
+        let app = Application::new(
+            Arc::clone(&store),
+            tasks,
+            Settings {
+                tools: new_tools.clone(),
+                ..Default::default()
+            },
+        );
+        let loaded = app.settings().unwrap();
+        assert_eq!(loaded.tools.whisper, new_tools.whisper);
+        assert_eq!(loaded.model_name, "my-local-model");
+        assert_eq!(loaded.system_voice, "my-system-voice");
+        assert!(!loaded.offline_mode);
+        app.save_settings(loaded).unwrap();
+        let json: String = store
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT value_json FROM settings WHERE key='application'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            serde_json::from_str::<Value>(&json)
+                .unwrap()
+                .get("tools")
+                .is_none()
+        );
+        assert_eq!(app.settings().unwrap().tools.tesseract, new_tools.tesseract);
+    }
 }

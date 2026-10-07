@@ -23,6 +23,16 @@ pub struct MediaTools {
 }
 
 impl MediaTools {
+    pub fn bundled(runtime: impl AsRef<Path>) -> Self {
+        let runtime = dunce::simplified(runtime.as_ref());
+        Self {
+            ffmpeg: runtime.join("ffmpeg/ffmpeg.exe"),
+            ffprobe: runtime.join("ffmpeg/ffprobe.exe"),
+            tesseract: runtime.join("tesseract/tesseract.exe"),
+            whisper: runtime.join("whisper/whisper-cli.exe"),
+            whisper_model: runtime.join("whisper/ggml-base.en.bin"),
+        }
+    }
     pub fn development(runtime: impl AsRef<Path>) -> Self {
         let runtime = runtime.as_ref();
         Self {
@@ -205,6 +215,14 @@ pub fn run_tool(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("OMP_THREAD_LIMIT", "2");
+    if matches!(
+        program.file_name().and_then(|n| n.to_str()),
+        Some("tesseract" | "tesseract.exe")
+    ) && let Some(parent) = program.parent()
+        && parent.join("tessdata/eng.traineddata").is_file()
+    {
+        command.env("TESSDATA_PREFIX", parent.join("tessdata"));
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

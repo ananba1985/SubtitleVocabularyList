@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SubtitleVocabularyList",
+  "mainBinaryName": "SubtitleVocabularyList",
   "version": "0.1.0",
   "identifier": "com.subtitlevocabularylist.desktop",
   "build": {
@@ -16,5 +17,15 @@
       "assetProtocol": { "enable": true, "scope": ["$APPDATA/media/**", "$APPDATA/jobs/**"] }
     }
   },
-  "bundle": { "active": true, "targets": ["nsis"], "windows": { "webviewInstallMode": { "type": "offlineInstaller" } } }
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "licenseFile": "../LICENSE",
+    "shortDescription": "离线剧集英语单词本",
+    "resources": { "../.tools/release-resources/": "tools/" },
+    "windows": {
+      "webviewInstallMode": { "type": "offlineInstaller" },
+      "nsis": { "installMode": "currentUser", "languages": ["SimpChinese"], "displayLanguageSelector": false }
+    }
+  }
 }

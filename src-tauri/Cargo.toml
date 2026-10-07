@@ -11,7 +11,7 @@ name = "subtitle_vocabulary_list"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [[bin]]
-name = "SubtitleVocabularyList"
+name = "subtitle-vocabulary-list"
 path = "src/main.rs"
 required-features = ["desktop"]
 
@@ -40,6 +40,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 walkdir = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 scraper = { version = "=0.27.0", default-features = false }
+dunce = "1.0.5"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.62.2", optional = true, features = ["Win32_Foundation", "Win32_Media_Speech", "Win32_Media_Audio", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_Security_Cryptography", "Win32_UI_Shell"] }

@@ -3540,6 +3540,7 @@ name = "subtitle-vocabulary-list"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dunce",
  "image",
  "libbitsub-core",
  "regex",

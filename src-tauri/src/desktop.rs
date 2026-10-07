@@ -487,8 +487,12 @@ pub fn run() {
                 .join(".tools/runtime");
             #[cfg(not(debug_assertions))]
             let runtime = app.path().resource_dir()?.join("tools");
+            #[cfg(debug_assertions)]
+            let tools = crate::media::MediaTools::development(runtime);
+            #[cfg(not(debug_assertions))]
+            let tools = crate::media::MediaTools::bundled(runtime);
             let defaults = Settings {
-                tools: crate::media::MediaTools::development(runtime),
+                tools,
                 ..Default::default()
             };
             let application = Arc::new(Application::new(store, tasks, defaults));

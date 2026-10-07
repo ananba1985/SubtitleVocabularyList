@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.10 |
+| 文档版本 | 0.11 |
 | 更新日期 | 2026-10-07 |
-| 状态 | 实施中；导入与词库命令已实现，其余契约待实施 |
+| 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
 | 关联设计 | [数据模型](data-model.md)、[应用流程](application-flows.md) |
@@ -84,7 +84,7 @@
 | `collection_commit` | `{draftId,targetEntryId,expectedRevision,saveAudio}` → TaskSnapshot；创建时目标与版本为 null，操作标识来自准备好的 input |
 | `preview_start`、`media_path` | 前者 `{sourceId,exampleId,operationId}` → 片段准备任务；后者 `{assetId}` → 经位置、状态与摘要核对的路径 |
 | `explain_start` | `{text,context,operationId}` → 本地解释任务，结果为 meaning、translation、notes 字符串；仅显式采用后进入收录内容 |
-| `settings_get`、`settings_update` | 后者 `{settings}`，本地模型限回环地址，含离线开关与工具位置 |
+| `settings_get`、`settings_update` | 后者 `{settings}`，本地模型限回环地址，保存离线开关、声音等偏好；返回当前工具位置供检查，忽略传入工具路径且不将路径写入用户设置 |
 | `capture_selection` | 无参数，先记录前台上下文，再返回取词 TaskSnapshot；成功发出 capture_completed，失败不返回旧内容 |
 | `capture_ocr`、`capture_session_get` | 前者无参数 → screen_capture TaskSnapshot，成功结果 sessionId、stage=awaiting_selection；后者 `{sessionId}` → 本次快照路径与物理 ScreenBounds |
 | `capture_ocr_submit`、`capture_ocr_cancel` | 前者 `{sessionId,rect:{x,y,width,height}}` → OCR TaskSnapshot，坐标相对本次快照；后者 `{sessionId}` → 取消本次选区，过期标识不能取消新会话 |
@@ -221,3 +221,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.8 | 2026-10-07 | 补充 contexts 读取与关联规则；HTTP 同步服务端初版和桌面未接通分别标注 |
 | 0.9 | 2026-10-07 | 对齐实际推拉、状态、冲突及带版本处理命令，记录网页桥接与正式适配检查入口 |
 | 0.10 | 2026-10-07 | 增加实际导入选择、轨道检查和手动在线查询参数及外发边界 |
+| 0.11 | 2026-10-07 | 明确工具位置由当前宿主解析，偏好更新不持久化工具路径 |

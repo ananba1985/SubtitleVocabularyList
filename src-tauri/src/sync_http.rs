@@ -350,3 +350,272 @@ impl Application {
             })
     }
 }
+
+#[cfg(test)]
+mod live_recovery_tests {
+    use super::*;
+    use crate::{
+        application::Settings,
+        reviews::AnswerInput,
+        store::Store,
+        synchronization::{Remote, ResolutionInput},
+        tasks::TaskManager,
+        vocabulary::{CollectionInput, ExampleInput},
+    };
+    use std::{path::PathBuf, sync::atomic::AtomicBool};
+    use uuid::Uuid;
+
+    struct InterruptedRemote {
+        inner: HttpRemote,
+        lose_ack: bool,
+        lose_download: bool,
+    }
+    impl Remote for InterruptedRemote {
+        fn changes(&mut self, after: i64) -> Result<ChangePage, AppError> {
+            self.inner.changes(after)
+        }
+        fn change(&mut self, cursor: i64) -> Result<RemoteDocument, AppError> {
+            self.inner.change(cursor)
+        }
+        fn upload(&mut self, hash: &str, format: &str, bytes: Vec<u8>) -> Result<(), AppError> {
+            self.inner.upload(hash, format, bytes)
+        }
+        fn push(&mut self, request: &Push) -> Result<PushReply, AppError> {
+            let reply = self.inner.push(request)?;
+            if self.lose_ack && matches!(reply, PushReply::Saved { .. }) {
+                self.lose_ack = false;
+                return Err(failure(
+                    "network_error",
+                    "Controlled lost acknowledgement after a real server commit",
+                ));
+            }
+            Ok(reply)
+        }
+        fn download(&mut self, hash: &str, format: &str) -> Result<Vec<u8>, AppError> {
+            let bytes = self.inner.download(hash, format)?;
+            if self.lose_download {
+                self.lose_download = false;
+                return Err(failure(
+                    "network_error",
+                    "Controlled interrupted real media response",
+                ));
+            }
+            Ok(bytes)
+        }
+    }
+    fn application(root: &std::path::Path, credential: &SiteCredential) -> Arc<Application> {
+        let store = Arc::new(Store::open(root).unwrap());
+        credentials::save(
+            root,
+            "https://english-copy-practice.hxwjb.chatgpt.site",
+            credential,
+        )
+        .unwrap();
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        Arc::new(Application::new(
+            store,
+            tasks,
+            Settings {
+                offline_mode: false,
+                ..Default::default()
+            },
+        ))
+    }
+    #[test]
+    #[ignore = "Requires an explicitly approved real connection and private audio fixture"]
+    fn actual_receipt_loss_media_interruption_and_tombstone_keep_history() {
+        let credential_root = PathBuf::from(
+            std::env::var_os("SVL_LIVE_CREDENTIAL_ROOT").expect("approved private credential root"),
+        );
+        let test_root = PathBuf::from(
+            std::env::var_os("SVL_LIVE_TEST_ROOT").expect("dedicated private integration root"),
+        );
+        let audio = PathBuf::from(
+            std::env::var_os("SVL_LIVE_AUDIO_FIXTURE").expect("private original clip"),
+        );
+        assert!(!test_root.exists(), "Use a fresh, dedicated test directory");
+        let credential = credentials::load(
+            &credential_root,
+            "https://english-copy-practice.hxwjb.chatgpt.site",
+        )
+        .unwrap()
+        .expect("real approval");
+        let first = application(&test_root.join("first"), &credential);
+        let bytes = std::fs::read(audio).unwrap();
+        let hash = digest(&bytes);
+        let asset = Uuid::new_v4().to_string();
+        std::fs::write(first.store.root().join("media/live-clip.m4a"), bytes).unwrap();
+        first.store.connection().unwrap().execute("INSERT INTO media_assets(id,recipe_key,digest,relative_path,kind,format,duration_ms,state,created_at) VALUES (?,? ,?,'media/live-clip.m4a','original','m4a',1710,'ready',?)",rusqlite::params![asset,hash,hash,chrono::Utc::now().timestamp_millis()]).unwrap();
+        let entry = first
+            .store
+            .collect(&CollectionInput {
+                operation_id: Uuid::new_v4().to_string(),
+                kind: "word".into(),
+                text: format!("svl-recovery-fixture-{}", Uuid::new_v4()),
+                meaning: "恢复验证".into(),
+                examples: vec![ExampleInput {
+                    text: "Kids, breakfast!".into(),
+                    media_asset_ids: vec![asset],
+                    ..Default::default()
+                }],
+                target_entry_id: None,
+                expected_revision: None,
+            })
+            .unwrap()
+            .entry_id;
+        let unit = first
+            .store
+            .review_units("all", "meaning", 0, 100)
+            .unwrap()
+            .into_iter()
+            .find(|u| u.entry_id == entry)
+            .unwrap();
+        let question = first
+            .store
+            .review_question(&unit.id, unit.revision)
+            .unwrap();
+        first
+            .store
+            .review_submit(&AnswerInput {
+                operation_id: Uuid::new_v4().to_string(),
+                question_id: question.id,
+                answer: "恢复验证".into(),
+                unable: false,
+            })
+            .unwrap();
+        let mut remote = InterruptedRemote {
+            inner: HttpRemote::new(Arc::clone(&first)).unwrap(),
+            lose_ack: true,
+            lose_download: false,
+        };
+        remote.inner.account().unwrap();
+        let scope = remote.inner.scope();
+        let cancel = AtomicBool::new(false);
+        assert_eq!(
+            first
+                .store
+                .synchronize(&scope, &mut remote, &cancel, |_, _| {})
+                .unwrap_err()
+                .code,
+            "network_error"
+        );
+        assert_eq!(
+            first.store.synchronization_status(&scope).unwrap().pending,
+            1
+        );
+        first
+            .store
+            .synchronize(&scope, &mut remote, &cancel, |_, _| {})
+            .unwrap();
+        let stable = first
+            .store
+            .synchronize(&scope, &mut remote, &cancel, |_, _| {})
+            .unwrap();
+        assert_eq!(stable.pushed, 0);
+        let document: RemoteDocument = serde_json::from_value(
+            remote
+                .inner
+                .get(&format!("/api/svl/v1/entries/{entry}"))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(document.revision, 1);
+        assert_eq!(document.bundle.tables["collection_actions"].len(), 1);
+        assert_eq!(document.bundle.tables["review_attempts"].len(), 1);
+        let second = application(&test_root.join("second"), &credential);
+        let mut receiving = InterruptedRemote {
+            inner: HttpRemote::new(Arc::clone(&second)).unwrap(),
+            lose_ack: false,
+            lose_download: true,
+        };
+        assert_eq!(
+            second
+                .store
+                .synchronize(&scope, &mut receiving, &cancel, |_, _| {})
+                .unwrap_err()
+                .code,
+            "network_error"
+        );
+        let cursor_before = second.store.synchronization_status(&scope).unwrap().cursor;
+        second
+            .store
+            .synchronize(&scope, &mut receiving, &cancel, |_, _| {})
+            .unwrap();
+        assert!(second.store.synchronization_status(&scope).unwrap().cursor > cursor_before);
+        let peer = second.store.get_entry(&entry).unwrap();
+        assert_eq!(peer.collection_count, 1);
+        assert_eq!(peer.examples[0].audio.len(), 1);
+        assert_eq!(
+            digest(
+                &std::fs::read(
+                    second
+                        .store
+                        .media_file(&peer.examples[0].audio[0].id)
+                        .unwrap()
+                )
+                .unwrap()
+            ),
+            hash
+        );
+        let mut removed = document.bundle;
+        removed.deleted = true;
+        assert!(matches!(
+            remote
+                .inner
+                .push(&Push {
+                    change_id: Uuid::new_v4().to_string(),
+                    base_revision: document.revision,
+                    bundle: removed
+                })
+                .unwrap(),
+            PushReply::Saved { .. }
+        ));
+        first
+            .store
+            .synchronize(&scope, &mut remote, &cancel, |_, _| {})
+            .unwrap();
+        let conflict = first
+            .store
+            .synchronization_conflicts(&scope)
+            .unwrap()
+            .into_iter()
+            .find(|c| c.remote_id == entry)
+            .unwrap();
+        first
+            .store
+            .synchronization_resolve(
+                &scope,
+                &ResolutionInput {
+                    conflict_id: conflict.id,
+                    choice: "archive".into(),
+                    target_entry_id: None,
+                    expected_remote_revision: conflict.remote_revision,
+                    expected_local_revision: conflict
+                        .local
+                        .as_ref()
+                        .and_then(|b| b.entry["revision"].as_i64()),
+                    expected_target_revision: None,
+                },
+                &mut remote,
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(first.store.get_entry(&entry).unwrap().collection_count, 1);
+        assert!(
+            !first
+                .store
+                .list_entries("", 0, 100)
+                .unwrap()
+                .iter()
+                .any(|e| e.id == entry)
+        );
+        assert_eq!(
+            first
+                .store
+                .review_history(Some(&unit.id), 0, 20)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+}

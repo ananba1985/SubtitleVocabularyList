@@ -303,6 +303,86 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
+    #[test]
+    fn cancellation_at_collection_commit_boundary_keeps_truthful_state_and_one_receipt() {
+        use crate::vocabulary::CollectionInput;
+        use std::sync::mpsc;
+        for after_commit in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let store = Arc::new(Store::open(directory.path()).unwrap());
+            let manager = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+            let input = CollectionInput {
+                operation_id: Uuid::new_v4().to_string(),
+                kind: "word".into(),
+                text: "reluctant".into(),
+                meaning: "不情愿的".into(),
+                examples: vec![],
+                target_entry_id: None,
+                expected_revision: None,
+            };
+            let (reached, boundary) = mpsc::channel();
+            let (release, gate) = mpsc::channel();
+            let worker_store = Arc::clone(&store);
+            let worker_input = input.clone();
+            let task = manager
+                .start(
+                    "collection",
+                    &input.operation_id,
+                    "fixed-collection",
+                    move |context| {
+                        if !after_commit {
+                            reached.send(()).unwrap();
+                            gate.recv().unwrap();
+                            context.check_cancelled()?;
+                        }
+                        let result = worker_store.collect(&worker_input)?;
+                        if after_commit {
+                            reached.send(()).unwrap();
+                            gate.recv().unwrap();
+                        }
+                        Ok(serde_json::to_value(result)?)
+                    },
+                )
+                .unwrap();
+            boundary.recv_timeout(Duration::from_secs(3)).unwrap();
+            manager.cancel(&task.id).unwrap();
+            release.send(()).unwrap();
+            let completed = wait(&manager, &task.id);
+            if after_commit {
+                assert_eq!(
+                    completed.state, "succeeded",
+                    "A saved collection must not be reported as discarded"
+                );
+            } else {
+                assert_eq!(completed.state, "cancelled");
+                assert!(store.list_entries("", 0, 20).unwrap().is_empty());
+                let retry_store = Arc::clone(&store);
+                let retry_input = input.clone();
+                let retry = manager
+                    .start(
+                        "collection",
+                        &input.operation_id,
+                        "fixed-collection",
+                        move |_| Ok(serde_json::to_value(retry_store.collect(&retry_input)?)?),
+                    )
+                    .unwrap();
+                assert_eq!(wait(&manager, &retry.id).state, "succeeded");
+            }
+            let repeat = manager
+                .start(
+                    "collection",
+                    &input.operation_id,
+                    "fixed-collection",
+                    |_| panic!("The saved receipt must be reused"),
+                )
+                .unwrap();
+            assert_eq!(repeat.state, "succeeded");
+            let entries = store.list_entries("", 0, 20).unwrap();
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].collection_count, 1);
+        }
+    }
+
     fn wait(manager: &TaskManager, id: &str) -> TaskSnapshot {
         let start = Instant::now();
         loop {

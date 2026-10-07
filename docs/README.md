@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.13 |
+| 文档版本 | 0.16 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -31,6 +31,9 @@
 | 笔记本继续开发交接 | [development/laptop-handoff.md](development/laptop-handoff.md) | 当前代码、检查点、站点恢复、未完成项和停止状态 | 完整目标保留，按用户要求在其他环境继续 |
 | 导入选择与查询增量 | [testing/import-query-results.md](testing/import-query-results.md) | 多轨/外置/转写、有序采集、实际解释和手动网络请求 | 不以合成事件替代新跨进程采集或整体安装验收 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
+| 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
+| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、本地处理、进程计数与模型不可用 | 采样与核心调用不代替长期 SLO 或 GUI 响应 |
+| 当前验收覆盖审计 | [testing/acceptance-status.md](testing/acceptance-status.md) | 全部需求、42 个计划场景、阶段门槛和缺失条件 | “增量已验证”不代表完整版本已达成 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
 | 台式机交接与验证 | [本地任务目标](development/desktop-agent-goal.md)、[台式机记录](testing/desktop-machine-results.md) | 已有环境、当前证据、剩余范围与持续目标完成条件 | 机器切换不自动关闭未完成能力或未通过场景 |
@@ -123,3 +126,6 @@
 | 0.11 | 2026-10-07 | 索引同句多语境、资料包初版及笔记本恢复交接 |
 | 0.12 | 2026-10-07 | 索引导入选择、外置字幕、采集队列和实际查询增量，目标继续保持完整 0.1 |
 | 0.13 | 2026-10-07 | 索引随包离线资源、实装与迁移证据和实际使用说明，完整目标继续 |
+| 0.14 | 2026-10-07 | 索引真实保存中断、恢复与取消提交边界 |
+| 0.15 | 2026-10-07 | 索引后台核心性能与模型失败隔离的实测样本和工程基准 |
+| 0.16 | 2026-10-07 | 索引逐项验收审计与用户条件，不自动关闭持续目标 |

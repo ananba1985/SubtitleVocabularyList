@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PERF-001 |
-| 文档版本 | 0.3 |
+| 文档版本 | 0.4 |
 | 更新日期 | 2026-10-08 |
 | 状态 | 核心与实装 WebView 样本通过；版本总审计继续 |
 | 依据 | NFR-03、NFR-04；TC-20、TC-21、TC-39、TC-40、TC-41；OPEN-05 |
@@ -99,10 +99,26 @@ python scripts/measure-core-workflow.py --tools <安装目录/tools> --video <�
 
 私有证据为 `.tools/startup-baseline.log`、`startup-baseline-browser.json`、`startup-watch-fixed.log`、`startup-watch-fixed-browser.json`、`startup-cold-verified.log`、`startup-cold-verified-browser.json`、`startup-launcher-014-first.log`、`startup-launcher-014-cached.log` 及对应浏览器计时；真实设置页截图为 `output/playwright/startup-fixed-native-settings-960x640.png`。探针按结束状态清理，不提交用户数据或媒体。六个临时依赖/WebView 缓存已核对都位于本工作区、没有重解析点；自动审批仍拒绝递归删除且未给具体原因，因此保留缓存并提供私有 `.tools/cleanup-startup-caches.ps1` 手动入口，不描述为已经清理。
 
-## 7 修订记录
+## 7 开发启动自动清理临时目录
+
+按用户要求将清理放入 `scripts/run-dev.ps1`，所有已有开发入口共用 `Invoke-SvlDevelopmentCleanup`。只清理专用 tmp 和带有效 UUID 的启动依赖/WebView 测试缓存；不清整个 `.tools`、`.local` 或 `node_modules`，正常依赖缓存、词库与媒体保持。当前选择的数据目录与目标发生包含或相等关系时跳过，客户端仍运行也延后清理；重解析点拒绝递归处理，锁定文件清理失败不会中断启动，下次再试。
+
+| Windows PowerShell 5.1 检查 | 实际结果 |
+| --- | --- |
+| CheckOnly | 可清理目录和文件保持，pnpm 调用 0 次 |
+| 真实删除 | 合成工作区三个匹配目录实际删除；实际启动入口另删除一个本轮创建的临时 WebView 目录 |
+| 数据与缓存 | 普通词库、自定义词库（位于匹配缓存目录内）、正常 Vite 缓存、工具资源、其他验证目录及非 UUID 名称均保留；哨兵内容不变 |
+| 重解析点 | 合成 junction 被跳过，链接目标内容不变 |
+| 占用与重试 | FileShare.None 锁定文件时清理延后，模拟 pnpm 仍被调用；释放锁后实际删除 |
+| 启动集成 | 从带空格的其他当前目录调用真实 run-dev，清理后继续模拟 pnpm，PATH 和 SVL_DATA_DIR 恢复；未启动真实 GUI 或重编译程序 |
+
+私有日志为 `.tools/development-cleanup-validation.log`。在测试夹具收尾时，自动审批拒绝了删除两个测试 junction 的动作，未给具体原因；含链接的夹具完整转存至 `.tools/development-cleanup-fixtures` 保留，没有删除链接。随后实际清理了空的 `.tools/tmp`，再次运行 CheckOnly 没有遗留清理警告；保留的验证夹具不进入自动清理范围。用户启动时由已接入的脚本执行正常目录清理；安全跳过的目录会给出提示。本轮为开发流程维护，保持 0.1.4，无新增安装包或原声/同步回归声明。
+
+## 8 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
 | 0.1 | 2026-10-07 | 记录并行本地处理、1000 条词库读取、进程计数及模型失败隔离，明确工程目标与证据边界 |
 | 0.2 | 2026-10-07 | 补充实际 WebView/1002 条词库下的数据和帧采样，记录旧任务可见性缺陷及修正 |
 | 0.3 | 2026-10-08 | 定位 Vite 监听/扫描生成目录的启动瓶颈，记录真实请求、首次视图、新缓存和热更新修复证据 |
+| 0.4 | 2026-10-08 | 记录开发启动自动清理、真实文件删除、数据/缓存保护、占用重试与启动脚本集成 |

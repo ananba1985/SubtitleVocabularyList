@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.7 |
+| 文档版本 | 0.8 |
 | 更新日期 | 2026-10-08 |
 | 状态 | 项目开发中；手动入口与本机环境检查通过，未执行本轮发行打包 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
@@ -49,6 +49,10 @@ pnpm desktop:dev
 ```
 
 `run-dev.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和 `.local/dev-data`，退出后恢复调用环境。开发配置使用独立应用标识，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
+
+每次启动在运行 Tauri 前调用 `development-cleanup.ps1`：清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。只枚举这些范围，不扫描整个工具源码目录。词库、原声、媒体工具、正常 `node_modules/.vite`、Cargo 产物和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后，提示原因后继续启动，下次启动再尝试。`-CheckOnly` 只显示环境与可清理目录，不删除、不启动。`pnpm desktop:dev`、双击 cmd 和直接调用 PowerShell 共用此流程，无需另记手动清理步骤。
+
+Windows PowerShell 5.1 的独立夹具实际验证了临时目录删除、CheckOnly 无副作用、普通/自定义数据目录和正常缓存保留、junction 目标保留、锁定文件不阻止启动及释放后重试；实际启动脚本在模拟 pnpm 下确认清理先发生、执行继续且环境恢复。结果见[验证记录](../testing/performance-results.md#7-开发启动自动清理临时目录)。本轮为开发脚本维护，不改变应用版本或生成安装包。
 
 可双击 `scripts/run-dev.cmd` 启动同一开发入口，脚本结束后不执行 pause；专用控制台可随启动命令结束关闭，Windows Terminal 的标签关闭也受其配置影响。在用户已打开的终端执行 `pnpm desktop:dev`，退出后应返回提示符，不强制关闭整个终端。主窗口默认完全退出；选择并保存“常驻托盘”时，开发进程和终端继续等待，需从托盘“退出”。
 
@@ -109,3 +113,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
 | 0.5 | 2026-10-07 | 接入统一版本检查、交付递增与手动发布命名，修正源码导出项目/依赖版本变量复用 |
 | 0.6 | 2026-10-07 | 补充可双击开发入口、可选托盘和终端生命周期，记录启动分阶段诊断及实测边界 |
 | 0.7 | 2026-10-08 | 定位并修复 Vite 对原生/私有生成目录的扫描，明确页面与 React 首次视图耗时和热更新边界 |
+| 0.8 | 2026-10-08 | 接入限定范围的开发启动自动清理、词库/缓存保护、CheckOnly 和失败延后，记录实际脚本验证 |

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.20 |
+| 文档版本 | 0.21 |
 | 更新日期 | 2026-10-08 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -76,8 +76,8 @@
 | `import_start` | `{paths: string[], operationId, options?}` → TaskSnapshot；options 包含 audioStream、subtitleStream、subtitleMode（auto/embedded/external/speech）、externalSubtitle。目录递归扫描六个视频后缀、现有文件统一路径身份去重；显式坏文件独立报告，错误选择不静默改轨。具体样本见[媒体矩阵](../testing/media-support-matrix.md) |
 | `media_inspect` | `{path}` → 音轨、字幕轨的索引/语言/名称/编码及同名外置字幕；为选择提供数据，不直接收录 |
 | `online_query_start` | CMD-20：`{text,provider?,operationId}` → 任务；provider 为 dictionary（Wiktionary）或 translation（MyMemory），无参默认前者。只发送 text，拒绝手动离线，自动降级后允许重试；返回 query、source、sourceUrl、definitions，建议需人工采用 |
-| `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回全部未结束任务和最近一条已结束任务。已结束记录按 updatedAt、id 降序排列，运行和取消中的旧任务不会因新收录被挤出列表 |
-| `tasks_history` | `{offset?,limit?}` → `{items:TaskSnapshot[],total}`；只读取 succeeded/failed/cancelled 的历史，按 updatedAt、id 降序。默认 offset=0、limit=10，limit 限定为 1–100；页内数据及总数在同一数据库读事务取得，超出末页返回空 items，历史不受最近 30 条限制 |
+| `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`，同时支持业务后台执行和在内存保存的临时操作；最后一项无参数，返回全部未结束业务后台任务和最近一条可展示终态。preview/speech/review_audio/explanation 只有 failed 进入任务列表；正常执行/成功/取消不进入列表或侧栏数量；仍按 updatedAt、id 降序 |
+| `tasks_history` | `{offset?,limit?}` → `{items:TaskSnapshot[],total}`；读取业务 succeeded/failed/cancelled 及上述临时类型的 failed，旧版正常临时记录同样排除，总数使用相同条件。默认 offset=0、limit=10，limit 为 1–100；页内数据及总数同一读事务取得，超出末页返回空 items，业务历史不受最近 30 条限制 |
 | `candidates_list` | `{sourceId, search?, kind?, onlyPending?, offset?, limit?}` → 候选数组 |
 | `known_target_get`、`known_target_set` | CMD-28：`{kind,text}` → boolean；设置额外传 known:boolean，返回空成功。kind 为 word/phrase/sentence，设置文本非空且最多 4000 字符；不自动建立词条或测验记录 |
 | `known_targets_list` | CMD-28：`{search?,offset?,limit?}` → `{items:[{kind,text,matchKey,markedAt}],total}`；默认 offset=0、limit=20，limit 为 1–100，按标记时间/键排序；总数与页内数据同一读事务 |
@@ -150,7 +150,7 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 
 ## 4 任务与事件
 
-任务查询是持久化状态的权威入口。事件建议采用以下最小结构：
+任务查询是当前执行状态和结果的权威入口。业务后台与失败诊断读取 SQLite，正常临时操作读取有限内存回执；事件建议采用以下最小结构：
 
 | 事件 | 字段与用途 |
 | --- | --- |
@@ -162,7 +162,7 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 
 capture_completed 的采集资料增加 alreadyKnown:boolean；匹配完整目标及类型，不删除 context 中的熟词。命中目标不自动激活主窗口，前端提供“仍要查看”；筛选偏好读取失败时继续普通确认，避免丢弃未知采集。
 
-当前 `task_updated` 发出完整 TaskSnapshot，未实现递增事件序号；界面通过任务查询刷新并核对持久化终态。library_changed 与 playback_changed 尚未实现，保存后的视图重新查询，播放直接读取 audio 元素状态。程序启动将遗留非终态任务标为 interrupted 失败，保留部分结果；重试建立新的任务执行，同一业务操作仍去重。
+当前 `task_updated` 发出完整 TaskSnapshot，未实现递增事件序号；界面通过任务查询刷新，业务终态与失败诊断核对持久化记录，临时操作核对当前回执。library_changed 与 playback_changed 尚未实现，保存后的视图重新查询，播放直接读取 audio 元素状态。程序启动将数据库遗留非终态任务标为 interrupted 失败，保留部分结果；重试建立新的执行，同一业务操作仍去重。正常临时回执无需重启恢复，已保存中文解释与音频资料独立保留。
 
 TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不改变数据库版本；旧快照缺字段时按空值读取。导入、收录、原声、解释、系统语音和在线查询的新任务记录目标对象，最多 240 个字符。听力准备仅记录“听力测验”，任务页显示音频类型，不展示待作答目标，保持 FR-10 的答案显示规则。旧 preview 快照可通过 result.asset.id 的例句和来源关联取得展示对象；只读补充，不改写旧记录或音频。任务时间沿用 createdAt/updatedAt，终态 updatedAt 用作结束时间，取消和恢复规则保持。
 
@@ -252,3 +252,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.18 | 2026-10-07 | 明确 offlineMode 默认 false、app_info 运行期状态和连接失败/服务错误分类，保持 schema 与重试入口 |
 | 0.19 | 2026-10-08 | 明确自动预习解释复用接口、中文结果缓存及可选草稿 meaning，保持原生事件和数据库兼容 |
 | 0.20 | 2026-10-08 | 新增解释数据库读取与旧缓存导入，明确 schema 6、模型来源与身份分离、保存成功后返回 |
+| 0.21 | 2026-10-08 | 明确临时操作查询和取消、正常操作不入历史、旧记录过滤与业务分页一致性 |

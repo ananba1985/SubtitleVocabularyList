@@ -46,12 +46,33 @@ pub struct TaskHistoryPage {
 }
 
 type Observer = Arc<dyn Fn(&TaskSnapshot) + Send + Sync>;
+const FOREGROUND_KINDS: &str = "'preview','speech','review_audio','explanation'";
+const FOREGROUND_RECEIPTS: usize = 64;
+
+fn foreground(kind: &str) -> bool {
+    matches!(kind, "preview" | "speech" | "review_audio" | "explanation")
+}
+
+fn trim_receipts(receipts: &mut HashMap<String, TaskSnapshot>, current: &str) {
+    let mut ended = receipts
+        .values()
+        .filter(|task| task.terminal() && task.id != current)
+        .map(|task| (task.updated_at, task.id.clone()))
+        .collect::<Vec<_>>();
+    ended.sort();
+    let protected = usize::from(receipts.get(current).is_some_and(TaskSnapshot::terminal));
+    let excess = (ended.len() + protected).saturating_sub(FOREGROUND_RECEIPTS);
+    for (_, id) in ended.into_iter().take(excess) {
+        receipts.remove(&id);
+    }
+}
 
 pub struct TaskManager {
     store: Arc<Store>,
     controls: Mutex<HashMap<String, Arc<AtomicBool>>>,
     start_guard: Mutex<()>,
     observer: Observer,
+    foreground: Mutex<HashMap<String, TaskSnapshot>>,
 }
 
 #[derive(Clone)]
@@ -105,6 +126,7 @@ impl TaskManager {
             controls: Mutex::new(HashMap::new()),
             start_guard: Mutex::new(()),
             observer,
+            foreground: Mutex::new(HashMap::new()),
         })
     }
 
@@ -148,12 +170,28 @@ impl TaskManager {
             .start_guard
             .lock()
             .map_err(|_| AppError::new("internal_error", "任务启动状态不可用。"))?;
-        let existing = {
+        let memory = self
+            .foreground
+            .lock()
+            .map_err(|_| AppError::new("internal_error", "临时操作状态不可用。"))?
+            .values()
+            .filter(|task| task.operation_id == operation_id && task.kind == kind)
+            .max_by_key(|task| {
+                (
+                    !matches!(task.state.as_str(), "failed" | "cancelled"),
+                    task.updated_at,
+                )
+            })
+            .cloned();
+        let existing = if let Some(snapshot) = memory {
+            Some(snapshot)
+        } else {
             let connection = self.store.connection()?;
-            connection.query_row("SELECT snapshot_json FROM tasks WHERE operation_id=? AND kind=? ORDER BY created_at DESC,id LIMIT 1", params![operation_id,kind], |row| row.get::<_, String>(0)).optional()?
+            let json = connection.query_row("SELECT snapshot_json FROM tasks WHERE operation_id=? AND kind=? ORDER BY created_at DESC,id LIMIT 1", params![operation_id,kind], |row| row.get::<_, String>(0)).optional()?;
+            json.map(|json| serde_json::from_str::<TaskSnapshot>(&json))
+                .transpose()?
         };
-        if let Some(json) = existing {
-            let snapshot: TaskSnapshot = serde_json::from_str(&json)?;
+        if let Some(snapshot) = existing {
             if snapshot.request_hash != request_hash {
                 return Err(AppError::new(
                     "conflict",
@@ -230,8 +268,23 @@ impl TaskManager {
     }
 
     fn save(&self, snapshot: &TaskSnapshot) -> Result<(), AppError> {
-        self.store.connection()?.execute("INSERT INTO tasks(id,operation_id,kind,stage,state,snapshot_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET stage=excluded.stage,state=excluded.state,snapshot_json=excluded.snapshot_json,updated_at=excluded.updated_at", params![snapshot.id,snapshot.operation_id,snapshot.kind,snapshot.stage,snapshot.state,serde_json::to_string(snapshot)?,snapshot.created_at,snapshot.updated_at])?;
+        if !foreground(&snapshot.kind) || snapshot.state == "failed" {
+            self.persist(snapshot)?;
+        }
+        if foreground(&snapshot.kind) {
+            let mut receipts = self
+                .foreground
+                .lock()
+                .map_err(|_| AppError::new("internal_error", "临时操作状态不可用。"))?;
+            receipts.insert(snapshot.id.clone(), snapshot.clone());
+            trim_receipts(&mut receipts, &snapshot.id);
+        }
         (self.observer)(snapshot);
+        Ok(())
+    }
+
+    fn persist(&self, snapshot: &TaskSnapshot) -> Result<(), AppError> {
+        self.store.connection()?.execute("INSERT INTO tasks(id,operation_id,kind,stage,state,snapshot_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET stage=excluded.stage,state=excluded.state,snapshot_json=excluded.snapshot_json,updated_at=excluded.updated_at", params![snapshot.id,snapshot.operation_id,snapshot.kind,snapshot.stage,snapshot.state,serde_json::to_string(snapshot)?,snapshot.created_at,snapshot.updated_at])?;
         Ok(())
     }
 
@@ -240,6 +293,24 @@ impl TaskManager {
         id: &str,
         change: impl FnOnce(&mut TaskSnapshot),
     ) -> Result<TaskSnapshot, AppError> {
+        let mut receipts = self
+            .foreground
+            .lock()
+            .map_err(|_| AppError::new("internal_error", "临时操作状态不可用。"))?;
+        if let Some(current) = receipts.get(id) {
+            let mut snapshot = current.clone();
+            change(&mut snapshot);
+            snapshot.updated_at = Utc::now().timestamp_millis();
+            if snapshot.state == "failed" {
+                self.persist(&snapshot)?;
+            }
+            receipts.insert(id.into(), snapshot.clone());
+            trim_receipts(&mut receipts, &snapshot.id);
+            drop(receipts);
+            (self.observer)(&snapshot);
+            return Ok(snapshot);
+        }
+        drop(receipts);
         let mut connection = self.store.connection()?;
         let transaction = connection.transaction()?;
         let json: String = transaction
@@ -268,6 +339,15 @@ impl TaskManager {
     }
 
     pub fn get(&self, id: &str) -> Result<TaskSnapshot, AppError> {
+        if let Some(snapshot) = self
+            .foreground
+            .lock()
+            .map_err(|_| AppError::new("internal_error", "临时操作状态不可用。"))?
+            .get(id)
+            .cloned()
+        {
+            return Ok(snapshot);
+        }
         let json: String = self
             .store
             .connection()?
@@ -306,13 +386,15 @@ impl TaskManager {
 
     pub fn list(&self) -> Result<Vec<TaskSnapshot>, AppError> {
         let connection = self.store.connection()?;
-        let mut query = connection.prepare(
+        let mut query = connection.prepare(&format!(
             "SELECT snapshot_json FROM tasks
-             WHERE state NOT IN ('succeeded','failed','cancelled')
+             WHERE (kind NOT IN ({FOREGROUND_KINDS}) OR state='failed') AND
+               (state NOT IN ('succeeded','failed','cancelled')
                 OR id IN (SELECT id FROM tasks WHERE state IN ('succeeded','failed','cancelled')
-                          ORDER BY updated_at DESC,id DESC LIMIT 1)
+                          AND (kind NOT IN ({FOREGROUND_KINDS}) OR state='failed')
+                          ORDER BY updated_at DESC,id DESC LIMIT 1))
              ORDER BY updated_at DESC,id DESC",
-        )?;
+        ))?;
         let rows = query
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -327,15 +409,19 @@ impl TaskManager {
         let mut connection = self.store.connection()?;
         let transaction = connection.transaction()?;
         let total = transaction.query_row(
-            "SELECT COUNT(*) FROM tasks WHERE state IN ('succeeded','failed','cancelled')",
+            &format!(
+                "SELECT COUNT(*) FROM tasks WHERE state IN ('succeeded','failed','cancelled')
+                AND (kind NOT IN ({FOREGROUND_KINDS}) OR state='failed')"
+            ),
             [],
             |row| row.get(0),
         )?;
         let rows = {
-            let mut query = transaction.prepare(
+            let mut query = transaction.prepare(&format!(
                 "SELECT snapshot_json FROM tasks WHERE state IN ('succeeded','failed','cancelled')
+                 AND (kind NOT IN ({FOREGROUND_KINDS}) OR state='failed')
                  ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?",
-            )?;
+            ))?;
             query
                 .query_map(params![limit.clamp(1, 100), offset], |row| {
                     row.get::<_, String>(0)
@@ -349,6 +435,29 @@ impl TaskManager {
             .map(|json| self.read_snapshot(&json))
             .collect::<Result<_, _>>()?;
         Ok(TaskHistoryPage { items, total })
+    }
+
+    // Shutdown must also cancel foreground work even though it is absent from the task page.
+    pub fn active(&self) -> Result<Vec<TaskSnapshot>, AppError> {
+        let mut active = self
+            .foreground
+            .lock()
+            .map_err(|_| AppError::new("internal_error", "临时操作状态不可用。"))?
+            .values()
+            .filter(|task| !task.terminal())
+            .cloned()
+            .collect::<Vec<_>>();
+        let rows = {
+            let connection = self.store.connection()?;
+            let mut query = connection.prepare("SELECT snapshot_json FROM tasks WHERE state NOT IN ('succeeded','failed','cancelled')")?;
+            query
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        for json in rows {
+            active.push(self.read_snapshot(&json)?);
+        }
+        Ok(active)
     }
 
     pub fn cancel(&self, id: &str) -> Result<TaskSnapshot, AppError> {
@@ -447,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn subjects_survive_restart_and_old_preview_reads_identify_saved_dialogue() {
+    fn legacy_successes_are_hidden_and_failed_subjects_survive_restart() {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(directory.path()).unwrap());
         let manager = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
@@ -472,20 +581,18 @@ mod tests {
                  VALUES ('asset','clip','digest','clip.wav','wav',1000,'ready',0);
              INSERT INTO example_media(example_id,asset_id) VALUES ('example','asset');"
         ).unwrap();
+        snapshot.id = Uuid::new_v4().to_string();
         snapshot.kind = "preview".into();
         snapshot.subject = None;
         snapshot.result = Some(serde_json::json!({"asset":{"id":"asset","durationMs":1000}}));
-        manager.save(&snapshot).unwrap();
+        manager.persist(&snapshot).unwrap();
         let expected = Some("Pilot · I am reluctant.");
         assert_eq!(
             manager.get(&snapshot.id).unwrap().subject.as_deref(),
             expected
         );
-        assert_eq!(manager.list().unwrap()[0].subject.as_deref(), expected);
-        assert_eq!(
-            manager.history(0, 10).unwrap().items[0].subject.as_deref(),
-            expected
-        );
+        assert!(manager.list().unwrap().is_empty());
+        assert_eq!(manager.history(0, 10).unwrap().total, 0);
         // The read-time fallback leaves the original persisted snapshot untouched.
         let persisted: String = store
             .connection()
@@ -504,6 +611,8 @@ mod tests {
         );
         snapshot.kind = "explanation".into();
         snapshot.subject = Some("reluctant".into());
+        snapshot.state = "failed".into();
+        snapshot.error = Some(AppError::new("provider_unavailable", "合成解释失败"));
         manager.save(&snapshot).unwrap();
         drop(manager);
         drop(store);
@@ -514,6 +623,168 @@ mod tests {
         assert_eq!(
             reopened.get(&snapshot.id).unwrap().subject.as_deref(),
             Some("reluctant")
+        );
+        assert_eq!(reopened.history(0, 10).unwrap().total, 1);
+    }
+
+    #[test]
+    fn repeated_foreground_successes_do_not_write_logs_or_displace_sync_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let manager = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let sync = manager
+            .start("sync", &Uuid::new_v4().to_string(), "sync", |_| {
+                Ok(serde_json::json!({"pushed":1}))
+            })
+            .unwrap();
+        let sync = wait(&manager, &sync.id);
+        for index in 0..100 {
+            let task = manager
+                .start(
+                    ["preview", "speech", "review_audio", "explanation"][index % 4],
+                    &Uuid::new_v4().to_string(),
+                    "clip",
+                    |_| Ok(serde_json::json!({"path":"synthetic.wav"})),
+                )
+                .unwrap();
+            let result = wait(&manager, &task.id);
+            assert_eq!(result.state, "succeeded");
+            assert_eq!(result.result.unwrap()["path"], "synthetic.wav");
+        }
+        assert_eq!(
+            manager.foreground.lock().unwrap().len(),
+            FOREGROUND_RECEIPTS
+        );
+        assert_eq!(manager.list().unwrap()[0].id, sync.id);
+        assert_eq!(manager.history(0, 10).unwrap().total, 1);
+        assert_eq!(
+            store
+                .connection()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM tasks", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn foreground_work_remains_cancellable_and_errors_are_durable() {
+        use std::sync::mpsc;
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let manager = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let operation = Uuid::new_v4().to_string();
+        let (release, gate) = mpsc::channel();
+        let task = manager
+            .start("preview", &operation, "clip", move |context| {
+                gate.recv().unwrap();
+                context.check_cancelled()?;
+                Ok(Value::Null)
+            })
+            .unwrap();
+        assert_eq!(
+            manager
+                .start("preview", &operation, "clip", |_| panic!(
+                    "Duplicate execution"
+                ))
+                .unwrap()
+                .id,
+            task.id
+        );
+        assert_eq!(
+            manager
+                .start("preview", &operation, "different", |_| Ok(Value::Null))
+                .unwrap_err()
+                .code,
+            "conflict"
+        );
+        assert!(manager.list().unwrap().is_empty());
+        assert_eq!(manager.active().unwrap()[0].id, task.id);
+        manager.cancel(&task.id).unwrap();
+        release.send(()).unwrap();
+        assert_eq!(wait(&manager, &task.id).state, "cancelled");
+        assert!(manager.active().unwrap().is_empty());
+        let failed = manager
+            .start(
+                "preview",
+                &Uuid::new_v4().to_string(),
+                "bad-clip",
+                |context| {
+                    context.subject("Synthetic missing clip");
+                    Err(AppError::new("media_missing", "合成原声失败"))
+                },
+            )
+            .unwrap();
+        assert_eq!(wait(&manager, &failed.id).state, "failed");
+        assert_eq!(manager.history(0, 10).unwrap().total, 1);
+        assert_eq!(
+            store
+                .connection()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM tasks", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        drop(manager);
+        drop(store);
+        let reopened = TaskManager::new(
+            Arc::new(Store::open(directory.path()).unwrap()),
+            Arc::new(|_| {}),
+        );
+        assert_eq!(
+            reopened.history(0, 10).unwrap().items[0]
+                .error
+                .as_ref()
+                .unwrap()
+                .code,
+            "media_missing"
+        );
+        assert!(reopened.get(&task.id).is_err());
+    }
+
+    #[test]
+    fn foreground_retry_reuses_the_new_execution_after_an_earlier_failure() {
+        use std::sync::mpsc;
+        let directory = tempfile::tempdir().unwrap();
+        let manager = TaskManager::new(
+            Arc::new(Store::open(directory.path()).unwrap()),
+            Arc::new(|_| {}),
+        );
+        let operation = Uuid::new_v4().to_string();
+        let failed = manager
+            .start("preview", &operation, "clip", |_| {
+                Err(AppError::new("media_missing", "合成失败"))
+            })
+            .unwrap();
+        assert_eq!(wait(&manager, &failed.id).state, "failed");
+        let (release, gate) = mpsc::channel();
+        let retry = manager
+            .start("preview", &operation, "clip", move |_| {
+                gate.recv().unwrap();
+                Ok(Value::Null)
+            })
+            .unwrap();
+        for _ in 0..20 {
+            assert_eq!(
+                manager
+                    .start("preview", &operation, "clip", |_| panic!(
+                        "Must reuse active retry"
+                    ))
+                    .unwrap()
+                    .id,
+                retry.id
+            );
+        }
+        release.send(()).unwrap();
+        assert_eq!(wait(&manager, &retry.id).state, "succeeded");
+        assert_eq!(
+            manager
+                .start("preview", &operation, "clip", |_| panic!(
+                    "Must reuse successful retry"
+                ))
+                .unwrap()
+                .id,
+            retry.id
         );
     }
 

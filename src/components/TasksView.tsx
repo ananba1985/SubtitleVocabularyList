@@ -132,6 +132,7 @@ export function TasksView({
           <div id="task-history-content" aria-busy={loading}>
             <p className="muted">
               已完成、失败和已取消的任务，按结束时间从新到旧排列。
+              日常播放、朗读和本地解释的正常操作不计入历史；失败仍可查看。
             </p>
             {loading && <p role="status">正在读取历史记录…</p>}
             {error && (

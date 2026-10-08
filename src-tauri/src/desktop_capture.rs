@@ -209,7 +209,7 @@ pub fn quit(app: &AppHandle) {
     }
     let application = app.state::<Arc<Application>>();
     let tasks = Arc::clone(&application.tasks);
-    if let Ok(snapshots) = tasks.list() {
+    if let Ok(snapshots) = tasks.active() {
         for task in snapshots {
             if !task.terminal() {
                 let _ = tasks.cancel(&task.id);
@@ -220,10 +220,7 @@ pub fn quit(app: &AppHandle) {
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
         while started.elapsed() < std::time::Duration::from_secs(3) {
-            if tasks
-                .list()
-                .is_ok_and(|tasks| tasks.iter().all(|task| task.terminal()))
-            {
+            if tasks.active().is_ok_and(|tasks| tasks.is_empty()) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(25));

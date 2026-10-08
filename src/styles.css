@@ -230,6 +230,39 @@ h3 {
   gap: 14px;
   margin-bottom: 22px;
 }
+.candidate-meaning {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.local-explanation {
+  margin: 12px 0 20px;
+}
+.context-meaning {
+  color: #245c46;
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+.sentence-translation {
+  color: #367554;
+  font-size: 15px;
+  margin: 12px 0 20px;
+  white-space: pre-wrap;
+}
+.supplementary-lookup {
+  margin-top: 24px;
+  border-top: 1px solid #e0e5dc;
+  padding-top: 12px;
+}
+.supplementary-lookup summary {
+  color: #81917f;
+  cursor: pointer;
+  font-size: 12px;
+}
+.supplementary-lookup .online-lookup {
+  margin-top: 14px;
+}
 .stats > div {
   border: 1px solid #e0e5dc;
   border-radius: 12px;

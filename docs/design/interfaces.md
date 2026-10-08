@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.18 |
-| 更新日期 | 2026-10-07 |
+| 文档版本 | 0.19 |
+| 更新日期 | 2026-10-08 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
@@ -114,6 +114,10 @@
 设置增加 `closeToTray:boolean`，缺省为 false；旧设置缺少该字段时采用默认完全退出，不改变 schema。`settings_update` 与其他偏好共同保存，主窗口 CloseRequested 读取已保存值：true 隐藏窗口，false 或设置读取失败调用共享退出流程。`app_quit` 和托盘“退出”始终取消未结束任务，最多等待 3 秒后请求应用退出；不关闭调用者已存在的终端窗口。
 
 `offlineMode:boolean` 默认 false，表示是否手动禁止外网；旧资料显式保存的 true 保留，无设置或缺字段采用新默认。`app_info` 增加 `networkUnavailable:boolean`，只返回当前进程最近完成的在线任务连接降级状态，不持久化、不触发联网。网络任务报 `network_unavailable` 时置 true；成功及可取得响应的 `network_error`/`auth_required`/`not_found`/`invalid_data` 置 false；取消和其他本地控制错误保持原状态。手动离线检查只依赖 offlineMode，自动降级不拒绝重试，schema 仍为 5。
+
+预习自动解释复用现有 explain_start/task_get，没有新 HTTP 入口或 SQLite 表。前端收到必要中文字段后才作为成功预览缓存；缓存键为模型标识、目标和语境，不将缓存等同已确认词条。CollectionSeed 增加可选 meaning，仅供草稿初值；原生划词/OCR 事件不含该字段时保持旧行为。用户确认后仍走既有收录接口，缓存内容不自动同步或提交。
+
+本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
 截图使用先快照后选区的独立会话。提交校验矩形和显示器配置，成功裁剪后关闭选区窗口；recognize 失败结果为空。取消选区调用 capture_ocr_cancel，识别已运行时调用 task_cancel。识别成功生成 OCR 文字来源，经显式确认才写入词库；图像在本轮结束后清理。
 
@@ -242,3 +246,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.16 | 2026-10-07 | app_info 返回真实编译版本，界面显示与统一应用版本管理对齐 |
 | 0.17 | 2026-10-07 | 增加 closeToTray 默认值、持久化与主窗口/完全退出命令的行为契约 |
 | 0.18 | 2026-10-07 | 明确 offlineMode 默认 false、app_info 运行期状态和连接失败/服务错误分类，保持 schema 与重试入口 |
+| 0.19 | 2026-10-08 | 明确自动预习解释复用接口、中文结果缓存及可选草稿 meaning，保持原生事件和数据库兼容 |

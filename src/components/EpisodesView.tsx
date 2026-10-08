@@ -10,9 +10,12 @@ import type {
   TaskSnapshot,
   ImportOptions,
   MediaInspection,
+  Settings,
 } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
 import { OnlineLookup } from "./OnlineLookup";
+import { CandidateMeaning } from "./CandidateMeaning";
+import { useLocalExplanation } from "../localExplanations";
 export function EpisodesView({
   sourceCount,
   refreshKey,
@@ -35,6 +38,19 @@ export function EpisodesView({
     [offset, setOffset] = useState(0);
   const [knownRefresh, setKnownRefresh] = useState(0);
   const [knownBusy, setKnownBusy] = useState(false);
+  const [model, setModel] = useState("");
+  useEffect(() => {
+    let disposed = false;
+    call<Settings>("settings_get")
+      .then((value) => {
+        if (!disposed)
+          setModel(JSON.stringify([value.modelUrl, value.modelName]));
+      })
+      .catch(report);
+    return () => {
+      disposed = true;
+    };
+  }, []);
   const [candidates, setCandidates] = useState<Candidate[]>([]),
     [candidate, setCandidate] = useState<Candidate | null>(null),
     [examples, setExamples] = useState<CandidateExample[]>([]),
@@ -57,6 +73,13 @@ export function EpisodesView({
     [editStart, setEditStart] = useState(0),
     [editEnd, setEditEnd] = useState(0);
   const example = examples[index];
+  const explanation = useLocalExplanation(
+    candidate?.text ?? "",
+    example?.text ?? "",
+    model,
+    Boolean(candidate && example),
+    true,
+  );
   const detailPanel = useRef<HTMLElement>(null);
   const selectionVersion = useRef(0);
   const activeSelection = `${sourceId}:${candidate?.kind}:${candidate?.key}:${example?.id}`;
@@ -588,19 +611,32 @@ export function EpisodesView({
                     candidate?.key === value.key &&
                     candidate?.kind === value.kind
                   }
+                  title={`${value.kind === "phrase" ? "短语" : "单词"} · 出现 ${value.count} 次 · ${value.exampleCount} 个语境 · 已处理 ${value.handledCount}/${value.count}`}
                   onClick={() => selectCandidate(value)}
                 >
                   <span className="word">{value.text}</span>
-                  <small>
-                    {value.kind === "phrase" ? "短语" : "单词"} · 出现{" "}
-                    {value.count} 次 · {value.exampleCount} 个语境
-                    {value.existingEntryCount > 0 &&
-                      ` · 已收录 ${value.existingEntryCount} 项`}
-                    {value.isKnown && " · 已掌握，默认跳过"}
-                  </small>
-                  <span className="definition">
-                    已处理 {value.handledCount}/{value.count} 处
-                  </span>
+                  <CandidateMeaning
+                    candidate={value}
+                    sourceId={sourceId}
+                    model={model}
+                    selected={
+                      candidate?.key === value.key &&
+                      candidate.kind === value.kind
+                    }
+                    meaning={
+                      candidate?.key === value.key &&
+                      candidate.kind === value.kind
+                        ? explanation.value?.meaning
+                        : undefined
+                    }
+                  />
+                  {(value.existingEntryCount > 0 || value.isKnown) && (
+                    <small>
+                      {value.existingEntryCount > 0 &&
+                        `已收录 ${value.existingEntryCount} 项`}
+                      {value.isKnown && " · 已掌握，默认跳过"}
+                    </small>
+                  )}
                 </button>
               ))}
               {!candidates.length && (
@@ -635,7 +671,31 @@ export function EpisodesView({
                     {candidate.kind === "phrase" ? "短语" : "单词"}
                   </span>
                   <h2 className="entry-title">{candidate.text}</h2>
-                  <OnlineLookup key={candidate.key} text={candidate.text} />
+                  <section
+                    className="local-explanation"
+                    aria-label="中文解释"
+                    aria-live="polite"
+                  >
+                    {explanation.value ? (
+                      <>
+                        <p className="context-meaning">
+                          {explanation.value.meaning}
+                        </p>
+                        {explanation.value.notes && (
+                          <p className="muted">{explanation.value.notes}</p>
+                        )}
+                      </>
+                    ) : explanation.state === "error" ? (
+                      <div>
+                        <p>{explanation.error}</p>
+                        <button type="button" onClick={explanation.retry}>
+                          重试中文解释
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="muted">正在生成中文解释…</p>
+                    )}
+                  </section>
                   <div className="context-nav">
                     <button
                       disabled={index === 0}
@@ -664,6 +724,12 @@ export function EpisodesView({
                   </div>
                   <article className="example-card">
                     <p className="quote">{example.text}</p>
+                    <p className="sentence-translation">
+                      {explanation.value?.translation ??
+                        (explanation.state === "error"
+                          ? "暂未获得原句翻译"
+                          : "正在翻译这句对白…")}
+                    </p>
                     <span className="muted">
                       {example.decision === "familiar"
                         ? "当前语境已标记熟悉"
@@ -765,6 +831,7 @@ export function EpisodesView({
                           context: example.text,
                           sourceId,
                           example,
+                          meaning: explanation.value?.meaning,
                         })
                       }
                     >
@@ -780,11 +847,16 @@ export function EpisodesView({
                         context: example.text,
                         sourceId,
                         example,
+                        meaning: explanation.value?.translation,
                       })
                     }
                   >
                     将整句收录
                   </button>
+                  <details className="supplementary-lookup">
+                    <summary>联网查询</summary>
+                    <OnlineLookup key={candidate.key} text={candidate.text} />
+                  </details>
                 </>
               ) : (
                 <div className="empty">

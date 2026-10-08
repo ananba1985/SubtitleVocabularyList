@@ -22,7 +22,7 @@ export function CollectionModal({
 }) {
   const [text, setText] = useState(seed.text),
     [kind, setKind] = useState(seed.kind),
-    [meaning, setMeaning] = useState(""),
+    [meaning, setMeaning] = useState(seed.meaning ?? ""),
     [context, setContext] = useState(seed.context);
   const [explanation, setExplanation] = useState<Explanation | null>(null),
     [prepared, setPrepared] = useState<PreparedCollection | null>(null);
@@ -266,14 +266,6 @@ export function CollectionModal({
           </p>
         )}
         {!seed.example && text.trim() && <SystemSpeech text={text} />}
-        <OnlineLookup
-          key={text}
-          text={text}
-          onMeaning={(value) => {
-            setMeaning(value);
-            change();
-          }}
-        />
         <button
           className="secondary"
           onClick={explain}
@@ -302,6 +294,17 @@ export function CollectionModal({
             </button>
           </div>
         )}
+        <details className="supplementary-lookup">
+          <summary>联网查询</summary>
+          <OnlineLookup
+            key={text}
+            text={text}
+            onMeaning={(value) => {
+              setMeaning(value);
+              change();
+            }}
+          />
+        </details>
         {seed.example && (
           <label className="check-label">
             <input

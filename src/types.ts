@@ -161,6 +161,7 @@ export interface Settings {
 }
 export interface CollectionSeed {
   alreadyKnown?: boolean;
+  meaning?: string;
   text: string;
   kind: string;
   context: string;

@@ -33,6 +33,7 @@ type Result = {
   query?: string;
   meaning?: string;
   translation?: string;
+  kind?: string;
   asset?: { durationMs: number };
   voice?: { name: string };
   sources?: {
@@ -195,7 +196,7 @@ function TaskCard({
   const ended = terminal(task);
   const value = (task.result ?? {}) as Result;
   const subject =
-    task.subject ||
+    (task.kind === "review_audio" ? "听力测验" : task.subject) ||
     value.text ||
     value.query ||
     (value.sources?.length
@@ -278,6 +279,16 @@ function TaskCard({
       {task.state === "succeeded" && task.kind === "speech" && (
         <p className="task-result">
           英语朗读已准备{value.voice ? ` · ${value.voice.name}` : ""}
+        </p>
+      )}
+      {task.state === "succeeded" && task.kind === "review_audio" && (
+        <p className="task-result">
+          听力音频已准备
+          {value.kind === "original"
+            ? " · 剧集原声"
+            : value.kind === "system"
+              ? " · Windows 英语朗读"
+              : ""}
         </p>
       )}
       {task.state === "succeeded" &&

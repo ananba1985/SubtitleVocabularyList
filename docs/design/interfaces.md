@@ -147,7 +147,7 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 
 当前 `task_updated` 发出完整 TaskSnapshot，未实现递增事件序号；界面通过任务查询刷新并核对持久化终态。library_changed 与 playback_changed 尚未实现，保存后的视图重新查询，播放直接读取 audio 元素状态。程序启动将遗留非终态任务标为 interrupted 失败，保留部分结果；重试建立新的任务执行，同一业务操作仍去重。
 
-TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不改变数据库版本；旧快照缺字段时按空值读取。导入、收录、原声、解释、系统语音、听力准备和在线查询的新任务记录目标对象，最多 240 个字符。旧 preview 快照可通过 result.asset.id 的例句和来源关联取得展示对象；只读补充，不改写旧记录或音频。任务时间沿用 createdAt/updatedAt，终态 updatedAt 用作结束时间，取消和恢复规则保持。
+TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不改变数据库版本；旧快照缺字段时按空值读取。导入、收录、原声、解释、系统语音和在线查询的新任务记录目标对象，最多 240 个字符。听力准备仅记录“听力测验”，任务页显示音频类型，不展示待作答目标，保持 FR-10 的答案显示规则。旧 preview 快照可通过 result.asset.id 的例句和来源关联取得展示对象；只读补充，不改写旧记录或音频。任务时间沿用 createdAt/updatedAt，终态 updatedAt 用作结束时间，取消和恢复规则保持。
 
 ## 5 错误契约
 

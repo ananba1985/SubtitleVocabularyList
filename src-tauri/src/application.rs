@@ -77,7 +77,7 @@ impl Application {
         let hash = vocabulary::digest(question_id.as_bytes());
         self.tasks
             .start("review_audio", &operation_id, &hash, move |context| {
-                context.subject(&question.target);
+                context.subject("听力测验");
                 context.check_cancelled()?;
                 let path = if let Some(asset_id) = &question.asset_id {
                     store.media_file(asset_id)?

@@ -43,6 +43,7 @@ export function EpisodesView({
     [inputPath, setInputPath] = useState(""),
     [busy, setBusy] = useState(false);
   const [playbackKey, setPlaybackKey] = useState(0);
+  const [importNotice, setImportNotice] = useState("");
   const defaultOptions: ImportOptions = {
     audioStream: null,
     subtitleStream: null,
@@ -178,13 +179,14 @@ export function EpisodesView({
   }, [candidate?.key, candidate?.kind, refreshKey, knownRefresh, showKnown]);
   async function importPaths(paths: string[], choice = options) {
     setBusy(true);
+    setImportNotice("");
     try {
       await call<TaskSnapshot>("import_start", {
         paths,
         options: choice,
         operationId: uid(),
       });
-      notify("导入已开始，可以继续浏览或查看任务进度。");
+      setImportNotice("导入已加入后台任务，可继续使用其他页面。");
     } catch (error) {
       report(error);
     } finally {
@@ -398,6 +400,11 @@ export function EpisodesView({
             查看轨道与字幕
           </button>
         </div>
+        {importNotice && (
+          <p className="muted" role="status">
+            {importNotice}
+          </p>
+        )}
         {inspection && (
           <div className="import-options">
             <label>

@@ -52,6 +52,7 @@ export default function App() {
     setTasks(nextTasks);
   }, []);
   useEffect(() => {
+    setNotice("");
     refresh().catch((error) => setError(message(error)));
     call<Settings>("settings_get")
       .then(setSettings)
@@ -143,6 +144,7 @@ export default function App() {
               onClick={() => {
                 setTab(key);
                 setError("");
+                setNotice("");
               }}
             >
               {label}
@@ -253,15 +255,6 @@ export default function App() {
               放弃这一条
             </button>
           </div>
-        )}
-        {active.length > 0 && tab !== "tasks" && (
-          <button className="running-summary" onClick={() => setTab("tasks")}>
-            {active[0].message}{" "}
-            {active[0].total > 0
-              ? `${active[0].current}/${active[0].total}`
-              : ""}
-            <span>查看任务 →</span>
-          </button>
         )}
         {tab === "library" && (
           <LibraryView

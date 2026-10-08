@@ -1,4 +1,5 @@
 export interface AppInfo {
+  version: string;
   dataDirectory: string;
   schemaVersion: number;
   entryCount: number;

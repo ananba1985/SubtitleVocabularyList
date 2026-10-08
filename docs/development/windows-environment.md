@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.4 |
+| 文档版本 | 0.5 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 项目开发中；手动入口与本机环境检查通过，未执行本轮发行打包 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
@@ -72,6 +72,8 @@ pnpm desktop:dev
 
 新机器已确认 Git 2.56.0.2、Node.js 22.23.3、pnpm 10.6.5、Rust 1.95.0、Visual Studio 2022 Build Tools、FFmpeg 9.0.2、Tesseract 英语数据和校验通过的 Whisper 模型；系统包含 Microsoft Zira 英语声音。脚本实际使用 Windows 自带 PowerShell 5.1 执行，修正了绝对路径拼接与校验响应字节类型的兼容问题。29 项核心测试、调试构建与 S04E01 媒体处理已通过，界面实际结果与未完成项见[台式机记录](../testing/desktop-machine-results.md)。这些证据不代表整个 0.1 已交付。
 
+完成 bug 修复或大功能后，按[版本管理规范](version-management.md)递增一次并执行 pnpm version:check。版本变化同步 package.json、Tauri、Cargo 与本项目锁文件，不自动生成安装包。发行脚本和源码导出在耗时工作前检查版本一致性；产物命名使用项目版本，不使用依赖版本。
+
 ## 5 手动版本发布与离线发行构建
 
 三个 `build-offline-*.ps1` 入口从固定版本和摘要准备媒体、OCR 与转写资源，使用 Visual Studio 2022 的 MSVC 与 CMake，写入忽略目录 `.tools/release-resources`。FFmpeg 的 Windows 构建辅助程序和源归档保存在 `.tools/release-cache`，不作为最终用户依赖。
@@ -94,3 +96,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
 | 0.2 | 2026-10-07 | 关联台式机核心、构建、媒体和界面的真实验证边界 |
 | 0.3 | 2026-10-07 | 区分开发环境与随包运行资源，增加源码匹配 NSIS、许可收集和源材料构建入口 |
 | 0.4 | 2026-10-07 | 明确开发阶段只做本地验证，提供热更新运行、调试 exe 与手动安装/独立运行目录入口及本轮验证范围 |
+| 0.5 | 2026-10-07 | 接入统一版本检查、交付递增与手动发布命名，修正源码导出项目/依赖版本变量复用 |

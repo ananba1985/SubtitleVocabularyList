@@ -29,6 +29,11 @@
 
 ## Git delivery
 
+- Application versions use `major.minor.patch`: increment patch for each logical bug-fix delivery; increment minor and reset patch for each large feature delivery. Major is controlled manually by the human user and must never be incremented autonomously.
+- Use `package.json` as the canonical application version. Use `pnpm version:patch --message "..."` or `pnpm version:minor --message "..."` to update Tauri, Cargo, Cargo.lock and CHANGELOG together; run `pnpm version:check` before committing.
+- Bump once per logical delivery, not for every intermediate edit or the following documentation-only commit. Mixed large-feature/bug-fix delivery uses one minor bump. Documentation-only or routine maintenance changes do not require a bump unless they include a bug fix or large feature.
+- A version bump does not trigger packaging, installation, Git tags, or a GitHub release. Create a release tag only when explicitly requested as part of publishing a release.
+
 - After validation, commit only intended changes and push the current branch unless the user instructs otherwise.
 - Do not create additional branches or pull requests without a request.
 - Report the actual validation, commit and push result. Keep local verification distinct from deployed integration results.

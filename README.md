@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-**项目仍在开发中，当前版本号为 0.1.0，尚未正式发布。** 功能开发使用本机开发环境进行验证，不随每次功能变更生成或安装发行包。历史候选包及安装验收记录见[发布记录](docs/release/0.1.0-release-notes.md)，这些记录不代表后续代码已经打包或正式发布。当前功能证据与兼容边界见[验收覆盖](docs/testing/acceptance-status.md)。
+**项目仍在开发中，当前版本见 [package.json](package.json)，尚未正式发布。** 功能开发使用本机开发环境进行验证，不随每次功能变更生成或安装发行包。历史候选包及安装验收记录见[发布记录](docs/release/0.1.0-release-notes.md)，这些记录不代表后续代码已经打包或正式发布。当前功能证据与兼容边界见[验收覆盖](docs/testing/acceptance-status.md)。
 
 产品名称、公开仓库名称和本地工作目录名称统一为 **SubtitleVocabularyList**。
 
@@ -51,6 +51,17 @@
 当前同一原句可保留多个已确认语境，复用原句和原声。完整同步、网页资料桥接与冲突选择已接通，真人批准后的双向例句、原声和学习历史主流程已通过；现场中断、删除、账号切换、容量和整体离线交付仍有余项。具体需求与验收以 PRD 为准，技术选型以架构设计文档为准。
 
 文档的阅读与维护顺序见 [文档管理规范](docs/README.md)。功能完成情况以实际验证记录为准，计划中的阶段不代表已经交付。
+
+## 版本管理
+
+采用“主版本.功能版本.修复版本”：bug 修复递增第三位，大功能递增第二位并将第三位归零；主版本仅由负责人手动控制。规则从原 0.1.0 开始执行，当前开发版本以 package.json 为准，记录见 [CHANGELOG](CHANGELOG.md)。
+
+- `pnpm version:patch --message "修复说明"`：bug 修复递增并同步配置及变更日志。
+- `pnpm version:minor --message "功能说明"`：大功能递增，第三位归零。
+- `pnpm version:check`：核对前端、Tauri、Cargo 与 Cargo.lock 的版本。
+- `pnpm version:sync`：将人工维护的 package.json 版本同步到其他配置。
+
+每个逻辑交付递增一次；版本变更不触发打包、安装或发布标签。人工主版本设置与操作细节见[版本管理规范](docs/development/version-management.md)。
 
 ## 仓库维护
 

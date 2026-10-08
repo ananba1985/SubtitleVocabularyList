@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.20 |
+| 文档版本 | 0.21 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -38,6 +38,7 @@
 | 受限制网络验收 | [testing/restricted-network-results.md](testing/restricted-network-results.md) | 实际出站规则、冷启动、播放听辨、截图、服务失败及规则恢复 | 区分指定程序限制与整机断网、实际执行与缓存 |
 | 0.1 候选发布与验收 | [release/0.1.0-release-notes.md](release/0.1.0-release-notes.md) | 匹配源码交付、技术验证、兼容边界与用户步骤 | 技术验收与用户实际验收分别记录 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
+| 版本管理 | [development/version-management.md](development/version-management.md) | 三段版本规则、主版本人工控制、统一来源、工具与变更记录 | 递增不表示发布，不触发打包；文档/schema/策略号独立 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
 | 台式机交接与验证 | [本地任务目标](development/desktop-agent-goal.md)、[台式机记录](testing/desktop-machine-results.md) | 已有环境、当前证据、剩余范围与持续目标完成条件 | 机器切换不自动关闭未完成能力或未通过场景 |
 | 交付与使用 | 可运行版本形成后按需放入 `release/` 或更新根 README | 版本、安装运行方法、依赖资源、变更与已知限制 | 只描述已交付行为，不提前编造安装命令和功能状态 |
@@ -139,3 +140,4 @@
 | 0.18 | 2026-10-07 | 索引受限制网络、听辨及截图补测的实际记录 |
 | 0.19 | 2026-10-07 | 索引最终候选发布说明与用户验收 |
 | 0.20 | 2026-10-07 | 按用户要求区分日常开发本地验证与手动版本发布，取消逐功能打包安装流程 |
+| 0.21 | 2026-10-07 | 索引用户确认的版本规则与统一管理入口，区分代码版本递增和手动版本发布 |

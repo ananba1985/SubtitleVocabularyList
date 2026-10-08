@@ -1,6 +1,6 @@
 [package]
 name = "subtitle-vocabulary-list"
-version = "0.1.0"
+version = "0.1.1"
 description = "Offline Windows vocabulary notebook with original dialogue audio"
 edition = "2024"
 rust-version = "1.90"

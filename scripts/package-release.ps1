@@ -3,6 +3,8 @@ $ErrorActionPreference='Stop'
 $svlWorkspace=Split-Path $PSScriptRoot -Parent
 Push-Location $svlWorkspace
 try {
+& node (Join-Path $PSScriptRoot 'version.mjs') check
+if($LASTEXITCODE -ne 0){throw 'Application versions are inconsistent.'}
 if(-not(Test-Path -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json'))){throw 'Run this script from the SubtitleVocabularyList workspace.'}
 $svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
 $svlVersion=$svlConfig.version

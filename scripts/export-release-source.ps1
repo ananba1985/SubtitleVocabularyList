@@ -1,6 +1,8 @@
 param([string]$OutputDirectory='',[string]$SourceRef='HEAD')
 $ErrorActionPreference='Stop'
 $svlWorkspace=(Get-Location).Path
+& node (Join-Path $PSScriptRoot 'version.mjs') check
+if($LASTEXITCODE -ne 0){throw 'Application versions are inconsistent.'}
 $svlVersion=(Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json).version
 if(-not $OutputDirectory){$OutputDirectory='release/'+$svlVersion}
 $svlCommit=(& git rev-parse --verify ($SourceRef+'^{commit}')).Trim()
@@ -28,9 +30,9 @@ $svlChecksums=@{}
 $svlLock=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/Cargo.lock') -Raw
 foreach($svlEntry in [regex]::Split($svlLock,'(?m)^\[\[package\]\]\r?$')){
     $svlName=[regex]::Match($svlEntry,'(?m)^name = "([^"]+)"').Groups[1].Value
-    $svlVersion=[regex]::Match($svlEntry,'(?m)^version = "([^"]+)"').Groups[1].Value
+    $svlCrateVersion=[regex]::Match($svlEntry,'(?m)^version = "([^"]+)"').Groups[1].Value
     $svlChecksum=[regex]::Match($svlEntry,'(?m)^checksum = "([a-f0-9]{64})"').Groups[1].Value
-    if($svlChecksum){$svlChecksums[$svlName+'@'+$svlVersion]=$svlChecksum}
+    if($svlChecksum){$svlChecksums[$svlName+'@'+$svlCrateVersion]=$svlChecksum}
 }
 foreach($svlPackage in $svlMetadata.packages | Where-Object {$_.source -and $_.id -in $svlIds}){
     if($svlPackage.source -notlike 'registry+*'){throw ('Review nonregistry dependency source: '+$svlPackage.name)}

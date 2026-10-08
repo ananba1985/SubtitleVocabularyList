@@ -22,6 +22,7 @@ type AppState<'a> = State<'a, Arc<Application>>;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppInfo {
+    version: String,
     data_directory: String,
     schema_version: i64,
     entry_count: i64,
@@ -42,6 +43,7 @@ async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
     background(move || {
         let connection = app.store.connection()?;
         Ok(AppInfo {
+            version: env!("CARGO_PKG_VERSION").into(),
             data_directory: app.store.root().display().to_string(),
             schema_version: connection
                 .pragma_query_value(None, "user_version", |row| row.get(0))?,

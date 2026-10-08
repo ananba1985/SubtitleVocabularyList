@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { call, time, uid, waitTask } from "../api";
 import type {
@@ -53,6 +53,27 @@ export function EpisodesView({
     [editStart, setEditStart] = useState(0),
     [editEnd, setEditEnd] = useState(0);
   const example = examples[index];
+  const detailPanel = useRef<HTMLElement>(null);
+  const selectionVersion = useRef(0);
+  const activeSelection = `${sourceId}:${candidate?.kind}:${candidate?.key}:${example?.id}`;
+  const activeSelectionRef = useRef(activeSelection);
+  activeSelectionRef.current = activeSelection;
+  useLayoutEffect(() => {
+    if (detailPanel.current) detailPanel.current.scrollTop = 0;
+  }, [candidate?.key, candidate?.kind, sourceId]);
+  function selectCandidate(value: Candidate) {
+    if (candidate?.key === value.key && candidate.kind === value.kind) {
+      setCandidate(value);
+      if (detailPanel.current) detailPanel.current.scrollTop = 0;
+      return;
+    }
+    selectionVersion.current++;
+    setCandidate(value);
+    setExamples([]);
+    setIndex(0);
+    setEditing(false);
+    setAudioPath("");
+  }
   const reloadCandidates = () =>
     call<Candidate[]>("candidates_list", {
       sourceId,
@@ -94,16 +115,17 @@ export function EpisodesView({
     setIndex(0);
     setEditing(false);
     setAudioPath("");
-  }, [candidate?.key, sourceId]);
+  }, [candidate?.key, candidate?.kind, sourceId]);
   useEffect(() => {
     let cancelled = false;
+    const version = selectionVersion.current;
     if (candidate && sourceId)
       call<CandidateExample[]>("candidate_examples", {
         sourceId,
         key: candidate.key,
       })
         .then((value) => {
-          if (!cancelled) {
+          if (!cancelled && version === selectionVersion.current) {
             setExamples(value);
             setIndex((current) =>
               Math.min(current, Math.max(0, value.length - 1)),
@@ -114,7 +136,7 @@ export function EpisodesView({
     return () => {
       cancelled = true;
     };
-  }, [candidate?.key, sourceId, refreshKey]);
+  }, [candidate?.key, candidate?.kind, sourceId, refreshKey]);
   async function importPaths(paths: string[], choice = options) {
     setBusy(true);
     try {
@@ -192,6 +214,8 @@ export function EpisodesView({
   }
   async function play() {
     if (!example) return;
+    const selection = activeSelectionRef.current;
+    const version = selectionVersion.current;
     setBusy(true);
     try {
       const task = await call<TaskSnapshot>("preview_start", {
@@ -200,6 +224,11 @@ export function EpisodesView({
         operationId: uid(),
       });
       const result = await waitTask<{ path: string; asset: AudioAsset }>(task);
+      if (
+        version !== selectionVersion.current ||
+        selection !== activeSelectionRef.current
+      )
+        return;
       setAudioPath(result.path);
       setPlaybackKey((value) => value + 1);
     } catch (error) {
@@ -397,6 +426,7 @@ export function EpisodesView({
               aria-label="选择剧集"
               value={sourceId}
               onChange={(event) => {
+                selectionVersion.current++;
                 setSourceId(event.target.value);
                 setCandidate(null);
                 setOffset(0);
@@ -455,12 +485,16 @@ export function EpisodesView({
                   : "原始文本字幕"}
           </p>
           <div className="split-view">
-            <section className="list-panel">
+            <section className="list-panel" aria-label="候选词列表">
               {candidates.map((value) => (
                 <button
                   key={`${value.kind}:${value.key}`}
-                  className={`entry-row ${candidate?.key === value.key ? "selected" : ""}`}
-                  onClick={() => setCandidate(value)}
+                  className={`entry-row ${candidate?.key === value.key && candidate?.kind === value.kind ? "selected" : ""}`}
+                  aria-pressed={
+                    candidate?.key === value.key &&
+                    candidate?.kind === value.kind
+                  }
+                  onClick={() => selectCandidate(value)}
                 >
                   <span className="word">{value.text}</span>
                   <small>
@@ -495,7 +529,11 @@ export function EpisodesView({
                 </button>
               </div>
             </section>
-            <section className="detail-panel">
+            <section
+              className="detail-panel"
+              aria-label="候选词详情"
+              ref={detailPanel}
+            >
               {candidate && example ? (
                 <>
                   <span className="badge">

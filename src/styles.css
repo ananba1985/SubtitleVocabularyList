@@ -284,6 +284,7 @@ h3 {
   grid-template-columns: minmax(270px, 42%) minmax(0, 1fr);
   gap: 22px;
   min-height: 480px;
+  align-items: start;
 }
 .list-panel,
 .detail-panel {
@@ -295,6 +296,12 @@ h3 {
 .detail-panel {
   padding: 26px;
   min-width: 0;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
 }
 .entry-row {
   display: block;
@@ -305,11 +312,14 @@ h3 {
   border-radius: 0;
   padding: 15px 21px;
   background: #fff;
+  border-left: 3px solid transparent;
+}
+.entry-row:not(.selected):hover {
+  background: #f7f9f4;
 }
 .entry-row.selected {
   background: #edf3e7;
   border-left: 3px solid #588454;
-  padding-left: 18px;
 }
 .entry-row .word {
   display: block;

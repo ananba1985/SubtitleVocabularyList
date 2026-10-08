@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { call, time } from "../api";
 import type { AppInfo, AudioAsset, CollectionSeed, Entry } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
@@ -23,6 +23,12 @@ export function LibraryView({
     [audioPath, setAudioPath] = useState("");
   const [editing, setEditing] = useState(false);
   const [playbackKey, setPlaybackKey] = useState(0);
+  const detailPanel = useRef<HTMLElement>(null);
+  const activeEntryId = useRef(entry?.id);
+  activeEntryId.current = entry?.id;
+  useLayoutEffect(() => {
+    if (detailPanel.current) detailPanel.current.scrollTop = 0;
+  }, [entry?.id]);
   useEffect(() => {
     let cancelled = false;
     call<Entry[]>("entries_list", { search, offset, limit: 40 })
@@ -41,8 +47,11 @@ export function LibraryView({
     };
   }, [search, offset, refreshKey]);
   async function play(asset: AudioAsset) {
+    const selectedEntryId = activeEntryId.current;
     try {
-      setAudioPath(await call<string>("media_path", { assetId: asset.id }));
+      const path = await call<string>("media_path", { assetId: asset.id });
+      if (selectedEntryId !== activeEntryId.current) return;
+      setAudioPath(path);
       setPlaybackKey((value) => value + 1);
     } catch (error) {
       report(error);
@@ -99,12 +108,14 @@ export function LibraryView({
         <span className="muted">自由浏览不会自动记为测验通过</span>
       </div>
       <div className="split-view">
-        <section className="list-panel">
+        <section className="list-panel" aria-label="词条列表">
           {entries.map((value) => (
             <button
               className={`entry-row ${entry?.id === value.id ? "selected" : ""}`}
               key={value.id}
+              aria-pressed={entry?.id === value.id}
               onClick={() => {
+                activeEntryId.current = value.id;
                 setEntry(value);
                 setAudioPath("");
               }}
@@ -148,7 +159,11 @@ export function LibraryView({
             </button>
           </div>
         </section>
-        <section className="detail-panel">
+        <section
+          className="detail-panel"
+          aria-label="词条详情"
+          ref={detailPanel}
+        >
           {entry ? (
             <>
               <span className="badge">

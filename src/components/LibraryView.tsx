@@ -90,10 +90,6 @@ export function LibraryView({
           <strong>{info?.sourceCount ?? 0}</strong>
           <span>剧集学习资料</span>
         </div>
-        <div>
-          <strong>原声与语境</strong>
-          <span>保存每次需要记住的内容</span>
-        </div>
       </div>
       <div className="toolbar">
         <input

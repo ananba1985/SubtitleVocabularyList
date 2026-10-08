@@ -14,6 +14,7 @@ import { LibraryView } from "./components/LibraryView";
 import { EpisodesView } from "./components/EpisodesView";
 import { ReviewView } from "./components/ReviewView";
 import { SyncView } from "./components/SyncView";
+import { TasksView } from "./components/TasksView";
 import { collectionQueue } from "./collectionQueue";
 
 type Tab =
@@ -247,71 +248,12 @@ export default function App() {
           />
         )}
         {tab === "tasks" && (
-          <section className="task-list">
-            {tasks.map((task) => (
-              <article className="task-card" key={task.id}>
-                <header>
-                  <strong>
-                    {{
-                      import: "剧集导入",
-                      collection: "词条收录",
-                      preview: "原声准备",
-                      explanation: "本地解释",
-                      speech: "系统英语语音",
-                      selection: "划词采集",
-                      screen_capture: "截图选区准备",
-                      ocr: "截图文字识别",
-                      review_audio: "听力题音频准备",
-                      site_connection: "站点连接请求",
-                      site_connection_check: "站点认证检查",
-                    }[task.kind] ?? task.kind}
-                  </strong>
-                  <span className={`badge ${task.state}`}>
-                    {
-                      {
-                        queued: "等待",
-                        running: "处理中",
-                        cancel_requested: "正在取消",
-                        succeeded: "已完成",
-                        failed: "失败",
-                        cancelled: "已取消",
-                      }[task.state]
-                    }
-                  </span>
-                </header>
-                <p>{task.message}</p>
-                {task.total > 0 && (
-                  <>
-                    <progress value={task.current} max={task.total} />
-                    <small>
-                      {task.stage} · {task.current}/{task.total}
-                    </small>
-                  </>
-                )}
-                {!terminal(task) && (
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      call("task_cancel", { taskId: task.id })
-                        .then(refresh)
-                        .catch(report)
-                    }
-                  >
-                    取消任务
-                  </button>
-                )}
-                {task.kind === "import" && Boolean(task.result) && (
-                  <ImportResult result={task.result} />
-                )}
-                {task.error && <p className="error">{task.error.message}</p>}
-              </article>
-            ))}
-            {!tasks.length && (
-              <div className="empty">
-                <p>还没有后台任务。</p>
-              </div>
-            )}
-          </section>
+          <TasksView
+            tasks={tasks}
+            cancel={(id) =>
+              call("task_cancel", { taskId: id }).then(refresh).catch(report)
+            }
+          />
         )}
         {tab === "settings" && settings && (
           <section className="settings-panel">
@@ -447,32 +389,6 @@ export default function App() {
           onSaved={saved}
         />
       )}
-    </div>
-  );
-}
-function ImportResult({ result }: { result: unknown }) {
-  const value = result as {
-    sources?: {
-      id: string;
-      title: string;
-      exampleCount: number;
-      candidateCount: number;
-    }[];
-    failures?: { file: string; message: string }[];
-  };
-  return (
-    <div className="import-result">
-      {value.sources?.map((source) => (
-        <p key={source.id}>
-          {source.title} · {source.exampleCount} 条对白 ·{" "}
-          {source.candidateCount} 个候选
-        </p>
-      ))}
-      {value.failures?.map((failure, index) => (
-        <p className="error" key={index}>
-          {failure.file}：{failure.message}
-        </p>
-      ))}
     </div>
   );
 }

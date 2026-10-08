@@ -91,6 +91,14 @@ fn tasks_list(app: AppState<'_>) -> Result<Vec<TaskSnapshot>, AppError> {
     app.tasks.list()
 }
 #[tauri::command]
+fn tasks_history(
+    app: AppState<'_>,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> Result<crate::tasks::TaskHistoryPage, AppError> {
+    app.tasks.history(offset.unwrap_or(0), limit.unwrap_or(10))
+}
+#[tauri::command]
 fn task_cancel(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
     app.tasks.cancel(&task_id)
 }
@@ -557,6 +565,7 @@ pub fn run() {
             media_inspect,
             task_get,
             tasks_list,
+            tasks_history,
             task_cancel,
             candidates_list,
             candidate_examples,

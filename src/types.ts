@@ -8,6 +8,7 @@ export interface TaskSnapshot {
   id: string;
   operationId: string;
   kind: string;
+  subject?: string | null;
   stage: string;
   state: string;
   current: number;
@@ -17,6 +18,10 @@ export interface TaskSnapshot {
   error: { code: string; message: string } | null;
   createdAt: number;
   updatedAt: number;
+}
+export interface TaskHistoryPage {
+  items: TaskSnapshot[];
+  total: number;
 }
 export interface AudioAsset {
   id: string;

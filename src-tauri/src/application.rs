@@ -77,6 +77,7 @@ impl Application {
         let hash = vocabulary::digest(question_id.as_bytes());
         self.tasks
             .start("review_audio", &operation_id, &hash, move |context| {
+                context.subject(&question.target);
                 context.check_cancelled()?;
                 let path = if let Some(asset_id) = &question.asset_id {
                     store.media_file(asset_id)?
@@ -144,6 +145,7 @@ impl Application {
         let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &settings.system_voice))?);
         self.tasks
             .start("speech", &operation_id, &hash, move |context| {
+                context.subject(&text);
                 context.progress("speech", 0, 1, "正在准备 Windows 本地英语语音");
                 context.check_cancelled()?;
                 let voice = crate::windows_native::system_voices()?
@@ -270,6 +272,7 @@ impl Application {
         let import_guard = Arc::clone(&self.import_guard);
         let hash = vocabulary::digest(&serde_json::to_vec(&(&paths, &options))?);
         self.tasks.start("import",&operation_id,&hash,move|context|{
+            context.subject(&paths.iter().map(|path| Path::new(path).file_name().unwrap_or_default().to_string_lossy()).collect::<Vec<_>>().join("、"));
             let mut waiting=false;
             let _guard=loop {
                 context.check_cancelled()?;
@@ -332,6 +335,7 @@ impl Application {
         let store = Arc::clone(&self.store);
         let tools = self.settings()?.tools;
         self.tasks.start("collection",&operation,&hash,move|context|{
+            context.subject(&input.text);
             for index in 0..input.examples.len(){
                 context.check_cancelled()?;
                 if save_audio && let Some(source_id)=input.examples[index].source_id.clone(){
@@ -363,6 +367,17 @@ impl Application {
         let tools = self.settings()?.tools;
         self.tasks
             .start("preview", &operation_id, &hash, move |context| {
+                use rusqlite::OptionalExtension;
+                let subject: Option<String> = store
+                    .connection()?
+                    .query_row(
+                        "SELECT s.title || ' · ' || e.text FROM examples e
+                     JOIN sources s ON s.id=e.source_id WHERE e.id=? AND e.source_id=?",
+                        rusqlite::params![example_id, source_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                context.subject(subject.as_deref().unwrap_or("剧集原声"));
                 context.progress("audio", 0, 1, "正在准备原声");
                 let asset =
                     store.ensure_clip(&tools, &source_id, &example_id, &context.cancelled)?;
@@ -389,6 +404,7 @@ impl Application {
         let settings = self.settings()?;
         let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &context_text))?);
         self.tasks.start("explanation",&operation_id,&hash,move|context|{
+            context.subject(&text);
             context.progress("model",0,1,"本地模型正在解释");context.check_cancelled()?;
             let client=reqwest::blocking::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).timeout(std::time::Duration::from_secs(60)).connect_timeout(std::time::Duration::from_secs(5)).build().map_err(provider_error)?;
             let url=format!("{}/v1/chat/completions",settings.model_url.trim_end_matches('/'));

@@ -177,6 +177,7 @@ impl Application {
         }
         let hash = digest(serde_json::to_vec(&(&text, &provider))?.as_slice());
         self.tasks.start("online_query",&operation_id,&hash,move|context|{
+            context.subject(&text);
             context.check_cancelled()?;context.progress("query",0,1,"正在执行本次在线查询，仅发送当前查询文字");
             let mut url=reqwest::Url::parse(if provider=="translation"{"https://api.mymemory.translated.net/get"}else{"https://en.wiktionary.org/w/api.php"}).unwrap();
             if provider=="translation"{url.query_pairs_mut().extend_pairs([("q",text.as_str()),("langpair","en|zh-CN")]);}

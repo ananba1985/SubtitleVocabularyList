@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.13 |
+| 文档版本 | 0.14 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -73,7 +73,8 @@
 | `import_start` | `{paths: string[], operationId, options?}` → TaskSnapshot；options 包含 audioStream、subtitleStream、subtitleMode（auto/embedded/external/speech）、externalSubtitle。目录递归扫描六个视频后缀、现有文件统一路径身份去重；显式坏文件独立报告，错误选择不静默改轨。具体样本见[媒体矩阵](../testing/media-support-matrix.md) |
 | `media_inspect` | `{path}` → 音轨、字幕轨的索引/语言/名称/编码及同名外置字幕；为选择提供数据，不直接收录 |
 | `online_query_start` | CMD-20：`{text,provider?,operationId}` → 任务；provider 为 dictionary（Wiktionary）或 translation（MyMemory），无参默认前者。只发送 text，拒绝离线模式，返回 query、source、sourceUrl、definitions；建议需人工采用 |
-| `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回最近 30 次任务快照及全部未结束任务，运行和取消中的旧任务不会因新收录被挤出列表 |
+| `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回全部未结束任务和最近一条已结束任务。已结束记录按 updatedAt、id 降序排列，运行和取消中的旧任务不会因新收录被挤出列表 |
+| `tasks_history` | `{offset?,limit?}` → `{items:TaskSnapshot[],total}`；只读取 succeeded/failed/cancelled 的历史，按 updatedAt、id 降序。默认 offset=0、limit=10，limit 限定为 1–100；页内数据及总数在同一数据库读事务取得，超出末页返回空 items，历史不受最近 30 条限制 |
 | `candidates_list` | `{sourceId, search?, kind?, onlyPending?, offset?, limit?}` → 候选数组 |
 | `candidate_examples`、`candidate_decide` | 前者 `{sourceId,key}`；后者 `{sourceId,key,exampleId,decision}`，当前决定为 familiar 或 uncertain |
 | `source_example_update` | `{sourceId,exampleId,revision,text,startMs,endMs}` → 修订后的对白；保留已收录旧引用 |
@@ -145,6 +146,8 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 事件可能被错过或迟到。界面重新打开时查询真实任务与实体版本，不能仅凭曾经收到成功事件就推断文件和数据库已经保存。结果数据较大时使用结果引用与分页读取。
 
 当前 `task_updated` 发出完整 TaskSnapshot，未实现递增事件序号；界面通过任务查询刷新并核对持久化终态。library_changed 与 playback_changed 尚未实现，保存后的视图重新查询，播放直接读取 audio 元素状态。程序启动将遗留非终态任务标为 interrupted 失败，保留部分结果；重试建立新的任务执行，同一业务操作仍去重。
+
+TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不改变数据库版本；旧快照缺字段时按空值读取。导入、收录、原声、解释、系统语音、听力准备和在线查询的新任务记录目标对象，最多 240 个字符。旧 preview 快照可通过 result.asset.id 的例句和来源关联取得展示对象；只读补充，不改写旧记录或音频。任务时间沿用 createdAt/updatedAt，终态 updatedAt 用作结束时间，取消和恢复规则保持。
 
 ## 5 错误契约
 
@@ -224,3 +227,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.11 | 2026-10-07 | 明确工具位置由当前宿主解析，偏好更新不持久化工具路径 |
 | 0.12 | 2026-10-07 | 对齐递归目录、现有路径身份去重与显式坏文件结果 |
 | 0.13 | 2026-10-07 | 保留全部未结束任务，确保旧任务可观察、可取消及退出时清理 |
+| 0.14 | 2026-10-07 | 增加完整终态历史分页，收紧默认摘要并记录兼容旧快照的处理对象 |

@@ -583,6 +583,73 @@ h3 {
   display: grid;
   gap: 16px;
 }
+.task-section {
+  display: grid;
+  gap: 12px;
+}
+.task-section h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.task-subject {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.task-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 12px;
+  color: #6c7c71;
+}
+.task-metadata div {
+  display: flex;
+  gap: 6px;
+}
+.task-metadata dd {
+  margin: 0;
+}
+.task-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.task-progress progress {
+  flex: 1;
+}
+.task-result {
+  color: #365f4e;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.task-history {
+  border: 1px solid #e1e7dc;
+  border-radius: 11px;
+  padding: 20px;
+  background: #fff;
+}
+.task-history > summary,
+.task-result-details > summary {
+  cursor: pointer;
+  color: #245d47;
+}
+.task-history > summary {
+  font-weight: 600;
+}
+.task-result-details .import-result {
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.task-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
 .task-card {
   background: white;
   border: 1px solid #e1e7dc;

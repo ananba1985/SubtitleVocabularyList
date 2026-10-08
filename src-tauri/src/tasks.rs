@@ -19,6 +19,8 @@ pub struct TaskSnapshot {
     pub operation_id: String,
     pub request_hash: String,
     pub kind: String,
+    #[serde(default)]
+    pub subject: Option<String>,
     pub stage: String,
     pub state: String,
     pub current: usize,
@@ -34,6 +36,13 @@ impl TaskSnapshot {
     pub fn terminal(&self) -> bool {
         matches!(self.state.as_str(), "succeeded" | "failed" | "cancelled")
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskHistoryPage {
+    pub items: Vec<TaskSnapshot>,
+    pub total: usize,
 }
 
 type Observer = Arc<dyn Fn(&TaskSnapshot) + Send + Sync>;
@@ -53,6 +62,12 @@ pub struct TaskContext {
 }
 
 impl TaskContext {
+    pub fn subject(&self, value: &str) {
+        let _ = self.manager.update(&self.task_id, |snapshot| {
+            snapshot.subject = Some(value.chars().take(240).collect());
+        });
+    }
+
     pub fn check_cancelled(&self) -> Result<(), AppError> {
         if self.cancelled.load(Ordering::Relaxed) {
             Err(AppError::new("cancelled", "任务已取消。"))
@@ -155,6 +170,7 @@ impl TaskManager {
             operation_id: operation_id.into(),
             request_hash: request_hash.into(),
             kind: kind.into(),
+            subject: None,
             stage: "queued".into(),
             state: "queued".into(),
             current: 0,
@@ -260,7 +276,32 @@ impl TaskManager {
             })
             .optional()?
             .ok_or_else(|| AppError::new("not_found", "任务不存在。"))?;
-        Ok(serde_json::from_str(&json)?)
+        self.read_snapshot(&json)
+    }
+
+    fn read_snapshot(&self, json: &str) -> Result<TaskSnapshot, AppError> {
+        let mut snapshot: TaskSnapshot = serde_json::from_str(json)?;
+        // Older preview records can still identify their saved dialogue through the audio asset.
+        if snapshot.subject.is_none()
+            && snapshot.kind == "preview"
+            && let Some(asset_id) = snapshot
+                .result
+                .as_ref()
+                .and_then(|value| value["asset"]["id"].as_str())
+        {
+            snapshot.subject = self
+                .store
+                .connection()?
+                .query_row(
+                    "SELECT s.title || ' · ' || e.text FROM example_media m
+                 JOIN examples e ON e.id=m.example_id JOIN sources s ON s.id=e.source_id
+                 WHERE m.asset_id=? ORDER BY e.id LIMIT 1",
+                    [asset_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+        }
+        Ok(snapshot)
     }
 
     pub fn list(&self) -> Result<Vec<TaskSnapshot>, AppError> {
@@ -268,15 +309,46 @@ impl TaskManager {
         let mut query = connection.prepare(
             "SELECT snapshot_json FROM tasks
              WHERE state NOT IN ('succeeded','failed','cancelled')
-                OR id IN (SELECT id FROM tasks ORDER BY created_at DESC,id LIMIT 30)
-             ORDER BY created_at DESC,id",
+                OR id IN (SELECT id FROM tasks WHERE state IN ('succeeded','failed','cancelled')
+                          ORDER BY updated_at DESC,id DESC LIMIT 1)
+             ORDER BY updated_at DESC,id DESC",
         )?;
         let rows = query
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
+        drop(query);
+        drop(connection);
         rows.into_iter()
-            .map(|json| Ok(serde_json::from_str(&json)?))
+            .map(|json| self.read_snapshot(&json))
             .collect()
+    }
+
+    pub fn history(&self, offset: u32, limit: u32) -> Result<TaskHistoryPage, AppError> {
+        let mut connection = self.store.connection()?;
+        let transaction = connection.transaction()?;
+        let total = transaction.query_row(
+            "SELECT COUNT(*) FROM tasks WHERE state IN ('succeeded','failed','cancelled')",
+            [],
+            |row| row.get(0),
+        )?;
+        let rows = {
+            let mut query = transaction.prepare(
+                "SELECT snapshot_json FROM tasks WHERE state IN ('succeeded','failed','cancelled')
+                 ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?",
+            )?;
+            query
+                .query_map(params![limit.clamp(1, 100), offset], |row| {
+                    row.get::<_, String>(0)
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        transaction.commit()?;
+        drop(connection);
+        let items = rows
+            .into_iter()
+            .map(|json| self.read_snapshot(&json))
+            .collect::<Result<_, _>>()?;
+        Ok(TaskHistoryPage { items, total })
     }
 
     pub fn cancel(&self, id: &str) -> Result<TaskSnapshot, AppError> {
@@ -306,6 +378,144 @@ impl TaskManager {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn terminal_history_pages_keep_old_records_and_exclude_active_work() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let manager = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        for index in 0..243 {
+            let snapshot = TaskSnapshot {
+                id: format!("task-{index:03}"),
+                operation_id: Uuid::new_v4().to_string(),
+                request_hash: "fixture".into(),
+                kind: "import".into(),
+                subject: Some(format!("Episode {index}.mkv")),
+                stage: "file".into(),
+                state: if index >= 241 {
+                    "running"
+                } else {
+                    ["succeeded", "failed", "cancelled"][index % 3]
+                }
+                .into(),
+                current: 1,
+                total: 1,
+                message: "fixture".into(),
+                result: None,
+                error: None,
+                created_at: index as i64,
+                // Ended tasks sort by completion time, including an old long-running import.
+                updated_at: if index == 0 { 1000 } else { (index / 2) as i64 },
+            };
+            manager.save(&snapshot).unwrap();
+        }
+        let displayed = manager.list().unwrap();
+        assert_eq!(displayed.len(), 3);
+        assert_eq!(displayed.iter().filter(|task| task.terminal()).count(), 1);
+        assert!(displayed.iter().any(|task| task.id == "task-000"));
+        let mut all = Vec::new();
+        for page in 0..25 {
+            let history = manager.history(page * 10, 10).unwrap();
+            assert_eq!(history.total, 241);
+            assert_eq!(history.items.len(), if page == 24 { 1 } else { 10 });
+            assert!(history.items.iter().all(TaskSnapshot::terminal));
+            all.extend(history.items);
+        }
+        assert_eq!(all[0].id, "task-000");
+        assert_eq!(all[1].id, "task-240");
+        assert_eq!(all[2].id, "task-239");
+        let ids = all
+            .iter()
+            .map(|task| &task.id)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(ids.len(), 241);
+        assert_eq!(manager.history(241, 10).unwrap().items.len(), 0);
+        assert_eq!(manager.history(0, 1000).unwrap().items.len(), 100);
+        assert_eq!(manager.history(0, 0).unwrap().items.len(), 1);
+        // A pre-update snapshot without the new field still deserializes.
+        let mut legacy = serde_json::to_value(&all[1]).unwrap();
+        legacy.as_object_mut().unwrap().remove("subject");
+        store
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE tasks SET snapshot_json=? WHERE id=?",
+                params![legacy.to_string(), all[1].id],
+            )
+            .unwrap();
+        assert!(manager.get(&all[1].id).unwrap().subject.is_none());
+    }
+
+    #[test]
+    fn subjects_survive_restart_and_old_preview_reads_identify_saved_dialogue() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let manager = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let started = manager
+            .start(
+                "explanation",
+                &Uuid::new_v4().to_string(),
+                "target",
+                |context| {
+                    context.subject("reluctant");
+                    Ok(serde_json::json!({"meaning":"不情愿的"}))
+                },
+            )
+            .unwrap();
+        let mut snapshot = wait(&manager, &started.id);
+        assert_eq!(snapshot.subject.as_deref(), Some("reluctant"));
+        store.connection().unwrap().execute_batch(
+            "INSERT INTO sources(id,kind,title,fingerprint,created_at) VALUES ('source','video','Pilot','fixture',0);
+             INSERT INTO examples(id,source_id,location_key,text,identity_key,start_ms,end_ms,created_at)
+                 VALUES ('example','source','clip','I am reluctant.','text',0,1000,0);
+             INSERT INTO media_assets(id,recipe_key,digest,relative_path,format,duration_ms,state,created_at)
+                 VALUES ('asset','clip','digest','clip.wav','wav',1000,'ready',0);
+             INSERT INTO example_media(example_id,asset_id) VALUES ('example','asset');"
+        ).unwrap();
+        snapshot.kind = "preview".into();
+        snapshot.subject = None;
+        snapshot.result = Some(serde_json::json!({"asset":{"id":"asset","durationMs":1000}}));
+        manager.save(&snapshot).unwrap();
+        let expected = Some("Pilot · I am reluctant.");
+        assert_eq!(
+            manager.get(&snapshot.id).unwrap().subject.as_deref(),
+            expected
+        );
+        assert_eq!(manager.list().unwrap()[0].subject.as_deref(), expected);
+        assert_eq!(
+            manager.history(0, 10).unwrap().items[0].subject.as_deref(),
+            expected
+        );
+        // The read-time fallback leaves the original persisted snapshot untouched.
+        let persisted: String = store
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT snapshot_json FROM tasks WHERE id=?",
+                [&snapshot.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            serde_json::from_str::<TaskSnapshot>(&persisted)
+                .unwrap()
+                .subject
+                .is_none()
+        );
+        snapshot.kind = "explanation".into();
+        snapshot.subject = Some("reluctant".into());
+        manager.save(&snapshot).unwrap();
+        drop(manager);
+        drop(store);
+        let reopened = TaskManager::new(
+            Arc::new(Store::open(directory.path()).unwrap()),
+            Arc::new(|_| {}),
+        );
+        assert_eq!(
+            reopened.get(&snapshot.id).unwrap().subject.as_deref(),
+            Some("reluctant")
+        );
+    }
 
     #[test]
     fn older_running_and_cancelling_tasks_survive_the_recent_history_limit() {
@@ -338,7 +548,7 @@ mod tests {
             assert_eq!(wait(&manager, &recent.id).state, "succeeded");
         }
         let listed = manager.list().unwrap();
-        assert_eq!(listed.len(), 31);
+        assert_eq!(listed.len(), 2);
         assert!(listed.iter().any(|task| task.id == older.id));
         manager.cancel(&older.id).unwrap();
         assert!(
@@ -351,8 +561,10 @@ mod tests {
         release.send(()).unwrap();
         assert_eq!(wait(&manager, &older.id).state, "cancelled");
         let listed = manager.list().unwrap();
-        assert_eq!(listed.len(), 30);
+        assert_eq!(listed.len(), 1);
         assert!(listed.iter().all(TaskSnapshot::terminal));
+        assert_eq!(listed[0].id, older.id);
+        assert_eq!(manager.history(0, 10).unwrap().total, 36);
     }
 
     #[test]
@@ -458,6 +670,7 @@ mod tests {
             operation_id: operation.clone(),
             request_hash: "recover".into(),
             kind: "import".into(),
+            subject: None,
             stage: "file".into(),
             state: "running".into(),
             current: 1,

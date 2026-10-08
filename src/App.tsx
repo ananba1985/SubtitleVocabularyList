@@ -56,13 +56,24 @@ export default function App() {
     call<Settings>("settings_get")
       .then(setSettings)
       .catch((error) => setError(message(error)));
-    call<SystemVoice[]>("speech_voices")
-      .then(setVoices)
-      .catch(() => setVoices([]));
     call<NativeStatus>("native_status")
       .then(setNative)
       .catch((error) => setError(message(error)));
   }, [refresh]);
+  useEffect(() => {
+    if (tab !== "settings") return;
+    let disposed = false;
+    call<SystemVoice[]>("speech_voices")
+      .then((value) => {
+        if (!disposed) setVoices(value);
+      })
+      .catch(() => {
+        if (!disposed) setVoices([]);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [tab]);
   useEffect(() => {
     let disposed = false;
     const stops: (() => void)[] = [];
@@ -288,9 +299,28 @@ export default function App() {
               refreshKey={refreshKey}
               onChanged={() => setRefreshKey((value) => value + 1)}
             />
+            <h2>窗口与关闭行为</h2>
+            <label>
+              点击关闭按钮时
+              <select
+                value={settings.closeToTray ? "tray" : "exit"}
+                onChange={(event) =>
+                  setSettings({
+                    ...settings,
+                    closeToTray: event.target.value === "tray",
+                  })
+                }
+              >
+                <option value="exit">完全退出程序</option>
+                <option value="tray">常驻托盘，保留取词快捷键</option>
+              </select>
+            </label>
+            <p className="muted">
+              保存设置后生效。完全退出会停止后台任务并释放快捷键；托盘菜单始终可以完全退出。
+            </p>
             <h2>划词与系统语音</h2>
             <p className="muted">
-              在原应用选择文字后按快捷键。本次文字将在收录窗口中确认；不读取剪贴板。关闭主窗口后应用留在托盘，托盘菜单可打开或退出。
+              在原应用选择文字后按快捷键，本次文字将在收录窗口中确认。选择常驻托盘时，关闭主窗口后快捷键仍可使用。
             </p>
             <label>
               划词快捷键

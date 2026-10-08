@@ -476,7 +476,26 @@ fn capture_ocr_submit(
 }
 
 pub fn run() {
+    let _startup = std::time::Instant::now();
+    let first_page = Arc::new(std::sync::atomic::AtomicBool::new(true));
     tauri::Builder::default()
+        .on_page_load(move |webview, event| {
+            if webview.label() == "main" {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[startup] webview {:?}: {} ms",
+                    event.event(),
+                    _startup.elapsed().as_millis()
+                );
+                if event.event() == tauri::webview::PageLoadEvent::Finished
+                    && first_page.swap(false, std::sync::atomic::Ordering::AcqRel)
+                {
+                    let window = webview.window();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -508,7 +527,37 @@ pub fn run() {
                 })
                 .build(),
         )
-        .setup(|app| {
+        .setup(move |app| {
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[startup] native setup begins: {} ms",
+                _startup.elapsed().as_millis()
+            );
+            if let Some(window) = app.get_webview_window("main")
+                && let Some(monitor) = window.current_monitor()?.or(app.primary_monitor()?)
+            {
+                let work = monitor.work_area();
+                let scale = monitor.scale_factor();
+                let size = crate::desktop_layout::initial_window_size(
+                    work.size.width as f64 / scale,
+                    work.size.height as f64 / scale,
+                );
+                window.set_min_size(Some(tauri::LogicalSize::new(
+                    size.min_width,
+                    size.min_height,
+                )))?;
+                window.set_size(tauri::LogicalSize::new(size.width, size.height))?;
+                let outer = window.outer_size()?;
+                window.set_position(tauri::PhysicalPosition::new(
+                    work.position.x + (work.size.width.saturating_sub(outer.width) / 2) as i32,
+                    work.position.y + (work.size.height.saturating_sub(outer.height) / 2) as i32,
+                ))?;
+            }
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[startup] window geometry ready: {} ms",
+                _startup.elapsed().as_millis()
+            );
             #[cfg(debug_assertions)]
             let default_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .parent()
@@ -520,6 +569,11 @@ pub fn run() {
                 .map(PathBuf::from)
                 .unwrap_or(default_root);
             let store = Arc::new(Store::open(root)?);
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[startup] database ready: {} ms",
+                _startup.elapsed().as_millis()
+            );
             app.asset_protocol_scope()
                 .allow_directory(store.root().join("media"), true)?;
             app.asset_protocol_scope()
@@ -587,6 +641,11 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[startup] services ready: {} ms",
+                _startup.elapsed().as_millis()
+            );
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -599,7 +658,16 @@ pub fn run() {
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
             {
                 api.prevent_close();
-                let _ = window.hide();
+                let app = window.app_handle();
+                if app
+                    .state::<Arc<Application>>()
+                    .settings()
+                    .is_ok_and(|settings| settings.close_to_tray)
+                {
+                    let _ = window.hide();
+                } else {
+                    desktop_capture::quit(app);
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![

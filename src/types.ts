@@ -148,6 +148,7 @@ export interface Settings {
   selectionShortcut: string;
   ocrShortcut: string;
   systemVoice: string;
+  closeToTray: boolean;
   siteUrl: string;
   tools: {
     ffmpeg: string;

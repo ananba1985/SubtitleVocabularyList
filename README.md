@@ -80,6 +80,7 @@
 - `pnpm build`：前端类型检查与构建。
 - `pnpm test:core`：不启动界面的 Rust 核心测试。
 - `pnpm desktop:dev`：本机调试运行，前端热更新、Rust 变更重启；使用本地 PATH、`.tools/runtime` 和 `.local/dev-data`。
+- 双击 `scripts/run-dev.cmd`：使用相同开发环境启动，调试命令结束后不暂停专用控制台；从已有终端启动时返回该终端提示符。
 - `pnpm desktop:build`：手动生成本地调试 exe，输出 `.local/build/SubtitleVocabularyList.exe` 和 `run-local.ps1`；使用本机开发资源，不生成安装包，可在未提交代码上执行。
 - `pnpm desktop:package`：手动发布打包，复用已准备的离线发行资源；输出 `release/<版本>/` 下的安装包、`standalone/SubtitleVocabularyList.exe` 及其 `tools/`、对应源码材料和摘要。要求源码已提交且工作区干净，不自动安装。
 
@@ -95,4 +96,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
 
 媒体原型另需 FFmpeg、ffprobe 与英语 Tesseract。`scripts/setup-tools.ps1` 准备私有的 Whisper 程序和模型，并校验模型摘要；它用于开发资源准备，不是最终用户安装说明。
 
-当前划词默认使用 `Ctrl+Alt+Shift+W`，截图使用 `Ctrl+Alt+Shift+S`，可在本地设置修改；声音选项列出已安装的 Windows 英语声音。关闭主窗口后应用留在托盘，可从托盘菜单打开或退出。已验证支持范围与未覆盖项见 Windows 与 OCR 验证记录。
+当前划词默认使用 `Ctrl+Alt+Shift+W`，截图使用 `Ctrl+Alt+Shift+S`，可在本地设置修改；声音选项列出已安装的 Windows 英语声音。当前开发版本默认关闭主窗口时完全退出；可在本地设置选择“常驻托盘，保留取词快捷键”并保存，托盘菜单仍可完全退出。初始窗口按当前屏幕可用空间缩小，内容与侧栏分别滚动。启动加载、实际显示与退出证据见[桌面增量验证](docs/testing/desktop-import-results.md#8-窗口启动与关闭行为修复)。历史安装包仍对应其原版本行为。

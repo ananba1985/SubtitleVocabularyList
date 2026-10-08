@@ -6,9 +6,22 @@
     <meta name="color-scheme" content="light" />
     <title>SubtitleVocabularyList</title>
     <link rel="icon" type="image/svg+xml" href="/src/assets/icon.svg" />
+    <style>
+      html,body{margin:0;background:#f6f7f3;color:#233c35;font-family:"Segoe UI","Microsoft YaHei",sans-serif}
+      .startup-view{box-sizing:border-box;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;text-align:center}
+      .startup-view h1{font-size:22px;margin:0}.startup-view p{margin:0;color:#61766b;font-size:14px}.startup-view button{border:1px solid #cbd8ce;border-radius:8px;padding:9px 16px;background:white;color:#245c46;cursor:pointer}
+      .startup-mark{border:1px solid #7fa98e;border-radius:12px;padding:12px;color:#245c46;font-weight:600}
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="root">
+      <main class="startup-view" role="status">
+        <div class="startup-mark">SV</div>
+        <h1>SubtitleVocabularyList</h1>
+        <p id="startup-status">正在启动单词本…</p>
+        <div id="startup-actions"></div>
+      </main>
+    </div>
+    <script type="module" src="/src/bootstrap.ts"></script>
   </body>
 </html>

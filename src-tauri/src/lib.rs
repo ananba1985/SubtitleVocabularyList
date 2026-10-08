@@ -1,5 +1,6 @@
 pub mod application;
 pub mod corpus;
+pub mod desktop_layout;
 pub mod error;
 pub mod known_targets;
 pub mod lookup;

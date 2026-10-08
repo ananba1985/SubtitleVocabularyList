@@ -24,6 +24,7 @@ pub struct Settings {
     pub selection_shortcut: String,
     pub ocr_shortcut: String,
     pub system_voice: String,
+    pub close_to_tray: bool,
     pub site_url: String,
     pub tools: MediaTools,
 }
@@ -38,6 +39,7 @@ impl Default for Settings {
             selection_shortcut: "Ctrl+Alt+Shift+W".into(),
             ocr_shortcut: "Ctrl+Alt+Shift+S".into(),
             system_voice: String::new(),
+            close_to_tray: false,
             site_url: "https://english-copy-practice.hxwjb.chatgpt.site".into(),
             tools: MediaTools::development(runtime),
         }
@@ -574,6 +576,29 @@ pub fn example_input_from_corpus(
 #[cfg(test)]
 mod runtime_settings_tests {
     use super::*;
+    #[test]
+    fn close_behavior_defaults_to_exit_and_persists_the_explicit_tray_choice() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let app = Application::new(Arc::clone(&store), tasks, Settings::default());
+        assert!(!app.settings().unwrap().close_to_tray);
+        let legacy: Settings = serde_json::from_str("{}").unwrap();
+        assert!(!legacy.close_to_tray);
+        let mut settings = app.settings().unwrap();
+        settings.close_to_tray = true;
+        app.save_settings(settings).unwrap();
+        drop(app);
+        drop(store);
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let app = Application::new(store, tasks, Settings::default());
+        assert!(app.settings().unwrap().close_to_tray);
+        let mut settings = app.settings().unwrap();
+        settings.close_to_tray = false;
+        app.save_settings(settings).unwrap();
+        assert!(!app.settings().unwrap().close_to_tray);
+    }
     #[test]
     fn upgrade_rebinds_tools_to_current_installation_and_keeps_user_preferences() {
         let directory = tempfile::tempdir().unwrap();

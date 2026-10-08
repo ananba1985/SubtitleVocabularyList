@@ -13,7 +13,7 @@ impl AppError {
         Self {
             code: code.into(),
             message: message.into(),
-            retryable: false,
+            retryable: code == "network_unavailable",
         }
     }
 }

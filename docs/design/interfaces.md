@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.17 |
+| 文档版本 | 0.18 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -73,7 +73,7 @@
 | `app_info`、`sources_list` | app_info 返回 version（编译时应用版本字符串）、dataDirectory、schemaVersion 与词条/来源计数；应用版本独立于数据库版本。来源列表含文字来源、对白与候选数量 |
 | `import_start` | `{paths: string[], operationId, options?}` → TaskSnapshot；options 包含 audioStream、subtitleStream、subtitleMode（auto/embedded/external/speech）、externalSubtitle。目录递归扫描六个视频后缀、现有文件统一路径身份去重；显式坏文件独立报告，错误选择不静默改轨。具体样本见[媒体矩阵](../testing/media-support-matrix.md) |
 | `media_inspect` | `{path}` → 音轨、字幕轨的索引/语言/名称/编码及同名外置字幕；为选择提供数据，不直接收录 |
-| `online_query_start` | CMD-20：`{text,provider?,operationId}` → 任务；provider 为 dictionary（Wiktionary）或 translation（MyMemory），无参默认前者。只发送 text，拒绝离线模式，返回 query、source、sourceUrl、definitions；建议需人工采用 |
+| `online_query_start` | CMD-20：`{text,provider?,operationId}` → 任务；provider 为 dictionary（Wiktionary）或 translation（MyMemory），无参默认前者。只发送 text，拒绝手动离线，自动降级后允许重试；返回 query、source、sourceUrl、definitions，建议需人工采用 |
 | `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回全部未结束任务和最近一条已结束任务。已结束记录按 updatedAt、id 降序排列，运行和取消中的旧任务不会因新收录被挤出列表 |
 | `tasks_history` | `{offset?,limit?}` → `{items:TaskSnapshot[],total}`；只读取 succeeded/failed/cancelled 的历史，按 updatedAt、id 降序。默认 offset=0、limit=10，limit 限定为 1–100；页内数据及总数在同一数据库读事务取得，超出末页返回空 items，历史不受最近 30 条限制 |
 | `candidates_list` | `{sourceId, search?, kind?, onlyPending?, offset?, limit?}` → 候选数组 |
@@ -112,6 +112,8 @@
 设置新增 selectionShortcut、ocrShortcut、systemVoice，旧 JSON 使用默认值读取，不改变数据库 schema。两个快捷键不得相同；更新先尝试注册新值，成功后释放旧值并保存，失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入；当前只保留一份待确认采集结果，连续采集队列仍需完善。
 
 设置增加 `closeToTray:boolean`，缺省为 false；旧设置缺少该字段时采用默认完全退出，不改变 schema。`settings_update` 与其他偏好共同保存，主窗口 CloseRequested 读取已保存值：true 隐藏窗口，false 或设置读取失败调用共享退出流程。`app_quit` 和托盘“退出”始终取消未结束任务，最多等待 3 秒后请求应用退出；不关闭调用者已存在的终端窗口。
+
+`offlineMode:boolean` 默认 false，表示是否手动禁止外网；旧资料显式保存的 true 保留，无设置或缺字段采用新默认。`app_info` 增加 `networkUnavailable:boolean`，只返回当前进程最近完成的在线任务连接降级状态，不持久化、不触发联网。网络任务报 `network_unavailable` 时置 true；成功及可取得响应的 `network_error`/`auth_required`/`not_found`/`invalid_data` 置 false；取消和其他本地控制错误保持原状态。手动离线检查只依赖 offlineMode，自动降级不拒绝重试，schema 仍为 5。
 
 截图使用先快照后选区的独立会话。提交校验矩形和显示器配置，成功裁剪后关闭选区窗口；recognize 失败结果为空。取消选区调用 capture_ocr_cancel，识别已运行时调用 task_cancel。识别成功生成 OCR 文字来源，经显式确认才写入词库；图像在本轮结束后清理。
 
@@ -167,7 +169,8 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | `resource_missing` | 音频、模型或本地语音资源不可用 | 补齐资源或明确选择可用替代 |
 | `permission_denied` | 采集或文件操作权限不足 | 说明本次失败，不自动扩大权限 |
 | `provider_unavailable` | 本地模型、OCR 或播放适配失败 | 保留数据，按支持能力重试 |
-| `network_error` | 查询或同步网络失败 | 保留待处理内容，稍后重试 |
+| `network_unavailable` | 外部连接、超时或响应传输中断 | retryable=true，运行期离线降级，保留内容并允许重试 |
+| `network_error` | 外部服务操作未完成、HTTP 错误或配额问题 | 单独显示服务错误，保留内容，不自动禁止联网 |
 | `auth_required` | 站点未认证或认证失效 | 重新连接账号，本地继续使用 |
 | `internal_error` | 无法归类的处理错误 | 记录可定位信息，显示失败 |
 
@@ -238,3 +241,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.15 | 2026-10-07 | 增加全局筛选查询/设置/分页、候选 isKnown 与采集 alreadyKnown 契约 |
 | 0.16 | 2026-10-07 | app_info 返回真实编译版本，界面显示与统一应用版本管理对齐 |
 | 0.17 | 2026-10-07 | 增加 closeToTray 默认值、持久化与主窗口/完全退出命令的行为契约 |
+| 0.18 | 2026-10-07 | 明确 offlineMode 默认 false、app_info 运行期状态和连接失败/服务错误分类，保持 schema 与重试入口 |

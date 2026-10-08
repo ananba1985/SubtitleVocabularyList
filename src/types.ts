@@ -4,6 +4,7 @@ export interface AppInfo {
   schemaVersion: number;
   entryCount: number;
   sourceCount: number;
+  networkUnavailable: boolean;
 }
 export interface TaskSnapshot {
   id: string;

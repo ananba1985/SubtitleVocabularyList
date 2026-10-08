@@ -171,6 +171,9 @@ label {
   padding: 24px 28px 40px;
   min-width: 0;
 }
+.offline-dot.is-offline {
+  background: #c29b5d;
+}
 .workspace-header {
   display: flex;
   justify-content: space-between;

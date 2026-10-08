@@ -160,7 +160,7 @@ impl Application {
         if self.settings()?.offline_mode {
             return Err(AppError::new(
                 "offline_mode",
-                "当前为离线模式，请在本地设置允许按需联网后再查询。",
+                "已启用手动离线，请在本地设置取消手动离线并保存后再查询。",
             ));
         }
         let text = text.trim().to_owned();
@@ -176,17 +176,17 @@ impl Application {
             ));
         }
         let hash = digest(serde_json::to_vec(&(&text, &provider))?.as_slice());
-        self.tasks.start("online_query",&operation_id,&hash,move|context|{
+        self.start_network_task("online_query",&operation_id,&hash,move|context|{
             context.subject(&text);
             context.check_cancelled()?;context.progress("query",0,1,"正在执行本次在线查询，仅发送当前查询文字");
             let mut url=reqwest::Url::parse(if provider=="translation"{"https://api.mymemory.translated.net/get"}else{"https://en.wiktionary.org/w/api.php"}).unwrap();
             if provider=="translation"{url.query_pairs_mut().extend_pairs([("q",text.as_str()),("langpair","en|zh-CN")]);}
             else{url.query_pairs_mut().extend_pairs([("action","parse"),("page",text.as_str()),("prop","text"),("format","json"),("formatversion","2"),("disableeditsection","1")]);}
             let client=reqwest::blocking::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(Duration::from_secs(5)).timeout(Duration::from_secs(20)).user_agent("SubtitleVocabularyList/0.1 (https://github.com/ananba1985/SubtitleVocabularyList)").build().map_err(|_|AppError::new("network_error","无法准备在线查询，当前草稿保留。"))?;
-            let response=client.get(url).send().map_err(|_|AppError::new("network_error","在线查询暂不可用，当前草稿保留，可稍后重试。"))?;
+            let response=client.get(url).send().map_err(|_|AppError::new("network_unavailable","在线查询暂不可用，当前草稿保留，可稍后重试。"))?;
             context.check_cancelled()?;
             if !response.status().is_success(){return Err(AppError::new("network_error","在线查询请求未完成，当前草稿保留。"));}
-            let mut bytes=vec![];response.take(1_000_001).read_to_end(&mut bytes).map_err(|_|AppError::new("network_error","在线查询响应中断，当前草稿保留。"))?;context.check_cancelled()?;
+            let mut bytes=vec![];response.take(1_000_001).read_to_end(&mut bytes).map_err(|_|AppError::new("network_unavailable","在线查询响应中断，当前草稿保留。"))?;context.check_cancelled()?;
             if bytes.len()>1_000_000{return Err(AppError::new("invalid_data","在线查询响应过大，当前草稿保留。"));}
             let value:Value=serde_json::from_slice(&bytes).map_err(|_|AppError::new("invalid_data","在线查询响应无法读取，当前草稿保留。"))?;
             Ok(serde_json::to_value(if provider=="translation"{translation(&text,&value)?}else{dictionary(&text,&value)?})?)
@@ -203,7 +203,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(dir.path()).unwrap());
         let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
-        let app = Application::new(Arc::clone(&store), Arc::clone(&tasks), Settings::default());
+        let app = Application::new(
+            Arc::clone(&store),
+            Arc::clone(&tasks),
+            Settings {
+                offline_mode: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(
             app.online_query_start(
                 "reluctant".into(),

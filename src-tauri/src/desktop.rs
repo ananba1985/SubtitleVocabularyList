@@ -27,6 +27,7 @@ struct AppInfo {
     schema_version: i64,
     entry_count: i64,
     source_count: i64,
+    network_unavailable: bool,
 }
 
 async fn background<T: Send + 'static>(
@@ -44,6 +45,7 @@ async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
         let connection = app.store.connection()?;
         Ok(AppInfo {
             version: env!("CARGO_PKG_VERSION").into(),
+            network_unavailable: app.network_unavailable(),
             data_directory: app.store.root().display().to_string(),
             schema_version: connection
                 .pragma_query_value(None, "user_version", |row| row.get(0))?,

@@ -153,8 +153,18 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <span className="offline-dot" />
-          {settings?.offlineMode ? "离线模式" : "按需联网"}
+          <span
+            className={`offline-dot${settings?.offlineMode || info?.networkUnavailable ? " is-offline" : ""}`}
+          />
+          <span title="在线查询和同步仍由你主动发起；联网失败不影响本地学习，重试成功后恢复在线状态。">
+            {!settings
+              ? "正在读取设置"
+              : settings.offlineMode
+                ? "手动离线"
+                : info?.networkUnavailable
+                  ? "联网失败，离线使用"
+                  : "在线模式"}
+          </span>
           <small>{info?.version ?? "开发中"}</small>
         </div>
       </aside>
@@ -408,8 +418,11 @@ export default function App() {
                   })
                 }
               />
-              离线模式，本机模型仍可使用
+              手动离线，禁止外网请求；本机模型仍可使用
             </label>
+            <p className="muted">
+              默认允许在线查询和同步，由你主动发起。联网失败时继续使用本地词库、原声和测验，可随时重试；重试成功后恢复在线状态。
+            </p>
             <label>
               英语练习站点地址
               <input

@@ -166,7 +166,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
           </p>
           {connection.offline && (
             <p className="notice banner">
-              当前为离线模式。请在“本地设置”取消离线模式并保存，再发起连接；已有词库和测验仍可使用。
+              已启用手动离线。请在“本地设置”取消手动离线并保存，再发起连接；已有词库和测验仍可使用。
             </p>
           )}
           {connection.deviceName && (

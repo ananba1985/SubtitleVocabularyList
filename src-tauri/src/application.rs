@@ -11,7 +11,10 @@ use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use uuid::Uuid;
 
@@ -35,7 +38,7 @@ impl Default for Settings {
         Self {
             model_url: "http://127.0.0.1:8096".into(),
             model_name: "Qwen3.5-9B".into(),
-            offline_mode: true,
+            offline_mode: false,
             selection_shortcut: "Ctrl+Alt+Shift+W".into(),
             ocr_shortcut: "Ctrl+Alt+Shift+S".into(),
             system_voice: String::new(),
@@ -60,6 +63,7 @@ pub struct Application {
     drafts: Mutex<HashMap<String, CollectionInput>>,
     defaults: Settings,
     import_guard: Arc<Mutex<()>>,
+    network_unavailable: Arc<AtomicBool>,
     #[cfg(all(windows, feature = "desktop"))]
     pub(crate) connection_guard: Arc<Mutex<()>>,
     #[cfg(all(windows, feature = "desktop"))]
@@ -205,11 +209,50 @@ impl Application {
             drafts: Mutex::new(HashMap::new()),
             defaults,
             import_guard: Arc::new(Mutex::new(())),
+            network_unavailable: Arc::new(AtomicBool::new(false)),
             #[cfg(all(windows, feature = "desktop"))]
             connection_guard: Arc::new(Mutex::new(())),
             #[cfg(all(windows, feature = "desktop"))]
             sync_guard: Arc::new(Mutex::new(())),
         }
+    }
+
+    pub fn network_unavailable(&self) -> bool {
+        self.network_unavailable.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn start_network_task<F>(
+        &self,
+        kind: &str,
+        operation_id: &str,
+        request_hash: &str,
+        worker: F,
+    ) -> Result<TaskSnapshot, AppError>
+    where
+        F: FnOnce(TaskContext) -> Result<Value, AppError> + Send + 'static,
+    {
+        let unavailable = Arc::clone(&self.network_unavailable);
+        self.tasks
+            .start(kind, operation_id, request_hash, move |context| {
+                let result = worker(context);
+                match &result {
+                    Err(error) if error.code == "network_unavailable" => {
+                        unavailable.store(true, Ordering::Relaxed);
+                    }
+                    Ok(_) => unavailable.store(false, Ordering::Relaxed),
+                    // A service response can fail without the connection being offline.
+                    Err(error)
+                        if matches!(
+                            error.code.as_str(),
+                            "network_error" | "auth_required" | "not_found" | "invalid_data"
+                        ) =>
+                    {
+                        unavailable.store(false, Ordering::Relaxed);
+                    }
+                    _ => {}
+                }
+                result
+            })
     }
 
     pub fn settings(&self) -> Result<Settings, AppError> {
@@ -576,6 +619,118 @@ pub fn example_input_from_corpus(
 #[cfg(test)]
 mod runtime_settings_tests {
     use super::*;
+    #[test]
+    fn online_is_default_and_saved_manual_offline_survives_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let app = Application::new(Arc::clone(&store), tasks, Settings::default());
+        assert!(!app.settings().unwrap().offline_mode);
+        assert!(!serde_json::from_str::<Settings>("{}").unwrap().offline_mode);
+        let mut settings = app.settings().unwrap();
+        settings.offline_mode = true;
+        app.save_settings(settings).unwrap();
+        drop(app);
+        drop(store);
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let app = Application::new(store, tasks, Settings::default());
+        assert!(app.settings().unwrap().offline_mode);
+        assert!(!app.network_unavailable());
+    }
+
+    #[test]
+    fn connection_failure_falls_back_without_locking_out_retry_or_local_learning() {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            time::{Duration, Instant},
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let app = Application::new(Arc::clone(&store), tasks, Settings::default());
+        let reserved = TcpListener::bind("127.0.0.1:0").unwrap();
+        let unavailable_url = format!("http://{}/", reserved.local_addr().unwrap());
+        drop(reserved);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let available_url = format!("http://{}/", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for status in ["503 Service Unavailable", "200 OK"] {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut request = [0; 4096];
+                assert!(stream.read(&mut request).unwrap() > 0);
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                )
+                .unwrap();
+            }
+        });
+        let request = |url: String| {
+            let task = app
+                .start_network_task(
+                    "online_query",
+                    &Uuid::new_v4().to_string(),
+                    "network-fixture",
+                    move |_| {
+                        let response = reqwest::blocking::Client::builder()
+                            .no_proxy()
+                            .timeout(Duration::from_secs(1))
+                            .build()
+                            .unwrap()
+                            .get(url)
+                            .send()
+                            .map_err(|_| {
+                                AppError::new("network_unavailable", "Connection failed")
+                            })?;
+                        if !response.status().is_success() {
+                            return Err(AppError::new("network_error", "Service unavailable"));
+                        }
+                        Ok(json!({"result":"synthetic response"}))
+                    },
+                )
+                .unwrap();
+            let started = Instant::now();
+            loop {
+                let current = app.tasks.get(&task.id).unwrap();
+                if current.terminal() {
+                    break current;
+                }
+                assert!(started.elapsed() < Duration::from_secs(3));
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        let failed = request(unavailable_url.clone());
+        assert_eq!(failed.error.unwrap().code, "network_unavailable");
+        assert!(app.network_unavailable());
+        assert!(!app.settings().unwrap().offline_mode);
+        store
+            .collect(&CollectionInput {
+                operation_id: Uuid::new_v4().to_string(),
+                kind: "word".into(),
+                text: "reluctant".into(),
+                meaning: "不情愿的".into(),
+                examples: vec![],
+                target_entry_id: None,
+                expected_revision: None,
+            })
+            .unwrap();
+        let service_failure = request(available_url.clone());
+        assert_eq!(service_failure.error.unwrap().code, "network_error");
+        assert!(!app.network_unavailable());
+        request(unavailable_url);
+        assert!(app.network_unavailable());
+        assert_eq!(request(available_url).state, "succeeded");
+        assert!(!app.network_unavailable());
+        assert!(!app.settings().unwrap().offline_mode);
+        assert_eq!(store.list_entries("", 0, 10).unwrap().len(), 1);
+        server.join().unwrap();
+    }
+
     #[test]
     fn close_behavior_defaults_to_exit_and_persists_the_explicit_tray_choice() {
         let directory = tempfile::tempdir().unwrap();

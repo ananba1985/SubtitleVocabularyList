@@ -18,7 +18,7 @@ pub(crate) fn read_json(response: Response) -> Result<(u16, Value), AppError> {
     response
         .take(1_010_001)
         .read_to_end(&mut bytes)
-        .map_err(|_| failure("network_error", "站点响应中断，待同步内容保留。"))?;
+        .map_err(|_| failure("network_unavailable", "站点响应中断，待同步内容保留。"))?;
     if bytes.len() > 1_010_000 {
         return Err(failure("invalid_data", "同步响应过大，已保留当前资料。"));
     }
@@ -96,7 +96,7 @@ impl<'a> Transport<'a> {
                 .get(format!("{}{path}", self.site))
                 .bearer_auth(self.token)
                 .send()
-                .map_err(|_| failure("network_error", "拉取未完成，本地资料与游标保留。"))?,
+                .map_err(|_| failure("network_unavailable", "拉取未完成，本地资料与游标保留。"))?,
         )?;
         self.hydrate(value, check)
     }
@@ -123,7 +123,7 @@ impl<'a> Transport<'a> {
                 ))
                 .bearer_auth(self.token)
                 .send()
-                .map_err(|_| failure("network_error", "资料分片下载中断，游标保留。"))?;
+                .map_err(|_| failure("network_unavailable", "资料分片下载中断，游标保留。"))?;
             if !response.status().is_success() {
                 read_json(response)?;
                 return Err(failure("resource_missing", "资料分片不可用，游标保留。"));
@@ -146,7 +146,7 @@ impl<'a> Transport<'a> {
             response
                 .take(expected as u64 + 1)
                 .read_to_end(&mut part)
-                .map_err(|_| failure("network_error", "资料分片下载中断，游标保留。"))?;
+                .map_err(|_| failure("network_unavailable", "资料分片下载中断，游标保留。"))?;
             if part.len() != expected {
                 return Err(failure("invalid_data", "资料分片长度不匹配，游标保留。"));
             }
@@ -202,7 +202,9 @@ impl<'a> Transport<'a> {
                     .head(&url)
                     .bearer_auth(self.token)
                     .send()
-                    .map_err(|_| failure("network_error", "无法检查资料分片，待同步内容保留。"))?;
+                    .map_err(|_| {
+                        failure("network_unavailable", "无法检查资料分片，待同步内容保留。")
+                    })?;
                 if head.status().is_success() {
                     if head
                         .headers()
@@ -232,7 +234,7 @@ impl<'a> Transport<'a> {
                             .body(part.to_vec())
                             .send()
                             .map_err(|_| {
-                                failure("network_error", "资料分片上传中断，同一内容可重试。")
+                                failure("network_unavailable", "资料分片上传中断，同一内容可重试。")
                             })?,
                     )?;
                     if reply["packetDigest"] != reference.digest
@@ -265,7 +267,7 @@ impl<'a> Transport<'a> {
                 .send()
                 .map_err(|_| {
                     failure(
-                        "network_error",
+                        "network_unavailable",
                         "推送响应丢失或中断，已冻结的同一内容可安全重试。",
                     )
                 })?,

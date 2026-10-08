@@ -61,7 +61,7 @@ export function OnlineLookup({
       </button>
       <p className="muted">
         手动查询时只发送上方查询文字：英语词典使用 Wiktionary，中文翻译使用
-        MyMemory。不会附带原句、截图或词库；离线模式拒绝联网。
+        MyMemory。不会附带原句、截图或词库；手动离线时禁止联网，联网失败可稍后重试。
       </p>
       {taskId && (
         <button

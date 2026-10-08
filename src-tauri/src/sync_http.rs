@@ -47,7 +47,7 @@ impl HttpRemote {
         if settings.offline_mode {
             return Err(failure(
                 "offline_mode",
-                "当前为离线模式，已有资料仍可本地学习。",
+                "已启用手动离线，已有资料仍可本地学习。",
             ));
         }
         let site = site_origin(&settings.site_url)?;
@@ -87,7 +87,7 @@ impl HttpRemote {
         if settings.offline_mode {
             return Err(failure(
                 "offline_mode",
-                "已切换为离线模式，同步内容与进度保留。",
+                "已切换为手动离线，同步内容与进度保留。",
             ));
         }
         if site_origin(&settings.site_url)? != self.site
@@ -111,7 +111,7 @@ impl HttpRemote {
                 .get(format!("{}/api/svl/v1/account", self.site))
                 .bearer_auth(&self.credential.token)
                 .send()
-                .map_err(|_| failure("network_error", "无法检查同步账号，本地内容保留。"))?,
+                .map_err(|_| failure("network_unavailable", "无法检查同步账号，本地内容保留。"))?,
         )?;
         self.check()?;
         if v["accountScope"].as_str() != self.credential.account_scope.as_deref()
@@ -176,7 +176,7 @@ impl Remote for HttpRemote {
             .head(&url)
             .bearer_auth(&self.credential.token)
             .send()
-            .map_err(|_| failure("network_error", "无法检查站点原声，待同步记录保留。"))?;
+            .map_err(|_| failure("network_unavailable", "无法检查站点原声，待同步记录保留。"))?;
         if head.status().is_success() {
             if head
                 .headers()
@@ -201,7 +201,7 @@ impl Remote for HttpRemote {
                 .header("content-type", mime(format))
                 .body(bytes)
                 .send()
-                .map_err(|_| failure("network_error", "原声上传中断，待同步内容保留。"))?,
+                .map_err(|_| failure("network_unavailable", "原声上传中断，待同步内容保留。"))?,
         )?;
         self.check()?;
         if v["digest"].as_str() != Some(hash)
@@ -219,7 +219,7 @@ impl Remote for HttpRemote {
             .get(format!("{}/api/svl/v1/media/{hash}", self.site))
             .bearer_auth(&self.credential.token)
             .send()
-            .map_err(|_| failure("network_error", "原声下载中断，游标保留。"))?;
+            .map_err(|_| failure("network_unavailable", "原声下载中断，游标保留。"))?;
         if !response.status().is_success() {
             read_json(response)?;
             return Err(failure("resource_missing", "原声不可用，游标保留。"));
@@ -241,7 +241,7 @@ impl Remote for HttpRemote {
         response
             .take(20 * 1024 * 1024 + 1)
             .read_to_end(&mut bytes)
-            .map_err(|_| failure("network_error", "原声下载中断，游标保留。"))?;
+            .map_err(|_| failure("network_unavailable", "原声下载中断，游标保留。"))?;
         self.check()?;
         Ok(bytes)
     }
@@ -277,7 +277,7 @@ impl Application {
         let store = Arc::clone(&self.store);
         let guard = Arc::clone(&self.sync_guard);
         let hash = digest(scope.as_bytes());
-        self.tasks.start("sync", &operation, &hash, move |context| {
+        self.start_network_task("sync", &operation, &hash, move |context| {
             remote.cancelled = Some(Arc::clone(&context.cancelled));
             let _guard = guard
                 .try_lock()
@@ -310,16 +310,15 @@ impl Application {
         let store = Arc::clone(&self.store);
         let guard = Arc::clone(&self.sync_guard);
         let hash = digest(serde_json::to_vec(&json!([scope, input]))?.as_slice());
-        self.tasks
-            .start("sync_resolve", &operation, &hash, move |context| {
-                let _guard = guard
-                    .try_lock()
-                    .map_err(|_| failure("sync_busy", "请等待已有同步结束再处理。"))?;
-                context.check_cancelled()?;
-                remote.account()?;
-                store.synchronization_resolve(&scope, &input, &mut remote, &context.cancelled)?;
-                Ok(json!({"resolved":true}))
-            })
+        self.start_network_task("sync_resolve", &operation, &hash, move |context| {
+            let _guard = guard
+                .try_lock()
+                .map_err(|_| failure("sync_busy", "请等待已有同步结束再处理。"))?;
+            context.check_cancelled()?;
+            remote.account()?;
+            store.synchronization_resolve(&scope, &input, &mut remote, &context.cancelled)?;
+            Ok(json!({"resolved":true}))
+        })
     }
 }
 

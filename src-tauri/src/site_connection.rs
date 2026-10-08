@@ -92,7 +92,7 @@ mod desktop {
         response
             .take(1_000_001)
             .read_to_end(&mut bytes)
-            .map_err(|_| AppError::new("network_error", "站点响应中断，本地内容保留。"))?;
+            .map_err(|_| AppError::new("network_unavailable", "站点响应中断，本地内容保留。"))?;
         if bytes.len() > 1_000_000 {
             return Err(AppError::new(
                 "invalid_data",
@@ -126,7 +126,7 @@ mod desktop {
         if settings.offline_mode {
             return Err(AppError::new(
                 "offline_mode",
-                "当前为离线模式，请在本地设置取消离线模式并保存后再连接站点。",
+                "已启用手动离线，请在本地设置取消手动离线并保存后再连接站点。",
             ));
         }
         site_origin(&settings.site_url)
@@ -181,9 +181,9 @@ mod desktop {
             let hash = digest(format!("{site}:{}", credential.request_id).as_bytes());
             let store = Arc::clone(&self.store);
             let guard = Arc::clone(&self.connection_guard);
-            self.tasks.start("site_connection",&operation_id,&hash,move|context| {
+            self.start_network_task("site_connection",&operation_id,&hash,move|context| {
                 context.check_cancelled()?;context.progress("connection",0,1,"正在准备真实站点账号连接");
-                let response=client()?.post(format!("{site}/api/desktop/requests")).json(&json!({"requestId":credential.request_id,"tokenHash":digest(credential.token.as_bytes()),"deviceName":credential.device_name})).send().map_err(|_|AppError::new("network_error","无法连接站点，请稍后重试；连接请求与本地内容已保留。"))?;
+                let response=client()?.post(format!("{site}/api/desktop/requests")).json(&json!({"requestId":credential.request_id,"tokenHash":digest(credential.token.as_bytes()),"deviceName":credential.device_name})).send().map_err(|_|AppError::new("network_unavailable","无法连接站点，请稍后重试；连接请求与本地内容已保留。"))?;
                 let value=read_response(response)?;context.check_cancelled()?;
                 let mut credential=credential;
                 credential.display_code=Some(value["displayCode"].as_str().filter(|code|code.len()==8 && code.is_ascii()).ok_or_else(||AppError::new("invalid_data","站点连接码无效。"))?.into());
@@ -201,7 +201,7 @@ mod desktop {
             let store = Arc::clone(&self.store);
             let guard = Arc::clone(&self.connection_guard);
             let hash = digest(format!("{site}:{}:check", credential.request_id).as_bytes());
-            self.tasks.start(
+            self.start_network_task(
                 "site_connection_check",
                 &operation_id,
                 &hash,
@@ -214,7 +214,10 @@ mod desktop {
                             .bearer_auth(&credential.token)
                             .send()
                             .map_err(|_| {
-                                AppError::new("network_error", "无法检查站点连接，本地内容保留。")
+                                AppError::new(
+                                    "network_unavailable",
+                                    "无法检查站点连接，本地内容保留。",
+                                )
                             })?,
                     )?;
                     context.check_cancelled()?;
@@ -279,7 +282,14 @@ mod desktop {
             let directory = tempfile::tempdir().unwrap();
             let store = Arc::new(Store::open(directory.path()).unwrap());
             let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
-            let app = Application::new(store, Arc::clone(&tasks), Settings::default());
+            let app = Application::new(
+                store,
+                Arc::clone(&tasks),
+                Settings {
+                    offline_mode: true,
+                    ..Default::default()
+                },
+            );
             assert_eq!(
                 app.connection_start(Uuid::new_v4().to_string(), false)
                     .unwrap_err()

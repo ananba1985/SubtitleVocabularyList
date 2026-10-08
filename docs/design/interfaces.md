@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.21 |
+| 文档版本 | 0.22 |
 | 更新日期 | 2026-10-08 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -63,6 +63,8 @@
 | CMD-28 | `known_target_get/set`、`known_targets_list` | 查询/设置已掌握筛选偏好及分页管理，不修改测验成绩 | FR-02 至 FR-04、NFR-02 |
 | CMD-29 | `explanation_get` | 按目标和完整语境读取本地解释，不依赖模型 | FR-02、FR-08、NFR-02 |
 | CMD-30 | `explanation_import` | 按需迁入旧浏览器解释，不覆盖数据库资料或产生收录行为 | FR-08、NFR-02 |
+| CMD-31 | `explanations_prepare` | 安排/继续聚合中文准备，可优先指定来源，返回已有或新任务及全部就绪状态 | FR-02、FR-08、NFR-03 |
+| CMD-32 | `explanations_status` | 本地读取 running/paused/failed/idle，不探测模型或联网 | FR-08、NFR-03 |
 
 全局取词与截图触发直接进入同一核心采集入口，先取得原应用上下文再显示窗口。CMD-06、CMD-07 不是让弹窗取得焦点后重新猜测原窗口的操作。
 
@@ -119,7 +121,9 @@
 
 `offlineMode:boolean` 默认 false，表示是否手动禁止外网；旧资料显式保存的 true 保留，无设置或缺字段采用新默认。`app_info` 增加 `networkUnavailable:boolean`，只返回当前进程最近完成的在线任务连接降级状态，不持久化、不触发联网。网络任务报 `network_unavailable` 时置 true；成功及可取得响应的 `network_error`/`auth_required`/`not_found`/`invalid_data` 置 false；取消和其他本地控制错误保持原状态。手动离线检查只依赖 offlineMode，自动降级不拒绝重试；离线偏好与降级状态本身不改变数据库 schema。
 
-预习先调用 explanation_get，必要时迁移旧缓存，再复用 explain_start/task_get 补充缺失解释；没有新增 HTTP 入口。schema 6 新增 explanations 表，身份为目标（去除边界空白）和完整语境，模型标识仅记录生成来源。原生核心要求中文词义、非空语境对应中文译文，成功保存后才返回结果；重复请求或导入不覆盖已有记录。数据库读取不受模型失败暂停状态影响。CollectionSeed 增加可选 meaning，仅供草稿初值；原生划词/OCR 事件不含该字段时保持旧行为。用户确认后仍走既有收录接口，未收录语料解释不自动同步。
+预习只调用 explanation_get，并按需迁移旧缓存；缺失时轮询本地资料和 explanations_status，不因页面打开而发起 explain_start。explanations_prepare 的参数为 `{sourceId?:string}`，返回 `{task:TaskSnapshot|null}`；null 表示请求范围没有缺失资料，指定来源可提高队列优先级，已有聚合任务被复用。status 返回 `{state:"running"|"paused"|"failed"|"idle"}`。没有新增 HTTP 入口，schema 仍为 6。
+
+explanation_batch 通过 task_get/list/history 查询统一进度与 result.preparation；语境级结果先写 explanations，再计入进度，生成不创建逐词成功任务。取消未结束批次还会保存暂停偏好，退出应用仅停止当前运行，下一次启动补齐未完成内容。后台输入按候选代表词形和完整原句配对，已有值不覆盖，已掌握过滤与预习一致。CollectionSeed 的可选 meaning 仍仅供草稿初值，确认后走原收录接口；准备语料不自动收录或同步。
 
 本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
@@ -253,3 +257,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.19 | 2026-10-08 | 明确自动预习解释复用接口、中文结果缓存及可选草稿 meaning，保持原生事件和数据库兼容 |
 | 0.20 | 2026-10-08 | 新增解释数据库读取与旧缓存导入，明确 schema 6、模型来源与身份分离、保存成功后返回 |
 | 0.21 | 2026-10-08 | 明确临时操作查询和取消、正常操作不入历史、旧记录过滤与业务分页一致性 |
+| 0.22 | 2026-10-08 | 新增聚合准备/状态命令，明确自动后台、页面只读、批次取消暂停及结果先入库的契约 |

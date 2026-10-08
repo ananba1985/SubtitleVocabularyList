@@ -208,6 +208,7 @@ pub fn quit(app: &AppHandle) {
         app.state::<NativeDesktop>().ocr_cancel(app, &id);
     }
     let application = app.state::<Arc<Application>>();
+    application.stop_preparation_scheduler();
     let tasks = Arc::clone(&application.tasks);
     if let Ok(snapshots) = tasks.active() {
         for task in snapshots {

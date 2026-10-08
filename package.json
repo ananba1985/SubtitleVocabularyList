@@ -1,6 +1,6 @@
 {
   "name": "subtitle-vocabulary-list",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -13,6 +13,7 @@
     "version:minor": "node scripts/version.mjs minor",
     "version:set": "node scripts/version.mjs set",
     "test:version": "node scripts/test-version.mjs",
+    "test:sources": "node --experimental-strip-types scripts/test-source-groups.mjs",
     "tauri": "tauri",
     "desktop:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev.ps1",
     "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-local.ps1",

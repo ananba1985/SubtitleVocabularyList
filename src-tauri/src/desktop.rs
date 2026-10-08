@@ -103,8 +103,16 @@ fn tasks_history(
     app.tasks.history(offset.unwrap_or(0), limit.unwrap_or(10))
 }
 #[tauri::command]
-fn task_cancel(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
-    app.tasks.cancel(&task_id)
+async fn task_cancel(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        let task = app.tasks.get(&task_id)?;
+        if task.kind == "explanation_batch" && !task.terminal() {
+            app.pause_preparation()?;
+        }
+        app.tasks.cancel(&task_id)
+    })
+    .await
 }
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -145,7 +153,12 @@ fn known_target_set(
     text: String,
     known: bool,
 ) -> Result<(), AppError> {
-    app.store.set_known_target(&kind, &text, known)
+    app.store.set_known_target(&kind, &text, known)?;
+    if !known {
+        app.preparation_requested
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    Ok(())
 }
 #[tauri::command]
 async fn known_targets_list(
@@ -194,8 +207,17 @@ fn source_example_update(
     start_ms: i64,
     end_ms: i64,
 ) -> Result<CandidateExample, AppError> {
-    app.store
-        .update_source_example(&source_id, &example_id, revision, &text, start_ms, end_ms)
+    let value = app.store.update_source_example(
+        &source_id,
+        &example_id,
+        revision,
+        &text,
+        start_ms,
+        end_ms,
+    )?;
+    app.preparation_requested
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    Ok(value)
 }
 #[tauri::command]
 async fn entries_list(
@@ -326,6 +348,21 @@ fn preview_start(
 #[tauri::command]
 fn media_path(app: AppState<'_>, asset_id: String) -> Result<PathBuf, AppError> {
     app.store.media_file(&asset_id)
+}
+#[tauri::command]
+async fn explanations_status(
+    app: AppState<'_>,
+) -> Result<crate::preparation::PreparationStatus, AppError> {
+    let app = app.inner().clone();
+    background(move || app.preparation_status()).await
+}
+#[tauri::command]
+async fn explanations_prepare(
+    app: AppState<'_>,
+    source_id: Option<String>,
+) -> Result<crate::preparation::PreparationReply, AppError> {
+    let app = app.inner().clone();
+    background(move || app.prepare_explanations(source_id, true)).await
 }
 #[tauri::command]
 async fn explanation_get(
@@ -630,6 +667,7 @@ pub fn run() {
             };
             let application = Arc::new(Application::new(store, tasks, defaults));
             let settings = application.settings()?;
+            application.start_preparation_scheduler();
             app.manage(application);
             app.manage(NativeDesktop::default());
             if let Err(error) = app.state::<NativeDesktop>().configure(
@@ -731,6 +769,8 @@ pub fn run() {
             explain_start,
             explanation_get,
             explanation_import,
+            explanations_prepare,
+            explanations_status,
             online_query_start,
             settings_get,
             connection_status,

@@ -7,6 +7,7 @@ pub mod known_targets;
 pub mod lookup;
 pub mod media;
 pub mod ocr;
+pub mod preparation;
 pub mod review_policy;
 pub mod reviews;
 pub mod site_connection;

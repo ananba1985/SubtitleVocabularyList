@@ -8,6 +8,7 @@ const kinds: Record<string, string> = {
   collection: "词条收录",
   preview: "原声准备",
   explanation: "本地解释",
+  explanation_batch: "剧集中文资料准备",
   speech: "系统英语语音",
   selection: "划词采集",
   screen_capture: "截图选区准备",
@@ -46,6 +47,19 @@ type Result = {
   pushed?: number;
   pulled?: number;
   conflicts?: number;
+  preparation?: {
+    generated: number;
+    reused: number;
+    skipped: number;
+    failed: number;
+    sources: {
+      sourceId: string;
+      title: string;
+      current: number;
+      total: number;
+    }[];
+    failures: { source: string; text: string; message: string }[];
+  };
 };
 
 function date(value: number) {
@@ -79,6 +93,8 @@ export function TasksView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [preparing, setPreparing] = useState(false);
+  const [preparationNotice, setPreparationNotice] = useState("");
   useEffect(() => {
     if (!historyOpen) return;
     let disposed = false;
@@ -107,6 +123,36 @@ export function TasksView({
   }, [historyOpen, page, latest?.id, latest?.updatedAt, retry]);
   return (
     <div className="task-list">
+      <div className="preparation-action">
+        <button
+          className="secondary"
+          disabled={preparing}
+          onClick={async () => {
+            setPreparing(true);
+            try {
+              const value = await call<{ task: TaskSnapshot | null }>(
+                "explanations_prepare",
+              );
+              setPreparationNotice(
+                value.task
+                  ? "中文资料准备已加入后台，已保存内容会复用。"
+                  : "已导入剧集的中文资料已准备完成。",
+              );
+            } catch (error) {
+              setPreparationNotice(message(error));
+            } finally {
+              setPreparing(false);
+            }
+          }}
+        >
+          准备 / 继续中文资料
+        </button>
+        {preparationNotice && (
+          <p role="status" className="muted">
+            {preparationNotice}
+          </p>
+        )}
+      </div>
       <section aria-label="进行中的任务" className="task-section">
         <h2>进行中{active.length > 0 ? `（${active.length}）` : ""}</h2>
         {active.map((task) => (
@@ -314,6 +360,33 @@ function TaskCard({
         </p>
       )}
       {task.error && <p className="error">{task.error.message}</p>}
+      {task.kind === "explanation_batch" && value.preparation && (
+        <div className="task-result">
+          <p>
+            新生成 {value.preparation.generated} 项 · 复用{" "}
+            {value.preparation.reused} 项 · 跳过已掌握{" "}
+            {value.preparation.skipped} 项 · 未完成 {value.preparation.failed}{" "}
+            项
+          </p>
+          <details className="task-result-details">
+            <summary>
+              查看剧集准备明细（{value.preparation.sources.length}）
+            </summary>
+            <div className="import-result">
+              {value.preparation.sources.map((source) => (
+                <p key={source.sourceId}>
+                  {source.title} · {source.current}/{source.total} 项语境解释
+                </p>
+              ))}
+            </div>
+          </details>
+          {value.preparation.failed > 0 && (
+            <p className="muted">
+              部分内容未获得有效中文结果，可继续准备以补充剩余资料。
+            </p>
+          )}
+        </div>
+      )}
       {task.state === "cancelled" && !task.error && (
         <p className="muted">处理已取消，已保存内容保留。</p>
       )}

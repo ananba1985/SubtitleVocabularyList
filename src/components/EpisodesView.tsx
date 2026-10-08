@@ -16,6 +16,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { OnlineLookup } from "./OnlineLookup";
 import { CandidateMeaning } from "./CandidateMeaning";
 import { useLocalExplanation } from "../localExplanations";
+import { SourcePicker } from "./SourcePicker";
 export function EpisodesView({
   sourceCount,
   refreshKey,
@@ -111,6 +112,38 @@ export function EpisodesView({
       offset,
       limit: 40,
     }).then(setCandidates);
+  function selectSource(id: string) {
+    if (id === sourceId) return;
+    selectionVersion.current++;
+    setSourceId(id);
+    setCandidate(null);
+    setCandidates([]);
+    setExamples([]);
+    setIndex(0);
+    setEditing(false);
+    setAudioPath("");
+    setOffset(0);
+  }
+  async function prepareCurrent() {
+    const version = selectionVersion.current;
+    setBusy(true);
+    try {
+      const value = await call<{ task: TaskSnapshot | null }>(
+        "explanations_prepare",
+        { sourceId },
+      );
+      if (version === selectionVersion.current)
+        setImportNotice(
+          value.task
+            ? "中文资料已安排到后台，当前集会优先准备。"
+            : "当前集中文资料已准备完成。",
+        );
+    } catch (error) {
+      report(error);
+    } finally {
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     call<SourceSummary[]>("sources_list")
       .then((value) => {
@@ -521,23 +554,22 @@ export function EpisodesView({
       </div>
       {sources.length > 0 ? (
         <>
+          <SourcePicker
+            sources={sources}
+            sourceId={sourceId}
+            onSelect={selectSource}
+            action={
+              <button
+                className="secondary"
+                disabled={busy || !sourceId}
+                onClick={prepareCurrent}
+                title="优先准备当前集的词义和译文，进度在后台任务中查看"
+              >
+                优先准备当前集
+              </button>
+            }
+          />
           <div className="toolbar">
-            <select
-              aria-label="选择剧集"
-              value={sourceId}
-              onChange={(event) => {
-                selectionVersion.current++;
-                setSourceId(event.target.value);
-                setCandidate(null);
-                setOffset(0);
-              }}
-            >
-              {sources.map((source) => (
-                <option key={source.id} value={source.id}>
-                  {source.title} · {source.candidateCount} 个候选
-                </option>
-              ))}
-            </select>
             <input
               aria-label="搜索候选词"
               placeholder="搜索候选词或短语"
@@ -641,7 +673,11 @@ export function EpisodesView({
               ))}
               {!candidates.length && (
                 <div className="empty">
-                  <p>当前条件下没有待确认的候选。</p>
+                  <p>
+                    {sourceId
+                      ? "当前条件下没有待确认的候选。"
+                      : "请选择剧集资料。"}
+                  </p>
                 </div>
               )}
               <div className="pagination">
@@ -693,7 +729,9 @@ export function EpisodesView({
                         </button>
                       </div>
                     ) : (
-                      <p className="muted">正在生成中文解释…</p>
+                      <p className="muted">
+                        等待后台准备中文解释，可在后台任务查看进度。
+                      </p>
                     )}
                   </section>
                   <div className="context-nav">
@@ -728,7 +766,7 @@ export function EpisodesView({
                       {explanation.value?.translation ??
                         (explanation.state === "error"
                           ? "暂未获得原句翻译"
-                          : "正在翻译这句对白…")}
+                          : "等待后台准备原句翻译…")}
                     </p>
                     <span className="muted">
                       {example.decision === "familiar"

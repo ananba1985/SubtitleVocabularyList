@@ -1,20 +1,19 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { call, uid, waitTask } from "./api";
-import type { Explanation, TaskSnapshot } from "./types";
+import { call } from "./api";
+import type { Explanation } from "./types";
 
 type Snapshot = {
-  state: "idle" | "loading" | "ready" | "error";
+  state: "idle" | "loading" | "waiting" | "ready" | "error";
   value?: Explanation;
   error?: string;
 };
 type Entry = {
   key: string;
-  model: string;
   text: string;
   context: string;
   snapshot: Snapshot;
   listeners: Set<() => void>;
-  priority: boolean;
+  reading: boolean;
 };
 const idle: Snapshot = { state: "idle" };
 const storageKey = "svl.local-explanations.v1";
@@ -27,23 +26,19 @@ type Legacy = {
 type Runtime = {
   entries: Map<string, Entry>;
   legacy: Map<string, Legacy>;
-  unavailable: Set<string>;
-  queue: Entry[];
   loaded: boolean;
-  working: boolean;
+  status?: { state: string; expires: number };
+  statusPromise?: Promise<string>;
 };
-const runtime: Runtime = import.meta.hot?.data.databaseExplanations ?? {
+const runtime: Runtime = import.meta.hot?.data.preparedExplanations ?? {
   entries: new Map(),
   legacy: new Map(),
-  unavailable: new Set(),
-  queue: [],
   loaded: false,
-  working: false,
 };
-const { entries, legacy, unavailable, queue } = runtime;
+const { entries, legacy } = runtime;
 if (import.meta.hot)
   import.meta.hot.dispose((data) => {
-    data.databaseExplanations = runtime;
+    data.preparedExplanations = runtime;
   });
 const chinese = /[\u3400-\u9fff]/;
 
@@ -112,7 +107,25 @@ function migrated(entry: Entry, record: Legacy) {
     /* The database has committed; a leftover legacy copy is harmless. */
   }
 }
+async function preparationState() {
+  if (runtime.status && runtime.status.expires > Date.now())
+    return runtime.status.state;
+  if (!runtime.statusPromise) {
+    runtime.statusPromise = call<{ state: string }>("explanations_status")
+      .then((value) => {
+        runtime.status = { state: value.state, expires: Date.now() + 1000 };
+        return value.state;
+      })
+      .finally(() => {
+        runtime.statusPromise = undefined;
+      });
+  }
+  return runtime.statusPromise;
+}
 async function read(entry: Entry) {
+  if (entry.reading || entry.snapshot.state === "ready") return;
+  entry.reading = true;
+  if (entry.snapshot.state === "idle") publish(entry, { state: "loading" });
   try {
     let value = await call<Explanation | null>("explanation_get", {
       text: entry.text,
@@ -132,95 +145,45 @@ async function read(entry: Entry) {
       publish(entry, { state: "ready", value });
       return;
     }
+    const status = await preparationState();
+    if (status === "running") publish(entry, { state: "waiting" });
+    else
+      publish(entry, {
+        state: "error",
+        error:
+          status === "paused"
+            ? "后台准备已暂停，可继续准备中文资料。"
+            : status === "failed"
+              ? "后台准备因错误停止，请查看后台任务并重试。"
+              : "这项中文解释尚未生成，可继续后台准备以补充。",
+      });
   } catch {
     publish(entry, {
       state: "error",
       error: "本地解释资料暂时无法读取，请重试。",
     });
-    return;
-  }
-  if (!entry.listeners.size) {
-    publish(entry, idle);
-    return;
-  }
-  if (entry.priority) queue.unshift(entry);
-  else queue.push(entry);
-  void pump();
-}
-async function pump() {
-  if (runtime.working) return;
-  runtime.working = true;
-  try {
-    while (queue.length) {
-      const entry = queue.shift()!;
-      if (!entry.listeners.size) {
-        publish(entry, idle);
-        continue;
-      }
-      if (!entry.model || unavailable.has(entry.model)) {
-        publish(entry, {
-          state: "error",
-          error: "本地模型暂时不可用，可稍后重试。",
-        });
-        continue;
-      }
-      let task: TaskSnapshot | undefined;
-      try {
-        task = await call<TaskSnapshot>("explain_start", {
-          text: entry.text,
-          context: entry.context,
-          operationId: uid(),
-        });
-        const value = await waitTask<Explanation>(task, (progress) => {
-          task = progress;
-        });
-        if (!valid(value, entry.context))
-          throw new Error("Missing Chinese explanation");
-        publish(entry, { state: "ready", value });
-      } catch {
-        if (task?.error?.code === "provider_unavailable")
-          unavailable.add(entry.model);
-        publish(entry, {
-          state: "error",
-          error: unavailable.has(entry.model)
-            ? "本地模型暂时不可用，可稍后重试。"
-            : "暂未获得中文解释，请重试。",
-        });
-      }
-    }
   } finally {
-    runtime.working = false;
+    entry.reading = false;
   }
 }
-function request(entry: Entry, retry = false, priority = false) {
-  if (retry) {
-    unavailable.delete(entry.model);
-    for (const current of entries.values())
-      if (current.model === entry.model && current.snapshot.state === "error")
-        publish(current, idle);
+async function retry(entry: Entry) {
+  try {
+    await call("explanations_prepare");
+    await read(entry);
+  } catch {
+    publish(entry, {
+      state: "error",
+      error: "后台准备暂时无法启动，请到后台任务查看或重试。",
+    });
   }
-  if (entry.snapshot.state === "ready" && !retry) return;
-  if (entry.snapshot.state === "loading") {
-    if (priority) entry.priority = true;
-    const index = queue.indexOf(entry);
-    if (priority && index > 0) {
-      entry.priority = true;
-      queue.splice(index, 1);
-      queue.unshift(entry);
-    }
-    return;
-  }
-  entry.priority = priority;
-  publish(entry, { state: "loading" });
-  void read(entry);
 }
 
 export function useLocalExplanation(
   text: string,
   context: string,
-  model: string,
+  _model: string,
   active = true,
-  priority = false,
+  _priority = false,
 ) {
   loadLegacy();
   const key = JSON.stringify([text.trim(), context]);
@@ -228,16 +191,14 @@ export function useLocalExplanation(
   if (!entry) {
     entry = {
       key,
-      model,
       text: text.trim(),
       context,
-      priority,
+      reading: false,
       listeners: new Set(),
       snapshot: idle,
     };
     entries.set(key, entry);
   }
-  entry.model = model;
   const current = entry;
   const snapshot = useSyncExternalStore(
     (listener) => {
@@ -250,12 +211,10 @@ export function useLocalExplanation(
     () => current.snapshot,
   );
   useEffect(() => {
-    if (
-      active &&
-      current.text &&
-      (snapshot.state === "idle" || (snapshot.state === "loading" && priority))
-    )
-      request(current, false, priority);
-  }, [current, active, model, priority, snapshot.state]);
-  return { ...snapshot, retry: () => request(current, true, priority) };
+    if (!active || !current.text || snapshot.state === "ready") return;
+    void read(current);
+    const timer = setInterval(() => void read(current), 1500);
+    return () => clearInterval(timer);
+  }, [current, active, snapshot.state === "ready"]);
+  return { ...snapshot, retry: () => void retry(current) };
 }

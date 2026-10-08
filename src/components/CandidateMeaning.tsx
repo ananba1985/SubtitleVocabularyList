@@ -70,7 +70,7 @@ export function CandidateMeaning({
       title={value}
     >
       {value ??
-        (result.state === "error" ? "暂无中文释义" : "正在准备中文释义…")}
+        (result.state === "error" ? "暂无中文释义" : "等待后台准备中文释义…")}
     </span>
   );
 }

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.19 |
+| 文档版本 | 0.20 |
 | 更新日期 | 2026-10-08 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -61,6 +61,8 @@
 | CMD-26 | `connection_open` | 无参数 → 打开已保存请求的系统浏览器连接页 | FR-12 |
 | CMD-27 | `connection_status` | 无参数 → 仅本机保存状态，不发送网络请求 | FR-12、NFR-05 |
 | CMD-28 | `known_target_get/set`、`known_targets_list` | 查询/设置已掌握筛选偏好及分页管理，不修改测验成绩 | FR-02 至 FR-04、NFR-02 |
+| CMD-29 | `explanation_get` | 按目标和完整语境读取本地解释，不依赖模型 | FR-02、FR-08、NFR-02 |
+| CMD-30 | `explanation_import` | 按需迁入旧浏览器解释，不覆盖数据库资料或产生收录行为 | FR-08、NFR-02 |
 
 全局取词与截图触发直接进入同一核心采集入口，先取得原应用上下文再显示窗口。CMD-06、CMD-07 不是让弹窗取得焦点后重新猜测原窗口的操作。
 
@@ -87,7 +89,9 @@
 | `collection_from_example` | `{sourceId,exampleId,text,kind,meaning,operationId}` → 同一 PreparedCollection，核心取得当前对白 |
 | `collection_commit` | `{draftId,targetEntryId,expectedRevision,saveAudio}` → TaskSnapshot；创建时目标与版本为 null，操作标识来自准备好的 input |
 | `preview_start`、`media_path` | 前者 `{sourceId,exampleId,operationId}` → 片段准备任务；后者 `{assetId}` → 经位置、状态与摘要核对的路径 |
-| `explain_start` | `{text,context,operationId}` → 本地解释任务，结果为 meaning、translation、notes 字符串；仅显式采用后进入收录内容 |
+| `explain_start` | `{text,context,operationId}` → 本地解释任务；优先返回对应数据库记录，缺失才请求模型；结果为 meaning、translation、notes 字符串，成功前提交解释资料；仅显式采用后进入收录内容 |
+| `explanation_get` | `{text,context}` → Explanation 或 null；按完整目标和语境读取 SQLite，不连接模型或产生任务 |
+| `explanation_import` | `{text,context,value:{meaning,translation,notes},modelUrl,modelName}` → 数据库 Explanation；兼容旧浏览器缓存，校验中文及长度，只追加缺失记录，重复导入返回原结果，不创建词条或学习记录 |
 | `settings_get`、`settings_update` | 后者 `{settings}`，本地模型限回环地址，保存离线开关、声音等偏好；返回当前工具位置供检查，忽略传入工具路径且不将路径写入用户设置 |
 | `capture_selection` | 无参数，先记录前台上下文，再返回取词 TaskSnapshot；成功发出 capture_completed，失败不返回旧内容 |
 | `capture_ocr`、`capture_session_get` | 前者无参数 → screen_capture TaskSnapshot，成功结果 sessionId、stage=awaiting_selection；后者 `{sessionId}` → 本次快照路径与物理 ScreenBounds |
@@ -113,9 +117,9 @@
 
 设置增加 `closeToTray:boolean`，缺省为 false；旧设置缺少该字段时采用默认完全退出，不改变 schema。`settings_update` 与其他偏好共同保存，主窗口 CloseRequested 读取已保存值：true 隐藏窗口，false 或设置读取失败调用共享退出流程。`app_quit` 和托盘“退出”始终取消未结束任务，最多等待 3 秒后请求应用退出；不关闭调用者已存在的终端窗口。
 
-`offlineMode:boolean` 默认 false，表示是否手动禁止外网；旧资料显式保存的 true 保留，无设置或缺字段采用新默认。`app_info` 增加 `networkUnavailable:boolean`，只返回当前进程最近完成的在线任务连接降级状态，不持久化、不触发联网。网络任务报 `network_unavailable` 时置 true；成功及可取得响应的 `network_error`/`auth_required`/`not_found`/`invalid_data` 置 false；取消和其他本地控制错误保持原状态。手动离线检查只依赖 offlineMode，自动降级不拒绝重试，schema 仍为 5。
+`offlineMode:boolean` 默认 false，表示是否手动禁止外网；旧资料显式保存的 true 保留，无设置或缺字段采用新默认。`app_info` 增加 `networkUnavailable:boolean`，只返回当前进程最近完成的在线任务连接降级状态，不持久化、不触发联网。网络任务报 `network_unavailable` 时置 true；成功及可取得响应的 `network_error`/`auth_required`/`not_found`/`invalid_data` 置 false；取消和其他本地控制错误保持原状态。手动离线检查只依赖 offlineMode，自动降级不拒绝重试；离线偏好与降级状态本身不改变数据库 schema。
 
-预习自动解释复用现有 explain_start/task_get，没有新 HTTP 入口或 SQLite 表。前端收到必要中文字段后才作为成功预览缓存；缓存键为模型标识、目标和语境，不将缓存等同已确认词条。CollectionSeed 增加可选 meaning，仅供草稿初值；原生划词/OCR 事件不含该字段时保持旧行为。用户确认后仍走既有收录接口，缓存内容不自动同步或提交。
+预习先调用 explanation_get，必要时迁移旧缓存，再复用 explain_start/task_get 补充缺失解释；没有新增 HTTP 入口。schema 6 新增 explanations 表，身份为目标（去除边界空白）和完整语境，模型标识仅记录生成来源。原生核心要求中文词义、非空语境对应中文译文，成功保存后才返回结果；重复请求或导入不覆盖已有记录。数据库读取不受模型失败暂停状态影响。CollectionSeed 增加可选 meaning，仅供草稿初值；原生划词/OCR 事件不含该字段时保持旧行为。用户确认后仍走既有收录接口，未收录语料解释不自动同步。
 
 本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
@@ -247,3 +251,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.17 | 2026-10-07 | 增加 closeToTray 默认值、持久化与主窗口/完全退出命令的行为契约 |
 | 0.18 | 2026-10-07 | 明确 offlineMode 默认 false、app_info 运行期状态和连接失败/服务错误分类，保持 schema 与重试入口 |
 | 0.19 | 2026-10-08 | 明确自动预习解释复用接口、中文结果缓存及可选草稿 meaning，保持原生事件和数据库兼容 |
+| 0.20 | 2026-10-08 | 新增解释数据库读取与旧缓存导入，明确 schema 6、模型来源与身份分离、保存成功后返回 |

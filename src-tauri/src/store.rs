@@ -21,7 +21,7 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 5 {
+        if version > 6 {
             return Err(AppError::new(
                 "unsupported_schema",
                 "此词库由较新版本创建，请使用对应软件版本打开。",
@@ -55,6 +55,12 @@ impl Store {
             let transaction = connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/005_sync.sql"))?;
             transaction.pragma_update(None, "user_version", 5)?;
+            transaction.commit()?;
+        }
+        if version < 6 {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/006_explanations.sql"))?;
+            transaction.pragma_update(None, "user_version", 6)?;
             transaction.commit()?;
         }
         Ok(Self {
@@ -91,7 +97,7 @@ mod tests {
     fn database_migrates_once_and_enforces_relationships() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 5);
+        assert_eq!(store.schema_version().unwrap(), 6);
         assert_eq!(
             store
                 .connection()
@@ -108,7 +114,7 @@ mod tests {
                 .unwrap()
                 .schema_version()
                 .unwrap(),
-            5
+            6
         );
     }
 
@@ -138,7 +144,7 @@ mod tests {
         connection.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('existing','word','reluctant','reluctant',1,1)",[]).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 5);
+        assert_eq!(store.schema_version().unwrap(), 6);
         assert_eq!(store.get_entry("existing").unwrap().text, "reluctant");
     }
 
@@ -162,7 +168,7 @@ mod tests {
         connection.pragma_update(None, "user_version", 2).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 5);
+        assert_eq!(store.schema_version().unwrap(), 6);
         let entry = store.get_entry("e").unwrap();
         assert_eq!(entry.collection_count, 1);
         assert_eq!(entry.examples[0].text, "She was reluctant.");
@@ -173,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn version_four_upgrade_preserves_media_and_history_and_marks_existing_words() {
+    fn version_five_upgrade_preserves_media_history_meanings_and_sync_state() {
         let directory = tempfile::tempdir().unwrap();
         let connection = Connection::open(directory.path().join("vocabulary.sqlite3")).unwrap();
         for migration in [
@@ -181,6 +187,7 @@ mod tests {
             include_str!("../migrations/002_imports.sql"),
             include_str!("../migrations/003_reviews.sql"),
             include_str!("../migrations/004_example_contexts.sql"),
+            include_str!("../migrations/005_sync.sql"),
         ] {
             connection.execute_batch(migration).unwrap();
         }
@@ -195,7 +202,13 @@ mod tests {
             INSERT INTO review_states(unit_id,state_json,due_at,relearn_at) VALUES ('u','{}',100,100);
             INSERT INTO review_attempts(id,operation_id,request_hash,unit_id,question_json,answer,hinted,outcome,grader,policy_version,state_before_json,created_at) VALUES ('answer','submit','hash','u','{}','早餐',0,'correct','exact_or_confirm','svl-review-1','{}',101);
             INSERT INTO review_corrections(id,operation_id,attempt_id,expected_revision,outcome,reason,created_at,request_hash) VALUES ('correction','correct','answer',1,'incorrect','合成迁移检查',102,'hash');").unwrap();
-        connection.pragma_update(None, "user_version", 4).unwrap();
+        connection.pragma_update(None, "user_version", 5).unwrap();
+        connection
+            .execute(
+                "INSERT INTO sync_dirty_entries(entry_id,epoch,updated_at) VALUES ('e',1,100)",
+                [],
+            )
+            .unwrap();
         drop(connection);
         std::fs::create_dir_all(directory.path().join("media")).unwrap();
         std::fs::write(
@@ -204,10 +217,11 @@ mod tests {
         )
         .unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 5);
+        assert_eq!(store.schema_version().unwrap(), 6);
         let entry = store.get_entry("e").unwrap();
         assert_eq!(entry.collection_count, 1);
         assert_eq!(entry.examples[0].contexts[0].context_meaning, "早餐");
+        assert_eq!(entry.meanings[0].text, "早餐");
         assert_eq!(entry.examples[0].audio[0].id, "a");
         let c = store.connection().unwrap();
         let answer: String = c

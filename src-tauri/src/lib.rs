@@ -2,6 +2,7 @@ pub mod application;
 pub mod corpus;
 pub mod desktop_layout;
 pub mod error;
+pub mod explanations;
 pub mod known_targets;
 pub mod lookup;
 pub mod media;

@@ -328,6 +328,31 @@ fn media_path(app: AppState<'_>, asset_id: String) -> Result<PathBuf, AppError> 
     app.store.media_file(&asset_id)
 }
 #[tauri::command]
+async fn explanation_get(
+    app: AppState<'_>,
+    text: String,
+    context: String,
+) -> Result<Option<crate::explanations::Explanation>, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.explanation(&text, &context)).await
+}
+#[tauri::command]
+async fn explanation_import(
+    app: AppState<'_>,
+    text: String,
+    context: String,
+    value: crate::explanations::Explanation,
+    model_url: String,
+    model_name: String,
+) -> Result<crate::explanations::Explanation, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        app.store
+            .save_explanation(&text, &context, &value, &model_url, &model_name)
+    })
+    .await
+}
+#[tauri::command]
 fn explain_start(
     app: AppState<'_>,
     text: String,
@@ -704,6 +729,8 @@ pub fn run() {
             preview_start,
             media_path,
             explain_start,
+            explanation_get,
+            explanation_import,
             online_query_start,
             settings_get,
             connection_status,

@@ -18,26 +18,32 @@ type Entry = {
 };
 const idle: Snapshot = { state: "idle" };
 const storageKey = "svl.local-explanations.v1";
+type Legacy = {
+  value: Explanation;
+  modelUrl: string;
+  modelName: string;
+  oldKey: string;
+};
 type Runtime = {
   entries: Map<string, Entry>;
-  saved: Map<string, Explanation>;
+  legacy: Map<string, Legacy>;
   unavailable: Set<string>;
   queue: Entry[];
   loaded: boolean;
   working: boolean;
 };
-const runtime: Runtime = import.meta.hot?.data.localExplanations ?? {
+const runtime: Runtime = import.meta.hot?.data.databaseExplanations ?? {
   entries: new Map(),
-  saved: new Map(),
+  legacy: new Map(),
   unavailable: new Set(),
   queue: [],
   loaded: false,
   working: false,
 };
-const { entries, saved, unavailable, queue } = runtime;
+const { entries, legacy, unavailable, queue } = runtime;
 if (import.meta.hot)
   import.meta.hot.dispose((data) => {
-    data.localExplanations = runtime;
+    data.databaseExplanations = runtime;
   });
 const chinese = /[\u3400-\u9fff]/;
 
@@ -47,44 +53,99 @@ function valid(value: Explanation, context: string) {
     typeof value.meaning === "string" &&
     typeof value.translation === "string" &&
     typeof value.notes === "string" &&
+    [value.meaning, value.translation, value.notes].every(
+      (part) => part.length <= 16000,
+    ) &&
     chinese.test(value.meaning) &&
     (!context.trim() || chinese.test(value.translation))
   );
 }
-function load() {
+function loadLegacy() {
   if (runtime.loaded) return;
   runtime.loaded = true;
   try {
     const values = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
     if (Array.isArray(values))
-      for (const [key, value] of values.slice(-500)) {
-        const parts = JSON.parse(key);
-        if (Array.isArray(parts) && valid(value, parts[2] ?? ""))
-          saved.set(key, value);
+      for (const record of values) {
+        try {
+          const [oldKey, value] = record;
+          const [model, text, context] = JSON.parse(oldKey);
+          const [modelUrl, modelName] = JSON.parse(model);
+          if (
+            [text, context, modelUrl, modelName].every(
+              (part) => typeof part === "string",
+            ) &&
+            text.length <= 4000 &&
+            context.length <= 20000 &&
+            modelUrl.length <= 4000 &&
+            modelName.length <= 1000 &&
+            valid(value, context)
+          )
+            legacy.set(JSON.stringify([text.trim(), context]), {
+              value,
+              modelUrl,
+              modelName,
+              oldKey,
+            });
+        } catch {
+          /* Skip malformed legacy records individually. */
+        }
       }
   } catch {
-    /* Preview caching must not prevent local learning. */
+    /* A malformed legacy cache must not block database reads. */
   }
 }
 function publish(entry: Entry, snapshot: Snapshot) {
   entry.snapshot = snapshot;
   entry.listeners.forEach((listener) => listener());
 }
-function save(entry: Entry, value: Explanation) {
-  saved.delete(entry.key);
-  saved.set(entry.key, value);
-  while (saved.size > 500) {
-    const key = saved.keys().next().value!;
-    saved.delete(key);
-    const previous = entries.get(key);
-    if (previous?.snapshot.state === "ready" && !previous.listeners.size)
-      entries.delete(key);
-  }
+function migrated(entry: Entry, record: Legacy) {
+  legacy.delete(entry.key);
   try {
-    localStorage.setItem(storageKey, JSON.stringify([...saved]));
+    const values = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+    if (Array.isArray(values))
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify(values.filter((item) => item?.[0] !== record.oldKey)),
+      );
   } catch {
-    /* Keep the in-memory result. */
+    /* The database has committed; a leftover legacy copy is harmless. */
   }
+}
+async function read(entry: Entry) {
+  try {
+    let value = await call<Explanation | null>("explanation_get", {
+      text: entry.text,
+      context: entry.context,
+    });
+    const record = legacy.get(entry.key);
+    if (!value && record)
+      value = await call<Explanation>("explanation_import", {
+        text: entry.text,
+        context: entry.context,
+        value: record.value,
+        modelUrl: record.modelUrl,
+        modelName: record.modelName,
+      });
+    if (value) {
+      if (record) migrated(entry, record);
+      publish(entry, { state: "ready", value });
+      return;
+    }
+  } catch {
+    publish(entry, {
+      state: "error",
+      error: "本地解释资料暂时无法读取，请重试。",
+    });
+    return;
+  }
+  if (!entry.listeners.size) {
+    publish(entry, idle);
+    return;
+  }
+  if (entry.priority) queue.unshift(entry);
+  else queue.push(entry);
+  void pump();
 }
 async function pump() {
   if (runtime.working) return;
@@ -96,7 +157,7 @@ async function pump() {
         publish(entry, idle);
         continue;
       }
-      if (unavailable.has(entry.model)) {
+      if (!entry.model || unavailable.has(entry.model)) {
         publish(entry, {
           state: "error",
           error: "本地模型暂时不可用，可稍后重试。",
@@ -115,7 +176,6 @@ async function pump() {
         });
         if (!valid(value, entry.context))
           throw new Error("Missing Chinese explanation");
-        save(entry, value);
         publish(entry, { state: "ready", value });
       } catch {
         if (task?.error?.code === "provider_unavailable")
@@ -141,6 +201,7 @@ function request(entry: Entry, retry = false, priority = false) {
   }
   if (entry.snapshot.state === "ready" && !retry) return;
   if (entry.snapshot.state === "loading") {
+    if (priority) entry.priority = true;
     const index = queue.indexOf(entry);
     if (priority && index > 0) {
       entry.priority = true;
@@ -151,9 +212,7 @@ function request(entry: Entry, retry = false, priority = false) {
   }
   entry.priority = priority;
   publish(entry, { state: "loading" });
-  if (entry.priority) queue.unshift(entry);
-  else queue.push(entry);
-  void pump();
+  void read(entry);
 }
 
 export function useLocalExplanation(
@@ -163,8 +222,8 @@ export function useLocalExplanation(
   active = true,
   priority = false,
 ) {
-  load();
-  const key = JSON.stringify([model, text.trim(), context]);
+  loadLegacy();
+  const key = JSON.stringify([text.trim(), context]);
   let entry = entries.get(key);
   if (!entry) {
     entry = {
@@ -174,12 +233,11 @@ export function useLocalExplanation(
       context,
       priority,
       listeners: new Set(),
-      snapshot: saved.has(key)
-        ? { state: "ready", value: saved.get(key)! }
-        : idle,
+      snapshot: idle,
     };
     entries.set(key, entry);
   }
+  entry.model = model;
   const current = entry;
   const snapshot = useSyncExternalStore(
     (listener) => {
@@ -195,7 +253,6 @@ export function useLocalExplanation(
     if (
       active &&
       current.text &&
-      model &&
       (snapshot.state === "idle" || (snapshot.state === "loading" && priority))
     )
       request(current, false, priority);

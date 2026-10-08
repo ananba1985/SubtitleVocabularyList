@@ -1,6 +1,7 @@
 use crate::{
     corpus::{self, SourceSummary},
     error::AppError,
+    explanations::{self, Explanation},
     media::{self, MediaTools},
     store::Store,
     tasks::{TaskContext, TaskManager, TaskSnapshot},
@@ -437,19 +438,17 @@ impl Application {
         context_text: String,
         operation_id: String,
     ) -> Result<TaskSnapshot, AppError> {
-        if text.trim().is_empty()
-            || text.chars().count() > 4000
-            || context_text.chars().count() > 20000
-        {
-            return Err(AppError::new(
-                "invalid_input",
-                "请提供有效的词语和有限语境。",
-            ));
-        }
+        explanations::validate_input(&text, &context_text)?;
+        let text = text.trim().to_owned();
         let settings = self.settings()?;
+        let store = Arc::clone(&self.store);
         let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &context_text))?);
         self.tasks.start("explanation",&operation_id,&hash,move|context|{
             context.subject(&text);
+            context.check_cancelled()?;
+            if let Some(value) = store.explanation(&text, &context_text)? {
+                return Ok(serde_json::to_value(value)?);
+            }
             context.progress("model",0,1,"本地模型正在解释");context.check_cancelled()?;
             let client=reqwest::blocking::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).timeout(std::time::Duration::from_secs(60)).connect_timeout(std::time::Duration::from_secs(5)).build().map_err(provider_error)?;
             let url=format!("{}/v1/chat/completions",settings.model_url.trim_end_matches('/'));
@@ -458,9 +457,10 @@ impl Application {
             context.check_cancelled()?;
             let content=response["choices"][0]["message"]["content"].as_str().ok_or_else(||AppError::new("invalid_data","模型没有返回有效解释。"))?;
             let stripped=content.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
-            let value:Value=serde_json::from_str(stripped).map_err(|_|AppError::new("invalid_data","模型结果格式无效，原文和草稿已保留。"))?;
-            if !["meaning","translation","notes"].iter().all(|field|value[*field].is_string()){return Err(AppError::new("invalid_data","模型解释缺少必要文本字段。"));}
-            Ok(value)
+            let value:Explanation=serde_json::from_str(stripped).map_err(|_|AppError::new("invalid_data","模型结果格式无效，原文和草稿已保留。"))?;
+            context.check_cancelled()?;
+            let saved = store.save_explanation(&text, &context_text, &value, &settings.model_url, &settings.model_name)?;
+            Ok(serde_json::to_value(saved)?)
         })
     }
 }

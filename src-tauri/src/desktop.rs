@@ -507,9 +507,16 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            #[cfg(debug_assertions)]
+            let default_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .ok_or("Missing project directory")?
+                .join(".local/dev-data");
+            #[cfg(not(debug_assertions))]
+            let default_root = app.path().app_data_dir()?;
             let root = std::env::var_os("SVL_DATA_DIR")
                 .map(PathBuf::from)
-                .unwrap_or(app.path().app_data_dir()?);
+                .unwrap_or(default_root);
             let store = Arc::new(Store::open(root)?);
             app.asset_protocol_scope()
                 .allow_directory(store.root().join("media"), true)?;

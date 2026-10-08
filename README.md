@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-**0.1.0 候选版已完成声明支持环境内的技术验收，可进行用户验收。** 安装包与匹配源码材料位于 `release/0.1.0`，见[发布说明与验收步骤](docs/release/0.1.0-release-notes.md)。实际出站限制下已验证冷启动、转写、OCR、收录、原声/系统声音及测验，用户已确认听感；真实站点双向资料、3000 条历史与原声、冲突和恢复已有证据。台式机完成重启和两次覆盖安装的数据保持。支持范围、未测配置及退出日志见[当前验收覆盖](docs/testing/acceptance-status.md)，不承诺全部应用、系统或多屏兼容。
+**项目仍在开发中，当前版本号为 0.1.0，尚未正式发布。** 功能开发使用本机开发环境进行验证，不随每次功能变更生成或安装发行包。历史候选包及安装验收记录见[发布记录](docs/release/0.1.0-release-notes.md)，这些记录不代表后续代码已经打包或正式发布。当前功能证据与兼容边界见[验收覆盖](docs/testing/acceptance-status.md)。
 
 产品名称、公开仓库名称和本地工作目录名称统一为 **SubtitleVocabularyList**。
 
@@ -68,8 +68,19 @@
 
 - `pnpm build`：前端类型检查与构建。
 - `pnpm test:core`：不启动界面的 Rust 核心测试。
-- `pnpm desktop:dev`：开发中的桌面程序，已接入导入、预习与词库界面。
-- `pnpm tauri build --debug --no-bundle`：当前已验证的 Windows 调试程序构建。
+- `pnpm desktop:dev`：本机调试运行，前端热更新、Rust 变更重启；使用本地 PATH、`.tools/runtime` 和 `.local/dev-data`。
+- `pnpm desktop:build`：手动生成本地调试 exe，输出 `.local/build/SubtitleVocabularyList.exe` 和 `run-local.ps1`；使用本机开发资源，不生成安装包，可在未提交代码上执行。
+- `pnpm desktop:package`：手动发布打包，复用已准备的离线发行资源；输出 `release/<版本>/` 下的安装包、`standalone/SubtitleVocabularyList.exe` 及其 `tools/`、对应源码材料和摘要。要求源码已提交且工作区干净，不自动安装。
+
+需要传入目录或首次构建发行工具时，可直接执行脚本：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
+```
+
+第三条仅在需要打包时手动执行，首次会准备离线发行资源；资源已有时加 `-SkipToolBuild`。三个入口均支持 `-CheckOnly` 查看环境和执行计划，不启动应用或构建安装包。调试与发布使用不同应用标识，调试数据默认留在工作区；调试脚本可用 `-DataDirectory` 显式指定词库。具体准备与验证范围见[开发环境说明](docs/development/windows-environment.md)。
 
 媒体原型另需 FFmpeg、ffprobe 与英语 Tesseract。`scripts/setup-tools.ps1` 准备私有的 Whisper 程序和模型，并校验模型摘要；它用于开发资源准备，不是最终用户安装说明。
 

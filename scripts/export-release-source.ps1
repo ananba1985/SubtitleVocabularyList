@@ -1,6 +1,8 @@
-param([string]$OutputDirectory='release\0.1.0',[string]$SourceRef='HEAD')
+param([string]$OutputDirectory='',[string]$SourceRef='HEAD')
 $ErrorActionPreference='Stop'
 $svlWorkspace=(Get-Location).Path
+$svlVersion=(Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json).version
+if(-not $OutputDirectory){$OutputDirectory='release/'+$svlVersion}
 $svlCommit=(& git rev-parse --verify ($SourceRef+'^{commit}')).Trim()
 if($LASTEXITCODE -ne 0){throw 'Cannot resolve release source revision.'}
 if(& git status --porcelain){throw 'Commit intended changes before exporting release source materials.'}
@@ -63,7 +65,7 @@ while($svlQueue.Count){
 Copy-Item -LiteralPath (Join-Path $svlWorkspace '.tools/release-resources/licenses') -Destination $svlStage -Recurse
 Copy-Item -LiteralPath (Join-Path $svlWorkspace 'LICENSE'),(Join-Path $svlWorkspace 'THIRD_PARTY_NOTICES.md') -Destination $svlStage
 $svlReadme=@"
-SubtitleVocabularyList 0.1.0 源码与构建材料
+SubtitleVocabularyList $svlVersion 源码与构建材料
 
 应用源码提交：$svlCommit
 应用 ZIP 包含固定依赖锁文件、数据库迁移和 scripts/build-offline-*.ps1。
@@ -84,7 +86,7 @@ $svlManifest=Get-ChildItem -LiteralPath $svlStage -Recurse -File | ForEach-Objec
 [IO.File]::WriteAllText((Join-Path $svlStage 'source-manifest.json'),(@{commit=$svlCommit;files=@($svlManifest)}|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
 $svlOutput=if([IO.Path]::IsPathRooted($OutputDirectory)){[IO.Path]::GetFullPath($OutputDirectory)}else{[IO.Path]::GetFullPath((Join-Path $svlWorkspace $OutputDirectory))}
 New-Item -ItemType Directory -Path $svlOutput -Force | Out-Null
-$svlArchive=Join-Path $svlOutput 'SubtitleVocabularyList_0.1.0_source-materials.zip'
+$svlArchive=Join-Path $svlOutput ('SubtitleVocabularyList_'+$svlVersion+'_source-materials.zip')
 # npm archives can carry Unix epoch timestamps, outside ZIP's 1980-2107 range.
 # Adjust copied metadata only; dependency source bytes and hashes stay intact.
 foreach($svlFile in Get-ChildItem -LiteralPath $svlStage -Recurse -File){

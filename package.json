@@ -8,8 +8,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build",
+    "desktop:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev.ps1",
+    "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-local.ps1",
+    "desktop:package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1 -SkipToolBuild",
     "test:core": "cargo test --manifest-path src-tauri/Cargo.toml --no-default-features"
   },
   "dependencies": {

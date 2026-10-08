@@ -21,6 +21,9 @@
 - Core learning and storage must work offline. Network access is limited to configured integrations and user-authorized online actions.
 - Reuse Pot code selectively after reviewing its dependencies, failure behavior and license. Do not make the application depend on a running Pot installation.
 - Validate changes in proportion to their impact. Test actual capture, audio and synchronization flows when those capabilities are implemented.
+- During feature development, use the local development environment and proportional local verification. Do not rebuild or install release packages for each feature.
+- Build installers, standalone release directories, source materials and perform installation acceptance only when the user explicitly requests packaging or a version is being released. Keep packaging a manual entry point.
+- Use `pnpm desktop:dev` for local debugging, `pnpm desktop:build` for a manually requested local debug executable, and `pnpm desktop:package` for a manually requested release package.
 - Keep runtime user data, media, model weights and credentials out of the public repository. Use synthetic fixtures for committed tests.
 - Clean up disposable temporary artifacts. Keep necessary deliverables in durable project locations.
 

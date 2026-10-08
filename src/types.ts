@@ -92,6 +92,17 @@ export interface Candidate {
   handledCount: number;
   exampleCount: number;
   existingEntryCount: number;
+  isKnown?: boolean;
+}
+export interface KnownTarget {
+  kind: string;
+  text: string;
+  matchKey: string;
+  markedAt: number;
+}
+export interface KnownTargetPage {
+  items: KnownTarget[];
+  total: number;
 }
 export interface CandidateExample {
   id: string;
@@ -146,6 +157,7 @@ export interface Settings {
   };
 }
 export interface CollectionSeed {
+  alreadyKnown?: boolean;
   text: string;
   kind: string;
   context: string;

@@ -159,7 +159,7 @@ impl NativeDesktop {
                 Ok(json!({"text":selected.text,"kind":kind,"context":selected.context,"sourceId":source_id,"sourceTitle":title,"locationKey":digest(selected.text.as_bytes())}))
             })();
             match &result {
-                Ok(value)=>{let _=handle.emit("capture_completed",value);show_main(&handle);},
+                Ok(value)=>{deliver_capture(&handle,value);},
                 Err(error)=>{if error.code!="cancelled"{capture_failed(&handle,error);}},
             }
             result
@@ -175,6 +175,22 @@ pub fn show_main(app: &AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+pub fn deliver_capture(app: &AppHandle, value: &serde_json::Value) {
+    let known = app
+        .state::<Arc<Application>>()
+        .store
+        .is_known_target(
+            value["kind"].as_str().unwrap_or(""),
+            value["text"].as_str().unwrap_or(""),
+        )
+        .unwrap_or(false);
+    let mut payload = value.clone();
+    payload["alreadyKnown"] = serde_json::Value::Bool(known);
+    let _ = app.emit("capture_completed", payload);
+    if !known {
+        show_main(app);
     }
 }
 pub fn capture_failed(app: &AppHandle, error: &AppError) {

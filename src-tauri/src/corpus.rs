@@ -50,6 +50,12 @@ pub struct Candidate {
     pub handled_count: i64,
     pub example_count: i64,
     pub existing_entry_count: i64,
+    pub is_known: bool,
+}
+
+pub struct CandidateVisibility {
+    pub only_pending: bool,
+    pub include_known: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -293,16 +299,52 @@ impl Store {
         offset: u32,
         limit: u32,
     ) -> Result<Vec<Candidate>, AppError> {
+        self.candidate_page(
+            source_id,
+            search,
+            kind,
+            CandidateVisibility {
+                only_pending,
+                include_known: false,
+            },
+            offset,
+            limit,
+        )
+    }
+
+    pub fn candidate_page(
+        &self,
+        source_id: &str,
+        search: &str,
+        kind: &str,
+        visibility: CandidateVisibility,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Candidate>, AppError> {
         let connection = self.connection()?;
-        let mut query=connection.prepare("SELECT o.candidate_key,MIN(o.raw_text),o.kind,COUNT(*),COUNT(DISTINCT o.example_id),(SELECT COUNT(*) FROM entries en WHERE en.kind=o.kind AND en.match_key=o.candidate_key),SUM(CASE WHEN d.decision IN ('familiar','collected') THEN 1 ELSE 0 END) FROM occurrences o LEFT JOIN candidate_decisions d ON d.source_id=o.source_id AND d.candidate_key=o.candidate_key AND d.scope_key=o.example_id WHERE o.source_id=? AND instr(o.candidate_key,?)>0 AND (?='' OR o.kind=?) GROUP BY o.candidate_key,o.kind HAVING (?=0 OR SUM(CASE WHEN d.decision IN ('familiar','collected') THEN 1 ELSE 0 END)<COUNT(*)) ORDER BY length(o.candidate_key) DESC,COUNT(*) DESC,o.candidate_key LIMIT ? OFFSET ?")?;
+        let mut query = connection.prepare(
+            "SELECT o.candidate_key,MIN(o.raw_text),o.kind,COUNT(*),COUNT(DISTINCT o.example_id),
+             (SELECT COUNT(*) FROM entries en WHERE en.kind=o.kind AND en.match_key=o.candidate_key),
+             SUM(CASE WHEN d.decision IN ('familiar','collected') THEN 1 ELSE 0 END),k.key IS NOT NULL
+             FROM occurrences o LEFT JOIN candidate_decisions d
+               ON d.source_id=o.source_id AND d.candidate_key=o.candidate_key AND d.scope_key=o.example_id
+             LEFT JOIN settings k ON k.key=? || o.kind || ':' || o.candidate_key
+             WHERE o.source_id=? AND instr(o.candidate_key,?)>0 AND (?='' OR o.kind=?) AND (?=1 OR k.key IS NULL)
+             GROUP BY o.candidate_key,o.kind
+             HAVING (?=0 OR SUM(CASE WHEN d.decision IN ('familiar','collected') THEN 1 ELSE 0 END)<COUNT(*) OR (?=1 AND k.key IS NOT NULL))
+             ORDER BY length(o.candidate_key) DESC,COUNT(*) DESC,o.candidate_key LIMIT ? OFFSET ?",
+        )?;
         Ok(query
             .query_map(
                 params![
+                    crate::known_targets::PREFIX,
                     source_id,
                     vocabulary::normalize(search),
                     kind,
                     kind,
-                    only_pending,
+                    visibility.include_known,
+                    visibility.only_pending,
+                    visibility.include_known,
                     limit.clamp(1, 100),
                     offset
                 ],
@@ -315,6 +357,7 @@ impl Store {
                         example_count: row.get(4)?,
                         existing_entry_count: row.get(5)?,
                         handled_count: row.get(6)?,
+                        is_known: row.get(7)?,
                     })
                 },
             )?
@@ -657,6 +700,153 @@ mod tests {
             ],
         }
     }
+    #[test]
+    fn globally_known_targets_hide_across_existing_and_future_sources_without_losing_dialogue() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let data = corpus();
+        let first = store
+            .install_corpus(
+                Path::new("first.mkv"),
+                "first",
+                &data,
+                Path::new("first.json"),
+            )
+            .unwrap();
+        let second = store
+            .install_corpus(
+                Path::new("second.mkv"),
+                "second",
+                &data,
+                Path::new("second.json"),
+            )
+            .unwrap();
+        let examples = store.candidate_examples(&first.id, "give up").unwrap();
+        store
+            .decide_candidate(&first.id, "give up", &examples[0].id, "familiar")
+            .unwrap();
+        assert_eq!(
+            store
+                .candidates(&second.id, "give up", "phrase", true, 0, 40)
+                .unwrap()
+                .len(),
+            1
+        );
+        store.set_known_target("word", "give", true).unwrap();
+        assert_eq!(
+            store
+                .candidates(&second.id, "give up", "phrase", true, 0, 40)
+                .unwrap()
+                .len(),
+            1
+        );
+        store
+            .set_known_target("phrase", "  GIVE   UP ", true)
+            .unwrap();
+        for example in store.candidate_examples(&second.id, "give up").unwrap() {
+            store
+                .decide_candidate(&second.id, "give up", &example.id, "familiar")
+                .unwrap();
+        }
+        let third = store
+            .install_corpus(
+                Path::new("third.mkv"),
+                "third",
+                &data,
+                Path::new("third.json"),
+            )
+            .unwrap();
+        for source in [&first, &second, &third] {
+            assert!(
+                store
+                    .candidates(&source.id, "give up", "phrase", false, 0, 40)
+                    .unwrap()
+                    .is_empty()
+            );
+            let included = store
+                .candidate_page(
+                    &source.id,
+                    "give up",
+                    "phrase",
+                    CandidateVisibility {
+                        only_pending: true,
+                        include_known: true,
+                    },
+                    0,
+                    40,
+                )
+                .unwrap();
+            assert_eq!(included.len(), 1);
+            assert!(included[0].is_known);
+            assert_eq!(included[0].count, 3);
+            assert_eq!(
+                store
+                    .candidate_examples(&source.id, "give up")
+                    .unwrap()
+                    .len(),
+                2
+            );
+        }
+        assert!(
+            store
+                .candidates(&third.id, "tomorrow", "word", true, 0, 40)
+                .unwrap()
+                .iter()
+                .all(|candidate| !candidate.is_known)
+        );
+        store.set_known_target("phrase", "give up", false).unwrap();
+        assert_eq!(
+            store
+                .candidates(&first.id, "give up", "phrase", true, 0, 40)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .candidates(&third.id, "give up", "phrase", true, 0, 40)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store.candidate_examples(&first.id, "give up").unwrap()[0]
+                .decision
+                .as_deref(),
+            Some("familiar")
+        );
+    }
+    #[test]
+    fn known_filter_runs_before_candidate_pagination() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let mut data = corpus();
+        data.segments[0].text = "characteristically tomorrow".into();
+        data.segments.truncate(1);
+        let source = store
+            .install_corpus(
+                Path::new("filter.mkv"),
+                "filter",
+                &data,
+                Path::new("filter.json"),
+            )
+            .unwrap();
+        store
+            .set_known_target("word", "characteristically", true)
+            .unwrap();
+        let page = store
+            .candidates(&source.id, "", "word", true, 0, 1)
+            .unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].key, "tomorrow");
+        assert!(
+            store
+                .candidates(&source.id, "", "word", true, 1, 1)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
     #[test]
     fn missing_import_audio_requires_reimport_without_losing_corrected_text() {
         let directory = tempfile::tempdir().unwrap();

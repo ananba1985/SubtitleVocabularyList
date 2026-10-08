@@ -428,6 +428,10 @@ impl Store {
             example_ids,
         };
         transaction.execute("INSERT INTO collection_actions(operation_id,request_hash,entry_id,source_id,result_json,created_at) VALUES (?,?,?,?,?,?)", params![input.operation_id, request_hash, entry_id, input.examples.first().and_then(|e| e.source_id.as_ref()), serde_json::to_string(&result)?, now])?;
+        transaction.execute(
+            "DELETE FROM settings WHERE key=?",
+            [crate::known_targets::target_key(&input.kind, &input.text)],
+        )?;
         crate::reviews::ensure_units(&transaction, &entry_id, now)?;
         crate::reviews::recompute_entry(&transaction, &entry_id)?;
         crate::synchronization::mark_dirty(&transaction, &entry_id)?;

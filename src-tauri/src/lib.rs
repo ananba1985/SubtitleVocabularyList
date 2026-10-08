@@ -1,6 +1,7 @@
 pub mod application;
 pub mod corpus;
 pub mod error;
+pub mod known_targets;
 pub mod lookup;
 pub mod media;
 pub mod ocr;

@@ -16,9 +16,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -234,7 +232,7 @@ impl NativeDesktop {
                 let source_id=store.add_source(&SourceInput{kind:"ocr".into(),title:"屏幕 OCR".into(),fingerprint:fingerprint.clone(),path_hint:None,duration_ms:None})?;
                 Ok(json!({"text":text,"kind":crate::ocr::infer_kind(&text),"context":text,"sourceId":source_id,"sourceTitle":"屏幕 OCR","locationKey":fingerprint}))
             })();
-            match &result{Ok(value)=>{let _=handle.emit("capture_completed",value);desktop_capture::show_main(&handle);},Err(error)=>{if error.code!="cancelled"{desktop_capture::capture_failed(&handle,error);}}}result
+            match &result{Ok(value)=>{desktop_capture::deliver_capture(&handle,value);},Err(error)=>{if error.code!="cancelled"{desktop_capture::capture_failed(&handle,error);}}}result
         });
         if started.is_err() {
             self.busy.store(false, Ordering::Release);
@@ -242,7 +240,9 @@ impl NativeDesktop {
         if let Some(window) = app.get_webview_window(&format!("capture-{id}")) {
             let _ = window.close();
         }
-        desktop_capture::show_main(app);
+        if let Err(error) = &started {
+            desktop_capture::capture_failed(app, error);
+        }
         started
     }
 }

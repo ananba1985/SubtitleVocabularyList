@@ -13,10 +13,12 @@ export function CollectionModal({
   seed,
   onClose,
   onSaved,
+  onMarked,
 }: {
   seed: CollectionSeed;
   onClose: () => void;
   onSaved: () => void;
+  onMarked: () => void;
 }) {
   const [text, setText] = useState(seed.text),
     [kind, setKind] = useState(seed.kind),
@@ -30,6 +32,32 @@ export function CollectionModal({
     [error, setError] = useState("");
   const [task, setTask] = useState<TaskSnapshot | null>(null),
     [operationId, setOperationId] = useState(uid);
+  const [alreadyKnown, setAlreadyKnown] = useState(Boolean(seed.alreadyKnown));
+  useEffect(() => {
+    let disposed = false;
+    setAlreadyKnown(false);
+    if (text.trim())
+      call<boolean>("known_target_get", { kind, text })
+        .then((known) => {
+          if (!disposed) setAlreadyKnown(known);
+        })
+        .catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, [kind, text]);
+  async function markKnown() {
+    setBusy(true);
+    setError("");
+    try {
+      await call("known_target_set", { kind, text, known: true });
+      onMarked();
+    } catch (error) {
+      setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     setExplanation(null);
   }, [text, context]);
@@ -333,7 +361,19 @@ export function CollectionModal({
             {error}
           </p>
         )}
+        {alreadyKnown && (
+          <p className="muted">
+            已标记我已掌握；再次确认收录会恢复展示，保存本次语境并提高复习优先级。
+          </p>
+        )}
         <footer>
+          <button
+            className="secondary"
+            onClick={markKnown}
+            disabled={busy || !text.trim()}
+          >
+            我已掌握，以后跳过
+          </button>
           <button className="secondary" onClick={onClose} disabled={busy}>
             暂不收录
           </button>

@@ -103,24 +103,59 @@ fn task_cancel(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppEr
     app.tasks.cancel(&task_id)
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn candidates_list(
     app: AppState<'_>,
     source_id: String,
     search: Option<String>,
     kind: Option<String>,
     only_pending: Option<bool>,
+    show_known: Option<bool>,
     offset: Option<u32>,
     limit: Option<u32>,
 ) -> Result<Vec<Candidate>, AppError> {
     let app = app.inner().clone();
     background(move || {
-        app.store.candidates(
+        app.store.candidate_page(
             &source_id,
             &search.unwrap_or_default(),
             &kind.unwrap_or_default(),
-            only_pending.unwrap_or(false),
+            crate::corpus::CandidateVisibility {
+                only_pending: only_pending.unwrap_or(false),
+                include_known: show_known.unwrap_or(false),
+            },
             offset.unwrap_or(0),
             limit.unwrap_or(50),
+        )
+    })
+    .await
+}
+#[tauri::command]
+fn known_target_get(app: AppState<'_>, kind: String, text: String) -> Result<bool, AppError> {
+    app.store.is_known_target(&kind, &text)
+}
+#[tauri::command]
+fn known_target_set(
+    app: AppState<'_>,
+    kind: String,
+    text: String,
+    known: bool,
+) -> Result<(), AppError> {
+    app.store.set_known_target(&kind, &text, known)
+}
+#[tauri::command]
+async fn known_targets_list(
+    app: AppState<'_>,
+    search: Option<String>,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> Result<crate::known_targets::KnownTargetPage, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        app.store.known_targets(
+            &search.unwrap_or_default(),
+            offset.unwrap_or(0),
+            limit.unwrap_or(20),
         )
     })
     .await
@@ -568,6 +603,9 @@ pub fn run() {
             tasks_history,
             task_cancel,
             candidates_list,
+            known_target_get,
+            known_target_set,
+            known_targets_list,
             candidate_examples,
             candidate_decide,
             source_example_update,

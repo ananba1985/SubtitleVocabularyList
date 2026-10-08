@@ -31,7 +31,10 @@ export function EpisodesView({
     [search, setSearch] = useState(""),
     [kind, setKind] = useState(""),
     [pendingOnly, setPendingOnly] = useState(true),
+    [showKnown, setShowKnown] = useState(false),
     [offset, setOffset] = useState(0);
+  const [knownRefresh, setKnownRefresh] = useState(0);
+  const [knownBusy, setKnownBusy] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]),
     [candidate, setCandidate] = useState<Candidate | null>(null),
     [examples, setExamples] = useState<CandidateExample[]>([]),
@@ -80,6 +83,7 @@ export function EpisodesView({
       search,
       kind,
       onlyPending: pendingOnly,
+      showKnown,
       offset,
       limit: 40,
     }).then(setCandidates);
@@ -99,6 +103,7 @@ export function EpisodesView({
         search,
         kind,
         onlyPending: pendingOnly,
+        showKnown,
         offset,
         limit: 40,
       })
@@ -109,7 +114,16 @@ export function EpisodesView({
     return () => {
       cancelled = true;
     };
-  }, [sourceId, search, kind, pendingOnly, offset, refreshKey]);
+  }, [
+    sourceId,
+    search,
+    kind,
+    pendingOnly,
+    showKnown,
+    offset,
+    refreshKey,
+    knownRefresh,
+  ]);
   useEffect(() => {
     setExamples([]);
     setIndex(0);
@@ -137,6 +151,31 @@ export function EpisodesView({
       cancelled = true;
     };
   }, [candidate?.key, candidate?.kind, sourceId, refreshKey]);
+  useEffect(() => {
+    if (!candidate) return;
+    let disposed = false;
+    const version = selectionVersion.current;
+    call<boolean>("known_target_get", {
+      kind: candidate.kind,
+      text: candidate.text,
+    })
+      .then((known) => {
+        if (disposed || version !== selectionVersion.current) return;
+        if (known && !showKnown) {
+          selectionVersion.current++;
+          setCandidate(null);
+          setExamples([]);
+          setAudioPath("");
+        } else
+          setCandidate((value) =>
+            value ? { ...value, isKnown: known } : null,
+          );
+      })
+      .catch(report);
+    return () => {
+      disposed = true;
+    };
+  }, [candidate?.key, candidate?.kind, refreshKey, knownRefresh, showKnown]);
   async function importPaths(paths: string[], choice = options) {
     setBusy(true);
     try {
@@ -257,6 +296,37 @@ export function EpisodesView({
       );
     } catch (error) {
       report(error);
+    }
+  }
+  async function markKnown() {
+    if (!candidate) return;
+    const target = candidate;
+    const version = selectionVersion.current;
+    setKnownBusy(true);
+    try {
+      await call("known_target_set", {
+        kind: target.kind,
+        text: target.text,
+        known: !target.isKnown,
+      });
+      setKnownRefresh((value) => value + 1);
+      if (version === selectionVersion.current) {
+        if (!target.isKnown && !showKnown) {
+          selectionVersion.current++;
+          setCandidate(null);
+          setExamples([]);
+          setAudioPath("");
+        } else setCandidate({ ...target, isKnown: !target.isKnown });
+      }
+      notify(
+        target.isKnown
+          ? "已恢复展示，其他剧集和采集场景也会重新提示。"
+          : "已标记我已掌握：其他剧集的候选和采集确认默认跳过，可在本地设置撤销。",
+      );
+    } catch (error) {
+      report(error);
+    } finally {
+      setKnownBusy(false);
     }
   }
   async function saveEdit() {
@@ -470,9 +540,26 @@ export function EpisodesView({
               />
               仅待确认语境
             </label>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={showKnown}
+                onChange={(event) => {
+                  setShowKnown(event.target.checked);
+                  setOffset(0);
+                  if (!event.target.checked && candidate?.isKnown) {
+                    selectionVersion.current++;
+                    setCandidate(null);
+                    setExamples([]);
+                    setAudioPath("");
+                  }
+                }}
+              />
+              显示已掌握
+            </label>
           </div>
           <p className="muted">
-            较长词优先；已收录仍可再次判断。文本来源：
+            已掌握默认隐藏；已收录仍可再次判断。文本来源：
             {sources.find((source) => source.id === sourceId)?.textSource ===
             "pgs_ocr"
               ? "图片字幕 OCR，可纠错"
@@ -502,6 +589,7 @@ export function EpisodesView({
                     {value.count} 次 · {value.exampleCount} 个语境
                     {value.existingEntryCount > 0 &&
                       ` · 已收录 ${value.existingEntryCount} 项`}
+                    {value.isKnown && " · 已掌握，默认跳过"}
                   </small>
                   <span className="definition">
                     已处理 {value.handledCount}/{value.count} 处
@@ -643,6 +731,15 @@ export function EpisodesView({
                     <AudioPlayer path={audioPath} playbackKey={playbackKey} />
                   )}
                   <div className="decision-actions">
+                    <button
+                      className="secondary"
+                      disabled={knownBusy}
+                      onClick={markKnown}
+                    >
+                      {candidate.isKnown
+                        ? "取消已掌握，恢复展示"
+                        : "我已掌握，以后跳过"}
+                    </button>
                     <button
                       className="secondary"
                       onClick={() => decide("familiar")}

@@ -15,6 +15,7 @@ import { EpisodesView } from "./components/EpisodesView";
 import { ReviewView } from "./components/ReviewView";
 import { SyncView } from "./components/SyncView";
 import { TasksView } from "./components/TasksView";
+import { KnownTargetsManager } from "./components/KnownTargetsManager";
 import { collectionQueue } from "./collectionQueue";
 
 type Tab =
@@ -39,6 +40,9 @@ export default function App() {
     [refreshKey, setRefreshKey] = useState(0);
   const [voices, setVoices] = useState<SystemVoice[]>([]),
     [native, setNative] = useState<NativeStatus | null>(null);
+  const [skippedCapture, setSkippedCapture] = useState<CollectionSeed | null>(
+    null,
+  );
   const refresh = useCallback(async () => {
     const [nextInfo, nextTasks] = await Promise.all([
       call<AppInfo>("app_info"),
@@ -68,6 +72,10 @@ export default function App() {
     };
     listen<CollectionSeed>("capture_completed", (event) => {
       setError("");
+      if (event.payload.alreadyKnown) {
+        setSkippedCapture(event.payload);
+        return;
+      }
       dispatchCollection({ type: "receive", seed: event.payload });
     })
       .then(keep)
@@ -188,6 +196,25 @@ export default function App() {
             </button>
           </div>
         )}
+        {skippedCapture && (
+          <div className="notice banner" role="status">
+            <span>已跳过已掌握内容：{skippedCapture.text.slice(0, 80)}</span>
+            <button
+              onClick={() => {
+                setSeed(skippedCapture);
+                setSkippedCapture(null);
+              }}
+            >
+              仍要查看
+            </button>
+            <button
+              className="text-button"
+              onClick={() => setSkippedCapture(null)}
+            >
+              关闭
+            </button>
+          </div>
+        )}
         {pendingSeed && !seed && (
           <div className="notice banner">
             <span>
@@ -257,6 +284,10 @@ export default function App() {
         )}
         {tab === "settings" && settings && (
           <section className="settings-panel">
+            <KnownTargetsManager
+              refreshKey={refreshKey}
+              onChanged={() => setRefreshKey((value) => value + 1)}
+            />
             <h2>划词与系统语音</h2>
             <p className="muted">
               在原应用选择文字后按快捷键。本次文字将在收录窗口中确认；不读取剪贴板。关闭主窗口后应用留在托盘，托盘菜单可打开或退出。
@@ -387,6 +418,11 @@ export default function App() {
           seed={seed}
           onClose={() => setSeed(null)}
           onSaved={saved}
+          onMarked={() => {
+            setSeed(null);
+            setNotice("已标记我已掌握，后续候选与采集确认默认跳过。");
+            setRefreshKey((value) => value + 1);
+          }}
         />
       )}
     </div>

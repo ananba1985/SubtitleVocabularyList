@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.14 |
+| 文档版本 | 0.15 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -60,12 +60,13 @@
 | CMD-25 | `connection_check` | `{operationId}` → 真实账号批准/过期/拒绝/撤销状态任务 | FR-12 |
 | CMD-26 | `connection_open` | 无参数 → 打开已保存请求的系统浏览器连接页 | FR-12 |
 | CMD-27 | `connection_status` | 无参数 → 仅本机保存状态，不发送网络请求 | FR-12、NFR-05 |
+| CMD-28 | `known_target_get/set`、`known_targets_list` | 查询/设置已掌握筛选偏好及分页管理，不修改测验成绩 | FR-02 至 FR-04、NFR-02 |
 
 全局取词与截图触发直接进入同一核心采集入口，先取得原应用上下文再显示窗口。CMD-06、CMD-07 不是让弹窗取得焦点后重新猜测原窗口的操作。
 
 ### 2.1 当前已实现参数
 
-实现位置为 `src-tauri/src/desktop.rs`，类型位于对应 Rust 模块及 `src/types.ts`。当前分页使用 offset/limit，成功 TaskSnapshot 使用 `id` 作为任务标识；后续命令不能假定已经存在。
+实现位置为 `src-tauri/src/desktop.rs`，类型位于对应 Rust 模块及 `src/types.ts`。candidates_list 增加可选 showKnown（默认 false），返回候选增加 isKnown；已掌握过滤在 SQL 分页前完成，包含已处理但要求查看的已掌握项。当前分页使用 offset/limit，成功 TaskSnapshot 使用 `id` 作为任务标识；后续命令不能假定已经存在。
 
 | 命令 | 当前请求与结果 |
 | --- | --- |
@@ -76,6 +77,8 @@
 | `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回全部未结束任务和最近一条已结束任务。已结束记录按 updatedAt、id 降序排列，运行和取消中的旧任务不会因新收录被挤出列表 |
 | `tasks_history` | `{offset?,limit?}` → `{items:TaskSnapshot[],total}`；只读取 succeeded/failed/cancelled 的历史，按 updatedAt、id 降序。默认 offset=0、limit=10，limit 限定为 1–100；页内数据及总数在同一数据库读事务取得，超出末页返回空 items，历史不受最近 30 条限制 |
 | `candidates_list` | `{sourceId, search?, kind?, onlyPending?, offset?, limit?}` → 候选数组 |
+| `known_target_get`、`known_target_set` | CMD-28：`{kind,text}` → boolean；设置额外传 known:boolean，返回空成功。kind 为 word/phrase/sentence，设置文本非空且最多 4000 字符；不自动建立词条或测验记录 |
+| `known_targets_list` | CMD-28：`{search?,offset?,limit?}` → `{items:[{kind,text,matchKey,markedAt}],total}`；默认 offset=0、limit=20，limit 为 1–100，按标记时间/键排序；总数与页内数据同一读事务 |
 | `candidate_examples`、`candidate_decide` | 前者 `{sourceId,key}`；后者 `{sourceId,key,exampleId,decision}`，当前决定为 familiar 或 uncertain |
 | `source_example_update` | `{sourceId,exampleId,revision,text,startMs,endMs}` → 修订后的对白；保留已收录旧引用 |
 | `entries_list`、`entry_get` | 前者 `{search?,offset?,limit?}`；后者 `{entryId}`，返回释义、例句、原声及计数 |
@@ -144,6 +147,8 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | `playback_changed` | 播放标识、音频类型、状态与错误；反馈实际播放情况 |
 
 事件可能被错过或迟到。界面重新打开时查询真实任务与实体版本，不能仅凭曾经收到成功事件就推断文件和数据库已经保存。结果数据较大时使用结果引用与分页读取。
+
+capture_completed 的采集资料增加 alreadyKnown:boolean；匹配完整目标及类型，不删除 context 中的熟词。命中目标不自动激活主窗口，前端提供“仍要查看”；筛选偏好读取失败时继续普通确认，避免丢弃未知采集。
 
 当前 `task_updated` 发出完整 TaskSnapshot，未实现递增事件序号；界面通过任务查询刷新并核对持久化终态。library_changed 与 playback_changed 尚未实现，保存后的视图重新查询，播放直接读取 audio 元素状态。程序启动将遗留非终态任务标为 interrupted 失败，保留部分结果；重试建立新的任务执行，同一业务操作仍去重。
 
@@ -228,3 +233,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.12 | 2026-10-07 | 对齐递归目录、现有路径身份去重与显式坏文件结果 |
 | 0.13 | 2026-10-07 | 保留全部未结束任务，确保旧任务可观察、可取消及退出时清理 |
 | 0.14 | 2026-10-07 | 增加完整终态历史分页，收紧默认摘要并记录兼容旧快照的处理对象 |
+| 0.15 | 2026-10-07 | 增加全局筛选查询/设置/分页、候选 isKnown 与采集 alreadyKnown 契约 |

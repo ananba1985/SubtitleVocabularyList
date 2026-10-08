@@ -135,7 +135,7 @@ export default function App() {
         <div className="sidebar-footer">
           <span className="offline-dot" />
           {settings?.offlineMode ? "离线模式" : "按需联网"}
-          <small>0.1 · 开发中</small>
+          <small>0.1</small>
         </div>
       </aside>
       <main className="workspace">

@@ -265,8 +265,12 @@ impl TaskManager {
 
     pub fn list(&self) -> Result<Vec<TaskSnapshot>, AppError> {
         let connection = self.store.connection()?;
-        let mut query = connection
-            .prepare("SELECT snapshot_json FROM tasks ORDER BY created_at DESC,id LIMIT 30")?;
+        let mut query = connection.prepare(
+            "SELECT snapshot_json FROM tasks
+             WHERE state NOT IN ('succeeded','failed','cancelled')
+                OR id IN (SELECT id FROM tasks ORDER BY created_at DESC,id LIMIT 30)
+             ORDER BY created_at DESC,id",
+        )?;
         let rows = query
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -302,6 +306,54 @@ impl TaskManager {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn older_running_and_cancelling_tasks_survive_the_recent_history_limit() {
+        use std::sync::mpsc;
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let manager = TaskManager::new(store, Arc::new(|_| {}));
+        let (started, ready) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let older = manager
+            .start(
+                "import",
+                &Uuid::new_v4().to_string(),
+                "older",
+                move |context| {
+                    started.send(()).unwrap();
+                    gate.recv().unwrap();
+                    context.check_cancelled()?;
+                    Ok(serde_json::json!({}))
+                },
+            )
+            .unwrap();
+        ready.recv_timeout(Duration::from_secs(3)).unwrap();
+        for _ in 0..35 {
+            let recent = manager
+                .start("fixture", &Uuid::new_v4().to_string(), "recent", |_| {
+                    Ok(serde_json::json!({}))
+                })
+                .unwrap();
+            assert_eq!(wait(&manager, &recent.id).state, "succeeded");
+        }
+        let listed = manager.list().unwrap();
+        assert_eq!(listed.len(), 31);
+        assert!(listed.iter().any(|task| task.id == older.id));
+        manager.cancel(&older.id).unwrap();
+        assert!(
+            manager
+                .list()
+                .unwrap()
+                .iter()
+                .any(|task| { task.id == older.id && task.state == "cancel_requested" })
+        );
+        release.send(()).unwrap();
+        assert_eq!(wait(&manager, &older.id).state, "cancelled");
+        let listed = manager.list().unwrap();
+        assert_eq!(listed.len(), 30);
+        assert!(listed.iter().all(TaskSnapshot::terminal));
+    }
 
     #[test]
     fn cancellation_at_collection_commit_boundary_keeps_truthful_state_and_one_receipt() {

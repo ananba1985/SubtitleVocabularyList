@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.12 |
+| 文档版本 | 0.13 |
 | 更新日期 | 2026-10-07 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -73,7 +73,7 @@
 | `import_start` | `{paths: string[], operationId, options?}` → TaskSnapshot；options 包含 audioStream、subtitleStream、subtitleMode（auto/embedded/external/speech）、externalSubtitle。目录递归扫描六个视频后缀、现有文件统一路径身份去重；显式坏文件独立报告，错误选择不静默改轨。具体样本见[媒体矩阵](../testing/media-support-matrix.md) |
 | `media_inspect` | `{path}` → 音轨、字幕轨的索引/语言/名称/编码及同名外置字幕；为选择提供数据，不直接收录 |
 | `online_query_start` | CMD-20：`{text,provider?,operationId}` → 任务；provider 为 dictionary（Wiktionary）或 translation（MyMemory），无参默认前者。只发送 text，拒绝离线模式，返回 query、source、sourceUrl、definitions；建议需人工采用 |
-| `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回最近 30 次任务快照 |
+| `task_get`、`task_cancel`、`tasks_list` | 前两项使用 `{taskId}`；最后一项无参数，返回最近 30 次任务快照及全部未结束任务，运行和取消中的旧任务不会因新收录被挤出列表 |
 | `candidates_list` | `{sourceId, search?, kind?, onlyPending?, offset?, limit?}` → 候选数组 |
 | `candidate_examples`、`candidate_decide` | 前者 `{sourceId,key}`；后者 `{sourceId,key,exampleId,decision}`，当前决定为 familiar 或 uncertain |
 | `source_example_update` | `{sourceId,exampleId,revision,text,startMs,endMs}` → 修订后的对白；保留已收录旧引用 |
@@ -223,3 +223,4 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 | 0.10 | 2026-10-07 | 增加实际导入选择、轨道检查和手动在线查询参数及外发边界 |
 | 0.11 | 2026-10-07 | 明确工具位置由当前宿主解析，偏好更新不持久化工具路径 |
 | 0.12 | 2026-10-07 | 对齐递归目录、现有路径身份去重与显式坏文件结果 |
+| 0.13 | 2026-10-07 | 保留全部未结束任务，确保旧任务可观察、可取消及退出时清理 |

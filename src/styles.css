@@ -683,12 +683,14 @@ h3 {
 }
 .task-progress {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
 }
 .task-progress progress {
   flex: 1;
+  min-width: 140px;
 }
 .task-result {
   color: #365f4e;

@@ -291,6 +291,8 @@ export default function App() {
         {tab === "tasks" && (
           <TasksView
             tasks={tasks}
+            refreshKey={refreshKey}
+            sourceCount={info?.sourceCount ?? 0}
             cancel={(id) =>
               call("task_cancel", { taskId: id }).then(refresh).catch(report)
             }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { call, message, terminal } from "../api";
-import type { TaskHistoryPage, TaskSnapshot } from "../types";
+import type { SourceSummary, TaskHistoryPage, TaskSnapshot } from "../types";
 
 const PAGE_SIZE = 10;
 const kinds: Record<string, string> = {
@@ -76,9 +76,13 @@ function duration(value: number) {
 
 export function TasksView({
   tasks,
+  refreshKey,
+  sourceCount,
   cancel,
 }: {
   tasks: TaskSnapshot[];
+  refreshKey: number;
+  sourceCount: number;
   cancel: (id: string) => void;
 }) {
   const active = tasks.filter((task) => !terminal(task));
@@ -95,6 +99,26 @@ export function TasksView({
   const [retry, setRetry] = useState(0);
   const [preparing, setPreparing] = useState(false);
   const [preparationNotice, setPreparationNotice] = useState("");
+  const [sources, setSources] = useState<SourceSummary[] | null>(null);
+  const [sourceError, setSourceError] = useState("");
+  useEffect(() => {
+    let disposed = false;
+    setSourceError("");
+    setSources(null);
+    call<SourceSummary[]>("sources_list")
+      .then((value) => {
+        if (!disposed) setSources(value);
+      })
+      .catch((error) => {
+        if (!disposed) setSourceError(message(error));
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [refreshKey, sourceCount]);
+  const candidateCounts = new Map(
+    (sources ?? []).map((source) => [source.id, source.candidateCount]),
+  );
   useEffect(() => {
     if (!historyOpen) return;
     let disposed = false;
@@ -153,17 +177,28 @@ export function TasksView({
           </p>
         )}
       </div>
+      {sourceError && <p className="error">候选数量读取失败：{sourceError}</p>}
       <section aria-label="进行中的任务" className="task-section">
         <h2>进行中{active.length > 0 ? `（${active.length}）` : ""}</h2>
         {active.map((task) => (
-          <TaskCard key={task.id} task={task} cancel={cancel} />
+          <TaskCard
+            key={task.id}
+            task={task}
+            cancel={cancel}
+            candidateCounts={candidateCounts}
+          />
         ))}
         {!active.length && <p className="muted">当前没有进行中的任务。</p>}
       </section>
       {latest && (
         <section aria-label="最近结束的任务" className="task-section">
           <h2>最近结束的任务</h2>
-          <TaskCard key={latest.id} task={latest} cancel={cancel} />
+          <TaskCard
+            key={latest.id}
+            task={latest}
+            cancel={cancel}
+            candidateCounts={candidateCounts}
+          />
         </section>
       )}
       <details
@@ -193,7 +228,12 @@ export function TasksView({
               <>
                 <div className="task-list" aria-label="任务历史列表">
                   {history.items.map((task) => (
-                    <TaskCard key={task.id} task={task} cancel={cancel} />
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      cancel={cancel}
+                      candidateCounts={candidateCounts}
+                    />
                   ))}
                   {!history.total && (
                     <p className="muted">还没有已结束的任务。</p>
@@ -236,12 +276,23 @@ export function TasksView({
 function TaskCard({
   task,
   cancel,
+  candidateCounts,
 }: {
   task: TaskSnapshot;
   cancel: (id: string) => void;
+  candidateCounts: Map<string, number>;
 }) {
   const ended = terminal(task);
   const value = (task.result ?? {}) as Result;
+  const preparation = value.preparation;
+  const preparationCandidates = preparation?.sources.every((source) =>
+    candidateCounts.has(source.sourceId),
+  )
+    ? preparation.sources.reduce(
+        (sum, source) => sum + candidateCounts.get(source.sourceId)!,
+        0,
+      )
+    : null;
   const subject =
     (task.kind === "review_audio" ? "听力测验" : task.subject) ||
     value.text ||
@@ -302,7 +353,9 @@ function TaskCard({
                 max={task.total}
               />
               <span>
-                {task.current} / {task.total}
+                {task.kind === "explanation_batch" ? "已处理词语语境 " : ""}
+                {task.current.toLocaleString("zh-CN")} /{" "}
+                {task.total.toLocaleString("zh-CN")}
               </span>
             </div>
           )}
@@ -363,10 +416,24 @@ function TaskCard({
       {task.kind === "explanation_batch" && value.preparation && (
         <div className="task-result">
           <p>
-            新生成 {value.preparation.generated} 项 · 复用{" "}
-            {value.preparation.reused} 项 · 跳过已掌握{" "}
-            {value.preparation.skipped} 项 · 未完成 {value.preparation.failed}{" "}
-            项
+            涉及 {value.preparation.sources.length} 集
+            {preparationCandidates !== null &&
+              ` · ${preparationCandidates.toLocaleString("zh-CN")} 个候选词和短语`}
+          </p>
+          <p className="muted">
+            同一候选在不同对白中分别解释。进度按本次待补充的词语语境计数，已保存资料直接复用。
+          </p>
+          {ended && task.total > 0 && (
+            <p>
+              已处理词语语境 {task.current.toLocaleString("zh-CN")} /{" "}
+              {task.total.toLocaleString("zh-CN")}
+            </p>
+          )}
+          <p>
+            新生成 {value.preparation.generated} 条语境解释 · 复用{" "}
+            {value.preparation.reused} 条 · 跳过已掌握{" "}
+            {value.preparation.skipped} 条 · 未完成 {value.preparation.failed}{" "}
+            条
           </p>
           <details className="task-result-details">
             <summary>
@@ -375,15 +442,36 @@ function TaskCard({
             <div className="import-result">
               {value.preparation.sources.map((source) => (
                 <p key={source.sourceId}>
-                  {source.title} · {source.current}/{source.total} 项语境解释
+                  {source.title}
+                  {candidateCounts.has(source.sourceId) &&
+                    ` · ${candidateCounts.get(source.sourceId)!.toLocaleString("zh-CN")} 个候选`}
+                  {" · 已处理词语语境 "}
+                  {source.current.toLocaleString("zh-CN")}/
+                  {source.total.toLocaleString("zh-CN")}
                 </p>
               ))}
             </div>
           </details>
           {value.preparation.failed > 0 && (
-            <p className="muted">
-              部分内容未获得有效中文结果，可继续准备以补充剩余资料。
-            </p>
+            <>
+              <p className="muted">
+                未完成项计入已处理数量，但没有保存为有效解释。继续准备会补充缺失资料。
+              </p>
+              {value.preparation.failures.length > 0 && (
+                <details className="task-result-details">
+                  <summary>
+                    查看未完成原因（前 {value.preparation.failures.length} 项）
+                  </summary>
+                  <div className="import-result">
+                    {value.preparation.failures.map((failure, index) => (
+                      <p key={index}>
+                        {failure.source} · {failure.text}：{failure.message}
+                      </p>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </>
           )}
         </div>
       )}

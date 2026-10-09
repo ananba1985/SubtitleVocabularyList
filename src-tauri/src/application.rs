@@ -69,6 +69,7 @@ pub struct Application {
     pub(crate) preparation_guard: Mutex<()>,
     pub(crate) preparation_requested: Arc<AtomicBool>,
     pub(crate) preparation_paused: AtomicBool,
+    pub(crate) preparation_retry_now: AtomicBool,
     pub(crate) preparation_shutdown: AtomicBool,
     pub(crate) preparation_priority: Mutex<Option<String>>,
     #[cfg(all(windows, feature = "desktop"))]
@@ -221,6 +222,7 @@ impl Application {
             preparation_guard: Mutex::new(()),
             preparation_requested: Arc::new(AtomicBool::new(true)),
             preparation_paused: AtomicBool::new(false),
+            preparation_retry_now: AtomicBool::new(false),
             preparation_shutdown: AtomicBool::new(false),
             preparation_priority: Mutex::new(None),
             #[cfg(all(windows, feature = "desktop"))]
@@ -572,10 +574,31 @@ fn valid_wave(path: &Path) -> bool {
 }
 
 fn provider_error(error: reqwest::Error) -> AppError {
-    AppError::new(
+    if error.is_decode() {
+        return AppError::new("invalid_data", "本次模型响应不是有效 JSON。");
+    }
+    let status = error.status();
+    let retryable = status
+        .is_some_and(|status| matches!(status.as_u16(), 408 | 429) || status.is_server_error())
+        || error.is_timeout()
+        || error.is_connect()
+        || error.is_request()
+        || error.is_body();
+    let detail = if let Some(status) = status {
+        format!("服务返回 HTTP {}", status.as_u16())
+    } else if error.is_timeout() {
+        "等待响应超时".into()
+    } else if error.is_connect() {
+        "暂时无法连接服务".into()
+    } else {
+        "请求或响应读取中断".into()
+    };
+    let mut result = AppError::new(
         "provider_unavailable",
-        format!("本地模型不可用：{error}。可以继续收录原文或稍后补充释义。"),
-    )
+        format!("本次本地模型请求失败：{detail}。已保存资料保留。"),
+    );
+    result.retryable = retryable;
+    result
 }
 
 fn import_one(

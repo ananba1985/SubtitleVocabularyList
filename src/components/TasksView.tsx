@@ -119,6 +119,25 @@ export function TasksView({
   const candidateCounts = new Map(
     (sources ?? []).map((source) => [source.id, source.candidateCount]),
   );
+  async function prepare() {
+    setPreparing(true);
+    try {
+      const value = await call<{ task: TaskSnapshot | null }>(
+        "explanations_prepare",
+      );
+      setPreparationNotice(
+        value.task
+          ? value.task.stage === "retry_wait"
+            ? "已请求立即重试，继续使用当前后台任务。"
+            : "中文资料准备已在后台运行，已保存内容会复用。"
+          : "已导入剧集的中文资料已准备完成。",
+      );
+    } catch (error) {
+      setPreparationNotice(message(error));
+    } finally {
+      setPreparing(false);
+    }
+  }
   useEffect(() => {
     if (!historyOpen) return;
     let disposed = false;
@@ -148,27 +167,7 @@ export function TasksView({
   return (
     <div className="task-list">
       <div className="preparation-action">
-        <button
-          className="secondary"
-          disabled={preparing}
-          onClick={async () => {
-            setPreparing(true);
-            try {
-              const value = await call<{ task: TaskSnapshot | null }>(
-                "explanations_prepare",
-              );
-              setPreparationNotice(
-                value.task
-                  ? "中文资料准备已加入后台，已保存内容会复用。"
-                  : "已导入剧集的中文资料已准备完成。",
-              );
-            } catch (error) {
-              setPreparationNotice(message(error));
-            } finally {
-              setPreparing(false);
-            }
-          }}
-        >
+        <button className="secondary" disabled={preparing} onClick={prepare}>
           准备 / 继续中文资料
         </button>
         {preparationNotice && (
@@ -186,6 +185,8 @@ export function TasksView({
             task={task}
             cancel={cancel}
             candidateCounts={candidateCounts}
+            prepare={prepare}
+            preparing={preparing}
           />
         ))}
         {!active.length && <p className="muted">当前没有进行中的任务。</p>}
@@ -198,6 +199,8 @@ export function TasksView({
             task={latest}
             cancel={cancel}
             candidateCounts={candidateCounts}
+            prepare={prepare}
+            preparing={preparing}
           />
         </section>
       )}
@@ -233,6 +236,8 @@ export function TasksView({
                       task={task}
                       cancel={cancel}
                       candidateCounts={candidateCounts}
+                      prepare={prepare}
+                      preparing={preparing}
                     />
                   ))}
                   {!history.total && (
@@ -277,14 +282,20 @@ function TaskCard({
   task,
   cancel,
   candidateCounts,
+  prepare,
+  preparing,
 }: {
   task: TaskSnapshot;
   cancel: (id: string) => void;
   candidateCounts: Map<string, number>;
+  prepare: () => Promise<void>;
+  preparing: boolean;
 }) {
   const ended = terminal(task);
   const value = (task.result ?? {}) as Result;
   const preparation = value.preparation;
+  const retryWaiting =
+    task.kind === "explanation_batch" && !ended && task.stage === "retry_wait";
   const preparationCandidates = preparation?.sources.every((source) =>
     candidateCounts.has(source.sourceId),
   )
@@ -310,7 +321,14 @@ function TaskCard({
       <header>
         <strong>{kinds[task.kind] ?? "后台处理"}</strong>
         <span className={`badge ${task.state}`}>
-          {states[task.state] ?? task.state}
+          {retryWaiting
+            ? "等待自动重试"
+            : task.kind === "explanation_batch" &&
+                task.state === "succeeded" &&
+                preparation &&
+                preparation.failed > 0
+              ? "部分未完成"
+              : (states[task.state] ?? task.state)}
         </span>
       </header>
       {subject && (
@@ -413,6 +431,28 @@ function TaskCard({
         </p>
       )}
       {task.error && <p className="error">{task.error.message}</p>}
+      {task.kind === "explanation_batch" && task.state === "failed" && (
+        <p className="muted">
+          这是本次执行结束时的错误记录，不代表模型当前状态。重试会继续补充缺失资料。
+        </p>
+      )}
+      {task.kind === "explanation_batch" &&
+        (retryWaiting ||
+          (ended &&
+            (task.state !== "succeeded" ||
+              (preparation?.failed ?? 0) > 0))) && (
+          <button
+            className="secondary"
+            disabled={preparing || task.state === "cancel_requested"}
+            onClick={prepare}
+          >
+            {preparing
+              ? "正在请求…"
+              : retryWaiting
+                ? "立即重试"
+                : "重试未完成资料"}
+          </button>
+        )}
       {task.kind === "explanation_batch" && value.preparation && (
         <div className="task-result">
           <p>

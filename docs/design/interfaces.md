@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.23 |
+| 文档版本 | 0.24 |
 | 更新日期 | 2026-10-08 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
@@ -126,6 +126,10 @@
 explanation_batch 通过 task_get/list/history 查询统一进度与 result.preparation；语境级结果先写 explanations，再计入进度，生成不创建逐词成功任务。取消未结束批次还会保存暂停偏好，退出应用仅停止当前运行，下一次启动补齐未完成内容。后台输入按候选代表词形和完整原句配对，已有值不覆盖，已掌握过滤与预习一致。CollectionSeed 的可选 meaning 仍仅供草稿初值，确认后走原收录接口；准备语料不自动收录或同步。
 
 该批次 `current/total` 的单位为本次词语语境，不是去重候选数；`current` 包含新生成、缓存复用、已掌握跳过及非法输出未完成的处理次数。`result.preparation.sources[].current/total` 使用相同口径，`failures` 保留前 20 条目标、来源和错误原因。界面通过 `sourceId` 关联 `sources_list.candidateCount` 显示与资料选择器一致的候选统计；旧批次无需重写。候选数读取与任务轮询分开，在进入任务页、资料刷新或导入新增来源数量变化时读取一次，不因每项进度变化重复读取。此次不改变命令字段、SQLite schema 或解释的缓存身份。
+
+临时模型请求失败返回 `provider_unavailable` 且 `retryable:true`：连接、超时、请求/响应读取中断、HTTP 408/429/5xx；其他 HTTP 拒绝或客户端配置错误不自动无限重试。`explanation_batch` 内部在 2/4/8/16/32/60 秒等待后重试当前项目，后续间隔维持 60 秒，任务 `state` 保持 running、`stage` 为 `retry_wait`，`message` 含间隔、次数与原因，`error` 不写为终态错误，`current/total` 不因请求尝试而增长。输出 JSON 或中文校验的 `invalid_data` 仅补试一次；最终无效才计入未完成。等待不新增任务记录。
+
+存在等待批次时，显式 `explanations_prepare` 复用并唤醒同一 taskId；没有活跃批次时重新查询缺失资料启动新执行。`explanations_status` 在等待期间仍为 running，历史失败不当作实时健康检查。取消与退出检查适用于等待，并在下一次请求前复核已掌握偏好。重试唤醒标志是进程内状态；解释、暂停偏好和任务回执继续采用原持久化规则，schema 仍为 6。
 
 本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
@@ -263,3 +267,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.21 | 2026-10-08 | 明确临时操作查询和取消、正常操作不入历史、旧记录过滤与业务分页一致性 |
 | 0.22 | 2026-10-08 | 新增聚合准备/状态命令，明确自动后台、页面只读、批次取消暂停及结果先入库的契约 |
 | 0.23 | 2026-10-08 | 明确语境进度、来源候选统计关联及旧记录兼容，补充缩略词中文提示与校验保持 |
+| 0.24 | 2026-10-08 | 明确模型错误可重试分类、retry_wait、同 taskId 唤醒及输出有限补试，保持 schema 和缓存规则 |

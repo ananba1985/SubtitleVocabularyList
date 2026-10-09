@@ -10,11 +10,15 @@ use serde_json::json;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, atomic::Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use uuid::Uuid;
 
 const ENABLED_KEY: &str = "explanation_preparation_enabled";
+
+fn retry_delay(attempt: u32) -> Duration {
+    Duration::from_secs(2u64.pow(attempt.min(6)).min(60))
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -215,6 +219,9 @@ impl Application {
             .into_iter()
             .find(|task| task.kind == "explanation_batch")
         {
+            if explicit && task.stage == "retry_wait" {
+                self.preparation_retry_now.store(true, Ordering::Relaxed);
+            }
             return Ok(PreparationReply { task: Some(task) });
         }
         let inputs = match scoped {
@@ -224,6 +231,7 @@ impl Application {
         if inputs.is_empty() {
             return Ok(PreparationReply { task: None });
         }
+        self.preparation_retry_now.store(false, Ordering::Relaxed);
         let hash = crate::vocabulary::digest(&serde_json::to_vec(&inputs)?);
         let app = Arc::clone(self);
         let task = self.tasks.start(
@@ -233,6 +241,91 @@ impl Application {
             move |context| app.run_preparation(inputs, context),
         )?;
         Ok(PreparationReply { task: Some(task) })
+    }
+
+    fn wait_preparation_retry(
+        &self,
+        context: &TaskContext,
+        delay: Duration,
+    ) -> Result<(), AppError> {
+        let until = Instant::now() + delay;
+        loop {
+            context.check_cancelled()?;
+            if self.preparation_shutdown.load(Ordering::Relaxed) {
+                return Err(AppError::new("cancelled", "应用正在退出。"));
+            }
+            if self.preparation_retry_now.swap(false, Ordering::Relaxed) {
+                break;
+            }
+            let remaining = until.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(100)));
+        }
+        Ok(())
+    }
+
+    fn explain_prepared(
+        &self,
+        input: &PreparationInput,
+        context: &TaskContext,
+        current: usize,
+        total: usize,
+        source: &SourceProgress,
+    ) -> Result<Option<bool>, AppError> {
+        let mut connection_retries: u32 = 0;
+        let mut output_retried = false;
+        loop {
+            context.check_cancelled()?;
+            if self.preparation_shutdown.load(Ordering::Relaxed) {
+                return Err(AppError::new("cancelled", "应用正在退出。"));
+            }
+            if self.store.is_known_target(&input.kind, &input.text)? {
+                return Ok(None);
+            }
+            context.progress(
+                "translations",
+                current,
+                total,
+                &format!(
+                    "{} · {} · 本集 {}/{}",
+                    input.title, input.text, source.current, source.total
+                ),
+            );
+            let error = match self.explain_value(&input.text, &input.context, context) {
+                Ok((_, created)) => return Ok(Some(created)),
+                Err(error) => error,
+            };
+            let (delay, message) = if error.code == "provider_unavailable" && error.retryable {
+                connection_retries = connection_retries.saturating_add(1);
+                let delay = retry_delay(connection_retries);
+                (
+                    delay,
+                    format!(
+                        "{} · {} 秒后自动重试（第 {} 次），服务恢复后继续。{}",
+                        input.title,
+                        delay.as_secs(),
+                        connection_retries,
+                        error.message
+                    ),
+                )
+            } else if error.code == "invalid_data" && !output_retried {
+                output_retried = true;
+                connection_retries = 0;
+                (
+                    Duration::from_secs(1),
+                    format!(
+                        "{} · {} 的输出无效，1 秒后补试一次。{}",
+                        input.title, input.text, error.message
+                    ),
+                )
+            } else {
+                return Err(error);
+            };
+            context.progress("retry_wait", current, total, &message);
+            self.wait_preparation_retry(context, delay)?;
+        }
     }
 
     fn run_preparation(
@@ -271,6 +364,7 @@ impl Application {
         let (mut generated, mut reused, mut skipped, mut failed) = (0, 0, 0, 0);
         let mut failures = Vec::new();
         let mut current = 0;
+        context.partial_result(json!({"preparation":{"generated":generated,"reused":reused,"skipped":skipped,"failed":failed,"sources":sources,"failures":failures}}));
         loop {
             context.check_cancelled()?;
             if self.preparation_requested.swap(false, Ordering::Relaxed) {
@@ -297,6 +391,7 @@ impl Application {
                     }
                 }
                 context.subject(&format!("中文资料准备 · {} 份剧集", sources.len()));
+                context.partial_result(json!({"preparation":{"generated":generated,"reused":reused,"skipped":skipped,"failed":failed,"sources":sources,"failures":failures}}));
             }
             if queue.is_empty() {
                 break;
@@ -316,43 +411,28 @@ impl Application {
             };
             let input = queue.remove(index).unwrap();
             let source_index = indexes[&input.source_id];
-            context.progress(
-                "translations",
-                current,
-                total,
-                &format!(
-                    "{} · {} · 本集 {}/{}",
-                    input.title,
-                    input.text,
-                    sources[source_index].current,
-                    sources[source_index].total
-                ),
-            );
-            if self.store.is_known_target(&input.kind, &input.text)? {
-                skipped += 1;
-            } else {
-                match self.explain_value(&input.text, &input.context, &context) {
-                    Ok((_, created)) => {
-                        if created {
-                            generated += 1;
-                        } else {
-                            reused += 1;
-                        }
+            match self.explain_prepared(&input, &context, current, total, &sources[source_index]) {
+                Ok(None) => skipped += 1,
+                Ok(Some(created)) => {
+                    if created {
+                        generated += 1;
+                    } else {
+                        reused += 1;
                     }
-                    Err(error)
-                        if matches!(error.code.as_str(), "invalid_data" | "invalid_input") =>
-                    {
-                        failed += 1;
-                        if failures.len() < 20 {
-                            failures.push(json!({"source":input.title,"text":input.text,"message":error.message}));
-                        }
+                }
+                Err(error) if matches!(error.code.as_str(), "invalid_data" | "invalid_input") => {
+                    failed += 1;
+                    if failures.len() < 20 {
+                        failures.push(
+                            json!({"source":input.title,"text":input.text,"message":error.message}),
+                        );
                     }
-                    Err(error) => {
-                        if error.code != "cancelled" {
-                            self.preparation_paused.store(true, Ordering::Relaxed);
-                        }
-                        return Err(error);
+                }
+                Err(error) => {
+                    if error.code != "cancelled" {
+                        self.preparation_paused.store(true, Ordering::Relaxed);
                     }
+                    return Err(error);
                 }
             }
             current += 1;
@@ -404,6 +484,9 @@ mod tests {
         }
     }
     fn response(stream: &mut std::net::TcpStream, valid: bool) {
+        response_with_status(stream, valid, 200);
+    }
+    fn response_with_status(stream: &mut std::net::TcpStream, valid: bool, status: u16) {
         stream
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
@@ -434,7 +517,7 @@ mod tests {
             "invalid model json".into()
         };
         let body = json!({"choices":[{"message":{"content":content}}]}).to_string();
-        write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+        write!(stream,"HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
     }
     fn model_server(valid: Vec<bool>) -> (String, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -495,7 +578,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(store.explanation_work(None).unwrap().len(), 2);
-        let (url, server) = model_server(vec![true, false]);
+        let (url, server) = model_server(vec![true, false, false]);
         let app = application(Arc::clone(&store), url);
         let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
         let final_task = finish(&app, &task);
@@ -614,7 +697,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_failure_pauses_background_work_and_retains_an_error_for_retry() {
+    fn connection_failure_waits_in_one_task_and_manual_pause_cancels_retries() {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(directory.path()).unwrap());
         seed(&store, "episode", &[("reluctant", "She is reluctant.")]);
@@ -623,12 +706,22 @@ mod tests {
         drop(listener);
         let app = application(Arc::clone(&store), url);
         let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
-        let task = finish(&app, &task);
-        assert_eq!(task.error.unwrap().code, "provider_unavailable");
-        assert_eq!(app.preparation_status().unwrap().state, "failed");
+        wait_until(|| app.tasks.get(&task.id).unwrap().stage == "retry_wait");
+        let waiting = app.tasks.get(&task.id).unwrap();
+        assert_eq!(waiting.state, "running");
+        assert!(waiting.error.is_none());
+        assert!(waiting.message.contains("2 秒后自动重试"));
+        assert_eq!(waiting.current, 0);
+        assert_eq!(waiting.total, 1);
+        assert_eq!(waiting.result.unwrap()["preparation"]["failed"], 0);
+        assert_eq!(app.preparation_status().unwrap().state, "running");
         assert_eq!(store.explanation_work(None).unwrap().len(), 1);
-        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 0);
+        let cancelled_at = Instant::now();
         app.pause_preparation().unwrap();
+        assert_eq!(finish(&app, &task).state, "cancelled");
+        assert!(cancelled_at.elapsed() < Duration::from_secs(1));
+        assert_eq!(app.preparation_status().unwrap().state, "paused");
         assert!(
             app.prepare_explanations(None, false)
                 .unwrap()
@@ -636,5 +729,125 @@ mod tests {
                 .is_none()
         );
         assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+    }
+
+    #[test]
+    fn busy_model_recovers_automatically_without_another_task_or_duplicate_progress() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        seed(
+            &store,
+            "episode",
+            &[
+                ("reluctant", "She is reluctant."),
+                ("patient", "Stay patient."),
+            ],
+        );
+        store
+            .save_explanation("patient", "Stay patient.", &value(), "old", "old")
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for status in [503, 200] {
+                let (mut stream, _) = listener.accept().unwrap();
+                response_with_status(&mut stream, true, status);
+            }
+        });
+        let app = application(Arc::clone(&store), url);
+        let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        wait_until(|| app.tasks.get(&task.id).unwrap().stage == "retry_wait");
+        let final_task = finish(&app, &task);
+        assert_eq!(final_task.state, "succeeded");
+        assert_eq!(final_task.current, 1);
+        assert_eq!(final_task.total, 1);
+        assert_eq!(final_task.result.unwrap()["preparation"]["generated"], 1);
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        assert!(store.explanation_work(None).unwrap().is_empty());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn manual_retry_wakes_the_existing_task_after_connection_is_restored() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        seed(&store, "episode", &[("reluctant", "She is reluctant.")]);
+        let reserved = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = reserved.local_addr().unwrap();
+        drop(reserved);
+        let app = application(Arc::clone(&store), format!("http://{address}"));
+        let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        wait_until(|| app.tasks.get(&task.id).unwrap().stage == "retry_wait");
+        let listener = TcpListener::bind(address).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            response(&mut stream, true);
+        });
+        let started = Instant::now();
+        let retry = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        assert_eq!(retry.id, task.id);
+        assert_eq!(finish(&app, &task).state, "succeeded");
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn invalid_output_is_retried_once_and_only_the_valid_value_is_saved() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        seed(&store, "episode", &[("reluctant", "She is reluctant.")]);
+        let (url, server) = model_server(vec![false, true]);
+        let app = application(Arc::clone(&store), url);
+        let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        let final_task = finish(&app, &task);
+        assert_eq!(final_task.state, "succeeded");
+        assert_eq!(final_task.current, 1);
+        let result = final_task.result.unwrap();
+        assert_eq!(result["preparation"]["generated"], 1);
+        assert_eq!(result["preparation"]["failed"], 0);
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        assert!(store.explanation_work(None).unwrap().is_empty());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn permanent_http_error_ends_the_batch_with_a_manual_retry_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        seed(&store, "episode", &[("reluctant", "She is reluctant.")]);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            response_with_status(&mut stream, true, 400);
+        });
+        let app = application(Arc::clone(&store), url);
+        let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        let final_task = finish(&app, &task);
+        assert_eq!(final_task.state, "failed");
+        let error = final_task.error.unwrap();
+        assert_eq!(error.code, "provider_unavailable");
+        assert!(!error.retryable);
+        assert!(error.message.contains("HTTP 400"));
+        assert_eq!(app.preparation_status().unwrap().state, "failed");
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        assert_eq!(store.explanation_work(None).unwrap().len(), 1);
+        server.join().unwrap();
+        let (url, server) = model_server(vec![true]);
+        let mut settings = app.settings().unwrap();
+        settings.model_url = url;
+        app.save_settings(settings).unwrap();
+        let retry = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        assert_eq!(finish(&app, &retry).state, "succeeded");
+        assert!(store.explanation_work(None).unwrap().is_empty());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn connection_retry_delay_grows_and_remains_bounded() {
+        assert_eq!(retry_delay(1), Duration::from_secs(2));
+        assert_eq!(retry_delay(2), Duration::from_secs(4));
+        assert_eq!(retry_delay(u32::MAX), Duration::from_secs(60));
     }
 }

@@ -402,6 +402,26 @@ export default function App() {
                 }
               />
             </label>
+            <label>
+              模型并发请求数
+              <input
+                type="number"
+                min={1}
+                max={16}
+                step={1}
+                value={settings.modelConcurrency}
+                onChange={(event) =>
+                  setSettings({
+                    ...settings,
+                    modelConcurrency: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <p className="muted">
+              1 表示串行，最多可设为
+              16。保存后应用新上限，已开始的请求会继续完成；实际速度取决于模型服务的并行能力。
+            </p>
             <label className="check-label">
               <input
                 type="checkbox"

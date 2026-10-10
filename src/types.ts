@@ -145,6 +145,7 @@ export interface Explanation {
 export interface Settings {
   modelUrl: string;
   modelName: string;
+  modelConcurrency: number;
   offlineMode: boolean;
   selectionShortcut: string;
   ocrShortcut: string;

@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.24 |
-| 更新日期 | 2026-10-08 |
+| 文档版本 | 0.25 |
+| 更新日期 | 2026-10-09 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
@@ -127,9 +127,11 @@ explanation_batch 通过 task_get/list/history 查询统一进度与 result.prep
 
 该批次 `current/total` 的单位为本次词语语境，不是去重候选数；`current` 包含新生成、缓存复用、已掌握跳过及非法输出未完成的处理次数。`result.preparation.sources[].current/total` 使用相同口径，`failures` 保留前 20 条目标、来源和错误原因。界面通过 `sourceId` 关联 `sources_list.candidateCount` 显示与资料选择器一致的候选统计；旧批次无需重写。候选数读取与任务轮询分开，在进入任务页、资料刷新或导入新增来源数量变化时读取一次，不因每项进度变化重复读取。此次不改变命令字段、SQLite schema 或解释的缓存身份。
 
-临时模型请求失败返回 `provider_unavailable` 且 `retryable:true`：连接、超时、请求/响应读取中断、HTTP 408/429/5xx；其他 HTTP 拒绝或客户端配置错误不自动无限重试。`explanation_batch` 内部在 2/4/8/16/32/60 秒等待后重试当前项目，后续间隔维持 60 秒，任务 `state` 保持 running、`stage` 为 `retry_wait`，`message` 含间隔、次数与原因，`error` 不写为终态错误，`current/total` 不因请求尝试而增长。输出 JSON 或中文校验的 `invalid_data` 仅补试一次；最终无效才计入未完成。等待不新增任务记录。
+临时模型请求失败返回 `provider_unavailable` 且 `retryable:true`：连接、超时、请求/响应读取中断、HTTP 408/429/5xx；其他 HTTP 拒绝或客户端配置错误不自动无限重试。`explanation_batch` 内部在 2/4/8/16/32/60 秒等待后重试当前项目，后续间隔维持 60 秒，任务 `state` 保持 running；全部在途项目都等待时 `stage` 为 `retry_wait`，否则为 `translations`，`message` 含当前处理及等待信息，`error` 不写为终态错误，`current/total` 不因请求尝试而增长。输出 JSON 或中文校验的 `invalid_data` 仅补试一次；最终无效才计入未完成。等待不新增任务记录。
 
 存在等待批次时，显式 `explanations_prepare` 复用并唤醒同一 taskId；没有活跃批次时重新查询缺失资料启动新执行。`explanations_status` 在等待期间仍为 running，历史失败不当作实时健康检查。取消与退出检查适用于等待，并在下一次请求前复核已掌握偏好。重试唤醒标志是进程内状态；解释、暂停偏好和任务回执继续采用原持久化规则，schema 仍为 6。
+
+Settings 增加 `modelConcurrency:number`，默认 1，接受 1～16 的整数；settings_get 返回已保存值，settings_update 校验并保存后更新共享请求许可。该上限覆盖 explain_start 及准备线程；已有请求不因降低上限被取消。`result.preparation` 增加 `concurrency`、`inFlight`、`waiting`，表示当前上限、已分配且未结束的项目和其中等待重试的项目，不等同于服务端实际计算数；历史结果缺少这些字段时继续显示原统计。工作线程只发内部状态/结果事件，由协调线程单独提交聚合快照。唤醒用运行期递增序号，使一次显式重试通知全部等待工作线程。
 
 本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
@@ -238,7 +240,7 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 
 ## 8 契约验证
 
-命令实施前核对请求、成功结果、错误与版本行为，并用 [测试计划](../testing/test-plan.md) 中的重试、取消、并发修改和服务异常场景验证。协议调整同步更新数据模型与流程，具体参数由实现中的类型定义和契约测试约束。
+命令实施前核对请求、成功结果、错误与版本行为，选择直接确认改动的最小成功路径。测试计划中的额外异常、边界、压力或扩大回归场景须先取得用户明确授权；通过必要检查后交付。协议调整同步更新数据模型与流程，具体参数由实现中的类型定义和契约测试约束。
 
 ## 9 修订记录
 
@@ -268,3 +270,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.22 | 2026-10-08 | 新增聚合准备/状态命令，明确自动后台、页面只读、批次取消暂停及结果先入库的契约 |
 | 0.23 | 2026-10-08 | 明确语境进度、来源候选统计关联及旧记录兼容，补充缩略词中文提示与校验保持 |
 | 0.24 | 2026-10-08 | 明确模型错误可重试分类、retry_wait、同 taskId 唤醒及输出有限补试，保持 schema 和缓存规则 |
+| 0.25 | 2026-10-09 | 增加 modelConcurrency、聚合并发统计及协调提交契约，按用户规则限定最小正常路径验证 |

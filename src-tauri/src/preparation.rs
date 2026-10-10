@@ -9,7 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    sync::{Arc, atomic::Ordering},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 use uuid::Uuid;
@@ -48,6 +52,37 @@ struct SourceProgress {
     title: String,
     current: usize,
     total: usize,
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparationProgress {
+    generated: usize,
+    reused: usize,
+    skipped: usize,
+    failed: usize,
+    sources: Vec<SourceProgress>,
+    failures: Vec<serde_json::Value>,
+    concurrency: usize,
+    in_flight: usize,
+    waiting: usize,
+}
+
+struct ActivePreparation {
+    input: PreparationInput,
+    stage: &'static str,
+}
+
+enum PreparationEvent {
+    Progress {
+        id: usize,
+        stage: &'static str,
+        message: String,
+    },
+    Finished {
+        id: usize,
+        result: Result<Option<bool>, AppError>,
+    },
 }
 
 impl Store {
@@ -219,8 +254,8 @@ impl Application {
             .into_iter()
             .find(|task| task.kind == "explanation_batch")
         {
-            if explicit && task.stage == "retry_wait" {
-                self.preparation_retry_now.store(true, Ordering::Relaxed);
+            if explicit {
+                self.preparation_retry_epoch.fetch_add(1, Ordering::Relaxed);
             }
             return Ok(PreparationReply { task: Some(task) });
         }
@@ -231,7 +266,6 @@ impl Application {
         if inputs.is_empty() {
             return Ok(PreparationReply { task: None });
         }
-        self.preparation_retry_now.store(false, Ordering::Relaxed);
         let hash = crate::vocabulary::digest(&serde_json::to_vec(&inputs)?);
         let app = Arc::clone(self);
         let task = self.tasks.start(
@@ -247,6 +281,7 @@ impl Application {
         &self,
         context: &TaskContext,
         delay: Duration,
+        epoch: u64,
     ) -> Result<(), AppError> {
         let until = Instant::now() + delay;
         loop {
@@ -254,7 +289,7 @@ impl Application {
             if self.preparation_shutdown.load(Ordering::Relaxed) {
                 return Err(AppError::new("cancelled", "应用正在退出。"));
             }
-            if self.preparation_retry_now.swap(false, Ordering::Relaxed) {
+            if self.preparation_retry_epoch.load(Ordering::Relaxed) != epoch {
                 break;
             }
             let remaining = until.saturating_duration_since(Instant::now());
@@ -270,13 +305,12 @@ impl Application {
         &self,
         input: &PreparationInput,
         context: &TaskContext,
-        current: usize,
-        total: usize,
-        source: &SourceProgress,
+        report: impl Fn(&'static str, String),
     ) -> Result<Option<bool>, AppError> {
         let mut connection_retries: u32 = 0;
         let mut output_retried = false;
         loop {
+            let epoch = self.preparation_retry_epoch.load(Ordering::Relaxed);
             context.check_cancelled()?;
             if self.preparation_shutdown.load(Ordering::Relaxed) {
                 return Err(AppError::new("cancelled", "应用正在退出。"));
@@ -284,15 +318,7 @@ impl Application {
             if self.store.is_known_target(&input.kind, &input.text)? {
                 return Ok(None);
             }
-            context.progress(
-                "translations",
-                current,
-                total,
-                &format!(
-                    "{} · {} · 本集 {}/{}",
-                    input.title, input.text, source.current, source.total
-                ),
-            );
+            report("translations", format!("{} · {}", input.title, input.text));
             let error = match self.explain_value(&input.text, &input.context, context) {
                 Ok((_, created)) => return Ok(Some(created)),
                 Err(error) => error,
@@ -323,9 +349,41 @@ impl Application {
             } else {
                 return Err(error);
             };
-            context.progress("retry_wait", current, total, &message);
-            self.wait_preparation_retry(context, delay)?;
+            report("retry_wait", message);
+            self.wait_preparation_retry(context, delay, epoch)?;
         }
+    }
+
+    fn publish_preparation(
+        &self,
+        context: &TaskContext,
+        current: usize,
+        total: usize,
+        progress: &mut PreparationProgress,
+        active: &HashMap<usize, ActivePreparation>,
+        message: &str,
+    ) {
+        progress.concurrency = self.model_gate.limit();
+        progress.in_flight = active.len();
+        progress.waiting = active
+            .values()
+            .filter(|job| job.stage == "retry_wait")
+            .count();
+        let stage = if !active.is_empty() && progress.waiting == active.len() {
+            "retry_wait"
+        } else {
+            "translations"
+        };
+        context.partial_result(json!({"preparation":progress}));
+        context.progress(
+            stage,
+            current,
+            total,
+            &format!(
+                "并发上限 {} · 执行中 {} 项 · 等待重试 {} 项 · {}",
+                progress.concurrency, progress.in_flight, progress.waiting, message
+            ),
+        );
     }
 
     fn run_preparation(
@@ -334,21 +392,20 @@ impl Application {
         context: TaskContext,
     ) -> Result<serde_json::Value, AppError> {
         let mut total = inputs.len();
-        let mut sources = Vec::<SourceProgress>::new();
+        let mut progress = PreparationProgress::default();
         let mut indexes = HashMap::new();
         for input in &inputs {
             let index = *indexes.entry(input.source_id.clone()).or_insert_with(|| {
-                let index = sources.len();
-                sources.push(SourceProgress {
+                let index = progress.sources.len();
+                progress.sources.push(SourceProgress {
                     source_id: input.source_id.clone(),
                     title: input.title.clone(),
                     ..Default::default()
                 });
                 index
             });
-            sources[index].total += 1;
+            progress.sources[index].total += 1;
         }
-        context.subject(&format!("中文资料准备 · {} 份剧集", sources.len()));
         let mut seen = inputs
             .iter()
             .map(|input| {
@@ -361,97 +418,199 @@ impl Application {
             })
             .collect::<HashSet<_>>();
         let mut queue: VecDeque<_> = inputs.into();
-        let (mut generated, mut reused, mut skipped, mut failed) = (0, 0, 0, 0);
-        let mut failures = Vec::new();
-        let mut current = 0;
-        context.partial_result(json!({"preparation":{"generated":generated,"reused":reused,"skipped":skipped,"failed":failed,"sources":sources,"failures":failures}}));
-        loop {
-            context.check_cancelled()?;
-            if self.preparation_requested.swap(false, Ordering::Relaxed) {
-                for input in self.store.explanation_work(None)? {
-                    let key = (
-                        input.source_id.clone(),
-                        input.kind.clone(),
-                        input.text.clone(),
-                        input.context.clone(),
-                    );
-                    if seen.insert(key) {
-                        let index = *indexes.entry(input.source_id.clone()).or_insert_with(|| {
-                            let index = sources.len();
-                            sources.push(SourceProgress {
-                                source_id: input.source_id.clone(),
-                                title: input.title.clone(),
-                                ..Default::default()
-                            });
-                            index
+        let mut active = HashMap::<usize, ActivePreparation>::new();
+        let (mut current, mut next_id, mut workers) = (0, 0, 0);
+        let (work_sender, work_receiver) = mpsc::channel::<(usize, PreparationInput)>();
+        let work_receiver = Arc::new(Mutex::new(work_receiver));
+        let (events, receiver) = mpsc::channel::<PreparationEvent>();
+        let stopped = Arc::new(AtomicBool::new(false));
+        context.subject(&format!("中文资料准备 · {} 份剧集", progress.sources.len()));
+        self.publish_preparation(
+            &context,
+            current,
+            total,
+            &mut progress,
+            &active,
+            "正在安排中文资料",
+        );
+        std::thread::scope(|scope| {
+            let result = (|| {
+                loop {
+                    context.check_cancelled()?;
+                    if self.preparation_shutdown.load(Ordering::Relaxed) {
+                        return Err(AppError::new("cancelled", "应用正在退出。"));
+                    }
+                    if self.preparation_requested.swap(false, Ordering::Relaxed) {
+                        for input in self.store.explanation_work(None)? {
+                            let key = (
+                                input.source_id.clone(),
+                                input.kind.clone(),
+                                input.text.clone(),
+                                input.context.clone(),
+                            );
+                            if seen.insert(key) {
+                                let index =
+                                    *indexes.entry(input.source_id.clone()).or_insert_with(|| {
+                                        let index = progress.sources.len();
+                                        progress.sources.push(SourceProgress {
+                                            source_id: input.source_id.clone(),
+                                            title: input.title.clone(),
+                                            ..Default::default()
+                                        });
+                                        index
+                                    });
+                                progress.sources[index].total += 1;
+                                total += 1;
+                                queue.push_back(input);
+                            }
+                        }
+                        context
+                            .subject(&format!("中文资料准备 · {} 份剧集", progress.sources.len()));
+                    }
+                    let concurrency = self.model_gate.limit();
+                    while workers < concurrency {
+                        let work = Arc::clone(&work_receiver);
+                        let events = events.clone();
+                        let mut worker_context = context.clone();
+                        worker_context.cancelled = Arc::clone(&stopped);
+                        scope.spawn(move || {
+                            while !worker_context.cancelled.load(Ordering::Relaxed) {
+                                let next = {
+                                    let work = work.lock().expect("preparation receiver lock");
+                                    if worker_context.cancelled.load(Ordering::Relaxed) {
+                                        break;
+                                    }
+                                    work.recv_timeout(Duration::from_millis(100))
+                                };
+                                let (id, input) = match next {
+                                    Ok(value) => value,
+                                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                                };
+                                let output = self.explain_prepared(
+                                    &input,
+                                    &worker_context,
+                                    |stage, message| {
+                                        let _ = events.send(PreparationEvent::Progress {
+                                            id,
+                                            stage,
+                                            message,
+                                        });
+                                    },
+                                );
+                                let _ =
+                                    events.send(PreparationEvent::Finished { id, result: output });
+                            }
                         });
-                        sources[index].total += 1;
-                        total += 1;
-                        queue.push_back(input);
+                        workers += 1;
                     }
-                }
-                context.subject(&format!("中文资料准备 · {} 份剧集", sources.len()));
-                context.partial_result(json!({"preparation":{"generated":generated,"reused":reused,"skipped":skipped,"failed":failed,"sources":sources,"failures":failures}}));
-            }
-            if queue.is_empty() {
-                break;
-            }
-            let index = {
-                let mut priority = self
-                    .preparation_priority
-                    .lock()
-                    .map_err(|_| AppError::new("internal_error", "剧集优先级不可用。"))?;
-                let index = priority
-                    .as_ref()
-                    .and_then(|id| queue.iter().position(|input| &input.source_id == id));
-                if index.is_none() {
-                    *priority = None;
-                }
-                index.unwrap_or(0)
-            };
-            let input = queue.remove(index).unwrap();
-            let source_index = indexes[&input.source_id];
-            match self.explain_prepared(&input, &context, current, total, &sources[source_index]) {
-                Ok(None) => skipped += 1,
-                Ok(Some(created)) => {
-                    if created {
-                        generated += 1;
-                    } else {
-                        reused += 1;
-                    }
-                }
-                Err(error) if matches!(error.code.as_str(), "invalid_data" | "invalid_input") => {
-                    failed += 1;
-                    if failures.len() < 20 {
-                        failures.push(
-                            json!({"source":input.title,"text":input.text,"message":error.message}),
+                    while active.len() < concurrency && !queue.is_empty() {
+                        let index = {
+                            let mut priority = self.preparation_priority.lock().map_err(|_| {
+                                AppError::new("internal_error", "剧集优先级不可用。")
+                            })?;
+                            let index = priority.as_ref().and_then(|id| {
+                                queue.iter().position(|input| &input.source_id == id)
+                            });
+                            if index.is_none() {
+                                *priority = None;
+                            }
+                            index.unwrap_or(0)
+                        };
+                        let input = queue.remove(index).unwrap();
+                        next_id += 1;
+                        active.insert(
+                            next_id,
+                            ActivePreparation {
+                                input: input.clone(),
+                                stage: "translations",
+                            },
                         );
+                        work_sender
+                            .send((next_id, input))
+                            .map_err(|_| AppError::new("internal_error", "中文准备队列不可用。"))?;
                     }
-                }
-                Err(error) => {
-                    if error.code != "cancelled" {
-                        self.preparation_paused.store(true, Ordering::Relaxed);
+                    if active.is_empty() && queue.is_empty() {
+                        break;
                     }
-                    return Err(error);
+                    let event = match receiver.recv_timeout(Duration::from_millis(100)) {
+                        Ok(event) => event,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            if progress.concurrency != concurrency {
+                                self.publish_preparation(
+                                    &context,
+                                    current,
+                                    total,
+                                    &mut progress,
+                                    &active,
+                                    "已应用新的并发上限",
+                                );
+                            }
+                            continue;
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            return Err(AppError::new("internal_error", "中文准备结果不可用。"));
+                        }
+                    };
+                    let message = match event {
+                        PreparationEvent::Progress { id, stage, message } => {
+                            let Some(job) = active.get_mut(&id) else {
+                                continue;
+                            };
+                            job.stage = stage;
+                            let source = &progress.sources[indexes[&job.input.source_id]];
+                            format!("{} · 本集 {}/{}", message, source.current, source.total)
+                        }
+                        PreparationEvent::Finished { id, result } => {
+                            let job = active.remove(&id).unwrap();
+                            match result {
+                                Ok(None) => progress.skipped += 1,
+                                Ok(Some(true)) => progress.generated += 1,
+                                Ok(Some(false)) => progress.reused += 1,
+                                Err(error)
+                                    if matches!(
+                                        error.code.as_str(),
+                                        "invalid_data" | "invalid_input"
+                                    ) =>
+                                {
+                                    progress.failed += 1;
+                                    if progress.failures.len() < 20 {
+                                        progress.failures.push(json!({"source":job.input.title,"text":job.input.text,"message":error.message}));
+                                    }
+                                }
+                                Err(error) => {
+                                    if error.code != "cancelled" {
+                                        self.preparation_paused.store(true, Ordering::Relaxed);
+                                    }
+                                    return Err(error);
+                                }
+                            }
+                            current += 1;
+                            let source = &mut progress.sources[indexes[&job.input.source_id]];
+                            source.current += 1;
+                            format!(
+                                "{} · 本集 {}/{}",
+                                source.title, source.current, source.total
+                            )
+                        }
+                    };
+                    self.publish_preparation(
+                        &context,
+                        current,
+                        total,
+                        &mut progress,
+                        &active,
+                        &message,
+                    );
                 }
-            }
-            current += 1;
-            sources[source_index].current += 1;
-            let result = json!({"preparation":{"generated":generated,"reused":reused,"skipped":skipped,"failed":failed,"sources":sources,"failures":failures}});
-            context.partial_result(result.clone());
-            context.progress(
-                "translations",
-                current,
-                total,
-                &format!(
-                    "{} · 本集 {}/{}",
-                    input.title, sources[source_index].current, sources[source_index].total
-                ),
-            );
-        }
-        Ok(
-            json!({"preparation":{"generated":generated,"reused":reused,"skipped":skipped,"failed":failed,"sources":sources,"failures":failures}}),
-        )
+                progress.in_flight = 0;
+                progress.waiting = 0;
+                Ok(json!({"preparation":progress}))
+            })();
+            stopped.store(true, Ordering::Relaxed);
+            drop(work_sender);
+            result
+        })
     }
 }
 
@@ -551,6 +710,68 @@ mod tests {
     fn finish(app: &Application, task: &TaskSnapshot) -> TaskSnapshot {
         wait_until(|| app.tasks.get(&task.id).unwrap().terminal());
         app.tasks.get(&task.id).unwrap()
+    }
+
+    #[test]
+    fn saved_concurrency_runs_two_preparation_requests_in_parallel() {
+        use std::sync::{Barrier, atomic::AtomicUsize};
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        seed(
+            &store,
+            "episode",
+            &[
+                ("reluctant", "She is reluctant."),
+                ("patient", "Stay patient."),
+            ],
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let together = Arc::new(Barrier::new(2));
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&peak);
+        let server = std::thread::spawn(move || {
+            let mut handlers = Vec::new();
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let together = Arc::clone(&together);
+                let active = Arc::clone(&active);
+                let peak = Arc::clone(&peak);
+                handlers.push(std::thread::spawn(move || {
+                    let count = active.fetch_add(1, Ordering::Relaxed) + 1;
+                    peak.fetch_max(count, Ordering::Relaxed);
+                    together.wait();
+                    response(&mut stream, true);
+                    active.fetch_sub(1, Ordering::Relaxed);
+                }));
+            }
+            for handler in handlers {
+                handler.join().unwrap();
+            }
+        });
+        let app = application(Arc::clone(&store), url.clone());
+        assert_eq!(app.settings().unwrap().model_concurrency, 1);
+        let mut settings = app.settings().unwrap();
+        settings.model_concurrency = 2;
+        assert_eq!(app.save_settings(settings).unwrap().model_concurrency, 2);
+        drop(app);
+        drop(store);
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let app = application(Arc::clone(&store), url);
+        assert_eq!(app.settings().unwrap().model_concurrency, 2);
+        let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        let task = finish(&app, &task);
+        assert_eq!(task.state, "succeeded");
+        assert_eq!(task.current, 2);
+        assert_eq!(task.total, 2);
+        assert_eq!(observed.load(Ordering::Relaxed), 2);
+        let result = task.result.unwrap();
+        assert_eq!(result["preparation"]["generated"], 2);
+        assert_eq!(result["preparation"]["concurrency"], 2);
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        assert!(store.explanation_work(None).unwrap().is_empty());
+        server.join().unwrap();
     }
 
     #[test]

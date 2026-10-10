@@ -3,6 +3,7 @@ use crate::{
     error::AppError,
     explanations::{self, Explanation},
     media::{self, MediaTools},
+    model_gate::ModelGate,
     store::Store,
     tasks::{TaskContext, TaskManager, TaskSnapshot},
     vocabulary::{self, CollectionInput, Entry},
@@ -14,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 use uuid::Uuid;
@@ -24,6 +25,7 @@ use uuid::Uuid;
 pub struct Settings {
     pub model_url: String,
     pub model_name: String,
+    pub model_concurrency: usize,
     pub offline_mode: bool,
     pub selection_shortcut: String,
     pub ocr_shortcut: String,
@@ -39,6 +41,7 @@ impl Default for Settings {
         Self {
             model_url: "http://127.0.0.1:8096".into(),
             model_name: "Qwen3.5-9B".into(),
+            model_concurrency: 1,
             offline_mode: false,
             selection_shortcut: "Ctrl+Alt+Shift+W".into(),
             ocr_shortcut: "Ctrl+Alt+Shift+S".into(),
@@ -65,11 +68,11 @@ pub struct Application {
     defaults: Settings,
     import_guard: Arc<Mutex<()>>,
     network_unavailable: Arc<AtomicBool>,
-    pub(crate) model_guard: Arc<Mutex<()>>,
+    pub(crate) model_gate: Arc<ModelGate>,
     pub(crate) preparation_guard: Mutex<()>,
     pub(crate) preparation_requested: Arc<AtomicBool>,
     pub(crate) preparation_paused: AtomicBool,
-    pub(crate) preparation_retry_now: AtomicBool,
+    pub(crate) preparation_retry_epoch: AtomicU64,
     pub(crate) preparation_shutdown: AtomicBool,
     pub(crate) preparation_priority: Mutex<Option<String>>,
     #[cfg(all(windows, feature = "desktop"))]
@@ -211,25 +214,29 @@ impl Application {
             })
     }
     pub fn new(store: Arc<Store>, tasks: Arc<TaskManager>, defaults: Settings) -> Self {
-        Self {
+        let app = Self {
             store,
             tasks,
             drafts: Mutex::new(HashMap::new()),
             defaults,
             import_guard: Arc::new(Mutex::new(())),
             network_unavailable: Arc::new(AtomicBool::new(false)),
-            model_guard: Arc::new(Mutex::new(())),
+            model_gate: Arc::new(ModelGate::new()),
             preparation_guard: Mutex::new(()),
             preparation_requested: Arc::new(AtomicBool::new(true)),
             preparation_paused: AtomicBool::new(false),
-            preparation_retry_now: AtomicBool::new(false),
+            preparation_retry_epoch: AtomicU64::new(0),
             preparation_shutdown: AtomicBool::new(false),
             preparation_priority: Mutex::new(None),
             #[cfg(all(windows, feature = "desktop"))]
             connection_guard: Arc::new(Mutex::new(())),
             #[cfg(all(windows, feature = "desktop"))]
             sync_guard: Arc::new(Mutex::new(())),
+        };
+        if let Ok(settings) = app.settings() {
+            app.model_gate.set_limit(settings.model_concurrency);
         }
+        app
     }
 
     pub fn network_unavailable(&self) -> bool {
@@ -289,6 +296,12 @@ impl Application {
     }
 
     pub fn save_settings(&self, mut settings: Settings) -> Result<Settings, AppError> {
+        if !(1..=16).contains(&settings.model_concurrency) {
+            return Err(AppError::new(
+                "invalid_input",
+                "模型并发请求数必须是 1 至 16 的整数。",
+            ));
+        }
         let previous = self.settings()?;
         crate::site_connection::site_origin(&settings.site_url)?;
         let url = reqwest::Url::parse(&settings.model_url)
@@ -308,6 +321,7 @@ impl Application {
         let mut stored = serde_json::to_value(&settings)?;
         stored.as_object_mut().unwrap().remove("tools");
         self.store.connection()?.execute("INSERT INTO settings(key,value_json) VALUES ('application',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",[serde_json::to_string(&stored)?])?;
+        self.model_gate.set_limit(settings.model_concurrency);
         if previous.model_url != settings.model_url || previous.model_name != settings.model_name {
             self.preparation_paused.store(false, Ordering::Relaxed);
             self.preparation_requested.store(true, Ordering::Relaxed);
@@ -462,7 +476,7 @@ impl Application {
         let text = text.trim().to_owned();
         let settings = self.settings()?;
         let store = Arc::clone(&self.store);
-        let model_guard = Arc::clone(&self.model_guard);
+        let model_gate = Arc::clone(&self.model_gate);
         let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &context_text))?);
         self.tasks
             .start("explanation", &operation_id, &hash, move |context| {
@@ -470,7 +484,7 @@ impl Application {
                 context.progress("model", 0, 1, "正在取得本地解释");
                 let (value, _) = generate_explanation(
                     &store,
-                    &model_guard,
+                    &model_gate,
                     &settings,
                     &text,
                     &context_text,
@@ -488,7 +502,7 @@ impl Application {
     ) -> Result<(Explanation, bool), AppError> {
         generate_explanation(
             &self.store,
-            &self.model_guard,
+            &self.model_gate,
             &self.settings()?,
             text,
             context_text,
@@ -499,7 +513,7 @@ impl Application {
 
 fn generate_explanation(
     store: &Store,
-    model_guard: &Mutex<()>,
+    model_gate: &ModelGate,
     settings: &Settings,
     text: &str,
     context_text: &str,
@@ -510,16 +524,7 @@ fn generate_explanation(
     if let Some(value) = store.explanation(text, context_text)? {
         return Ok((value, false));
     }
-    let _guard = loop {
-        context.check_cancelled()?;
-        match model_guard.try_lock() {
-            Ok(guard) => break guard,
-            Err(std::sync::TryLockError::WouldBlock) => {
-                std::thread::sleep(std::time::Duration::from_millis(50))
-            }
-            Err(_) => return Err(AppError::new("internal_error", "本地模型执行状态不可用。")),
-        }
-    };
+    let _permit = model_gate.acquire(text, context_text, context)?;
     if let Some(value) = store.explanation(text, context_text)? {
         return Ok((value, false));
     }

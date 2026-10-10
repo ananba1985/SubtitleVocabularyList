@@ -6,6 +6,7 @@ pub mod explanations;
 pub mod known_targets;
 pub mod lookup;
 pub mod media;
+mod model_gate;
 pub mod ocr;
 pub mod preparation;
 pub mod review_policy;

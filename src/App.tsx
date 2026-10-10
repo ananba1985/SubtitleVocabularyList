@@ -16,10 +16,18 @@ import { ReviewView } from "./components/ReviewView";
 import { SyncView } from "./components/SyncView";
 import { TasksView } from "./components/TasksView";
 import { KnownTargetsManager } from "./components/KnownTargetsManager";
+import { PracticeView } from "./components/PracticeView";
 import { collectionQueue } from "./collectionQueue";
 
 type Tab =
-  "library" | "episodes" | "reviews" | "leech" | "sync" | "tasks" | "settings";
+  | "library"
+  | "episodes"
+  | "practice"
+  | "reviews"
+  | "leech"
+  | "sync"
+  | "tasks"
+  | "settings";
 export default function App() {
   const [tab, setTab] = useState<Tab>("library"),
     [info, setInfo] = useState<AppInfo | null>(null),
@@ -132,6 +140,7 @@ export default function App() {
             [
               ["library", "我的单词本"],
               ["episodes", "观看前预习"],
+              ["practice", "听读练习"],
               ["reviews", "主动回忆测验"],
               ["leech", "易忘词专项"],
               ["sync", "站点同步"],
@@ -183,6 +192,7 @@ export default function App() {
                 {
                   library: "我的单词本",
                   episodes: "观看前预习",
+                  practice: "听读练习",
                   reviews: "主动回忆测验",
                   leech: "易忘词专项",
                   sync: "站点同步",
@@ -306,6 +316,13 @@ export default function App() {
             key={tab}
             special={tab === "leech"}
             refreshKey={refreshKey}
+          />
+        )}
+        {tab === "practice" && info && (
+          <PracticeView
+            dataDirectory={info.dataDirectory}
+            collect={setSeed}
+            review={() => setTab("library")}
           />
         )}
         {tab === "sync" && (

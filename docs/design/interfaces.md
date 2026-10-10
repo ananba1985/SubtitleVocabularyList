@@ -3,10 +3,10 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.26 |
+| 文档版本 | 0.27 |
 | 更新日期 | 2026-10-10 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
-| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
+| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-13、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
 | 关联设计 | [数据模型](data-model.md)、[应用流程](application-flows.md) |
 
@@ -65,6 +65,13 @@
 | CMD-30 | `explanation_import` | 按需迁入旧浏览器解释，不覆盖数据库资料或产生收录行为 | FR-08、NFR-02 |
 | CMD-31 | `explanations_prepare` | 安排/继续聚合中文准备，可优先指定来源，返回已有或新任务及全部就绪状态 | FR-02、FR-08、NFR-03 |
 | CMD-32 | `explanations_status` | 本地读取 running/paused/failed/idle，不探测模型或联网 | FR-08、NFR-03 |
+| CMD-33 | `practice_get` | 无参数 → 本机保存的当前阅读与位置，首次为 null | FR-13、NFR-02 |
+| CMD-34 | `practice_import` | `{document}` → 保存阅读并返回 PracticeState；同来源继续位置 | FR-13 |
+| CMD-35 | `practice_progress_save` | `{documentId,progress}` → 保存章节、句子、草稿、速度、音频来源与声音；忽略已更换阅读的旧更新 | FR-13、NFR-02 |
+| CMD-36 | `practice_audio_save` | 原始二进制请求 → 写入本机课程音轨并返回 `media/practice/{digest}.m4a` 相对路径 | FR-13、NFR-01 |
+| CMD-37 | `practice_example` | `{documentId,chapter,sentence}` → 按已保存课程创建／复用原句，返回 CandidateExample，进入原收录确认和原声保存流程 | FR-05 至 FR-07、FR-13 |
+
+FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{text,startMs,endMs}]}],audioFile`；`PracticeState` 增加 `chapterIndex,sentenceIndex,copy,speed,audioMode,voiceId`。时间单位为毫秒；无原声的句子时间为 null。`speech_start` 新增可选 `voiceId`，仅覆盖本次请求的系统声音，旧调用继续使用全局设置；速度由本地播放器设置。
 
 全局取词与截图触发直接进入同一核心采集入口，先取得原应用上下文再显示窗口。CMD-06、CMD-07 不是让弹窗取得焦点后重新猜测原窗口的操作。
 
@@ -274,3 +281,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.24 | 2026-10-08 | 明确模型错误可重试分类、retry_wait、同 taskId 唤醒及输出有限补试，保持 schema 和缓存规则 |
 | 0.25 | 2026-10-09 | 增加 modelConcurrency、聚合并发统计及协调提交契约，按用户规则限定最小正常路径验证 |
 | 0.26 | 2026-10-10 | 补充同句多词请求与编号对应契约，区分请求批数和词语进度 |
+| 0.27 | 2026-10-10 | 增加 FR-13 练习命令、二进制原声 IPC、位置数据与单次声音覆盖 |

@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.21 |
-| 更新日期 | 2026-10-07 |
+| 文档版本 | 0.22 |
+| 更新日期 | 2026-10-10 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
 
@@ -30,6 +30,7 @@
 | 同例句多语境增量 | [testing/example-context-results.md](testing/example-context-results.md) | 多释义关联、原声复用、升级、资料包及实际桌面结果 | 不把完整字段契约当成完整同步 |
 | 笔记本继续开发交接 | [development/laptop-handoff.md](development/laptop-handoff.md) | 当前代码、检查点、站点恢复、未完成项和停止状态 | 完整目标保留，按用户要求在其他环境继续 |
 | 导入选择与查询增量 | [testing/import-query-results.md](testing/import-query-results.md) | 多轨/外置/转写、有序采集、实际解释和手动网络请求 | 不以合成事件替代新跨进程采集或整体安装验收 |
+| 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
 | 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、本地处理、进程计数与模型不可用 | 采样与核心调用不代替长期 SLO 或 GUI 响应 |
@@ -141,3 +142,4 @@
 | 0.19 | 2026-10-07 | 索引最终候选发布说明与用户验收 |
 | 0.20 | 2026-10-07 | 按用户要求区分日常开发本地验证与手动版本发布，取消逐功能打包安装流程 |
 | 0.21 | 2026-10-07 | 索引用户确认的版本规则与统一管理入口，区分代码版本递增和手动版本发布 |
+| 0.22 | 2026-10-10 | 登记网站听读功能本地整合的评估和增量验证记录 |

@@ -9,6 +9,7 @@ pub mod lookup;
 pub mod media;
 mod model_gate;
 pub mod ocr;
+pub mod practice;
 pub mod preparation;
 pub mod review_policy;
 pub mod reviews;

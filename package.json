@@ -1,6 +1,6 @@
 {
   "name": "subtitle-vocabulary-list",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -23,6 +23,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",
     "@tauri-apps/plugin-dialog": "2",
+    "jszip": "3.10.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

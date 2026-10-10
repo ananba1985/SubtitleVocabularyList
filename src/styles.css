@@ -57,6 +57,156 @@ textarea {
 textarea {
   resize: vertical;
 }
+.practice-view .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.practice-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.7fr);
+  align-items: start;
+  gap: 18px;
+}
+.practice-reading,
+.practice-work,
+.practice-import {
+  background: white;
+  border: 1px solid #dce4da;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+}
+.practice-import {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.practice-reading h2 {
+  margin: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.practice-sentences {
+  max-height: 58dvh;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+}
+.practice-sentences button {
+  text-align: left;
+  border-color: transparent;
+  overflow-wrap: anywhere;
+}
+.practice-sentences button.active {
+  background: #e9f1e6;
+  border-color: #89ae8d;
+  color: #245c46;
+}
+.practice-controls {
+  align-items: end;
+  flex-wrap: wrap;
+}
+.practice-controls label {
+  max-width: 100%;
+}
+.practice-controls select {
+  max-width: 100%;
+}
+.practice-original {
+  font-size: 25px;
+  line-height: 1.7;
+  color: #173e34;
+  background: #f6f8f2;
+  border-radius: 10px;
+  padding: 20px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.practice-status {
+  min-height: 22px;
+}
+.practice-lookup {
+  margin: 16px 0;
+}
+.practice-lookup summary {
+  color: #52665a;
+  cursor: pointer;
+}
+.practice-copy-editor {
+  position: relative;
+  margin-top: 9px;
+}
+.practice-copy-editor textarea,
+.practice-copy-highlights {
+  width: 100%;
+  padding: 14px;
+  font-family: Consolas, monospace;
+  font-size: 18px;
+  line-height: 1.65;
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  border: 1px solid transparent;
+}
+.practice-copy-editor textarea {
+  display: block;
+  position: relative;
+  color: transparent;
+  background: transparent;
+  caret-color: #233c35;
+  border-color: #d6ded5;
+  resize: none;
+}
+.practice-copy-editor textarea:disabled {
+  background: #f6f7f355;
+}
+.practice-copy-highlights {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.practice-view .correct {
+  color: #286bb0;
+}
+.practice-view .incorrect {
+  color: #b83838;
+  background: #fff0f0;
+}
+.practice-view .remaining {
+  color: #98a39b;
+}
+.practice-comparison {
+  font-family: Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  padding: 12px 0;
+}
+.practice-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 20px 0 12px;
+}
+.practice-footer progress {
+  width: 100%;
+  accent-color: #245c46;
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .practice-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .practice-sentences {
+    max-height: 150px;
+  }
+}
 label {
   display: grid;
   gap: 7px;

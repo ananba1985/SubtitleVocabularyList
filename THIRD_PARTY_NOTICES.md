@@ -14,6 +14,7 @@
 | dunce | 简化 Windows 扩展路径，1.0.5，避免原生工具误读路径 | [kornelski/dunce](https://github.com/kornelski/dunce)，CC0-1.0 或 MIT-0 或 Apache-2.0 |
 | Prettier | 开发源码格式化，3.9.9，不随应用作为运行工具调用 | [prettier/prettier](https://github.com/prettier/prettier)，MIT |
 | React 与 React DOM | 本地界面，19.3.0 | [facebook/react](https://github.com/facebook/react)，MIT |
+| JSZip | 本机 EPUB 与 `.lesson.zip` 读取，3.10.1 | [Stuk/jszip](https://github.com/Stuk/jszip)，本项目选择 MIT；原版权与条款见 npm 包 `LICENSE.markdown`，传递依赖随 pnpm 锁文件和现有发行许可脚本收集 |
 | Vite 与 TypeScript | 开发构建与类型检查，版本见 pnpm 锁文件 | [Vite](https://github.com/vitejs/vite)、[TypeScript](https://github.com/microsoft/TypeScript)，分别为 MIT 与 Apache-2.0 |
 | rusqlite 与 SQLite | 本地持久化，rusqlite 0.37.0；SQLite 随其 bundled 功能编译 | [rusqlite](https://github.com/rusqlite/rusqlite)，MIT；[SQLite](https://www.sqlite.org/copyright.html)，public domain |
 | libbitsub-core | PGS 解码与图像呈现，1.12.1 | [altqx/libbitsub](https://github.com/altqx/libbitsub)，MIT；参考审查提交 a280c0c2dc4dad0d7ae5aff138a967a07b25d83f |

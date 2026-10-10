@@ -150,6 +150,7 @@ impl Application {
         &self,
         text: String,
         operation_id: String,
+        voice_id: Option<String>,
     ) -> Result<TaskSnapshot, AppError> {
         if text.trim().is_empty() || text.chars().count() > 20000 || text.contains('\0') {
             return Err(AppError::new(
@@ -157,7 +158,10 @@ impl Application {
                 "请提供非空、长度合适的英语文本。",
             ));
         }
-        let settings = self.settings()?;
+        let mut settings = self.settings()?;
+        if let Some(voice_id) = voice_id {
+            settings.system_voice = voice_id;
+        }
         let store = Arc::clone(&self.store);
         let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &settings.system_voice))?);
         self.tasks

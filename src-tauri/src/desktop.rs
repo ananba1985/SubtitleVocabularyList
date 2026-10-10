@@ -416,6 +416,52 @@ fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
     app.settings()
 }
 #[tauri::command]
+async fn practice_get(
+    app: AppState<'_>,
+) -> Result<Option<crate::practice::PracticeState>, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.practice_get()).await
+}
+#[tauri::command]
+async fn practice_import(
+    app: AppState<'_>,
+    document: crate::practice::PracticeDocument,
+) -> Result<crate::practice::PracticeState, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.practice_import(document)).await
+}
+#[tauri::command]
+async fn practice_progress_save(
+    app: AppState<'_>,
+    document_id: String,
+    progress: crate::practice::PracticeProgress,
+) -> Result<(), AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.practice_progress_save(&document_id, progress)).await
+}
+#[tauri::command]
+async fn practice_audio_save(
+    app: AppState<'_>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, AppError> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(AppError::new("invalid_input", "请提供课程原声音频。"));
+    };
+    let bytes = bytes.clone();
+    let app = app.inner().clone();
+    background(move || app.store.practice_audio_save(&bytes)).await
+}
+#[tauri::command]
+async fn practice_example(
+    app: AppState<'_>,
+    document_id: String,
+    chapter: usize,
+    sentence: usize,
+) -> Result<CandidateExample, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.practice_example(&document_id, chapter, sentence)).await
+}
+#[tauri::command]
 fn connection_status(app: AppState<'_>) -> Result<ConnectionStatus, AppError> {
     app.connection_status()
 }
@@ -496,8 +542,9 @@ fn speech_start(
     app: AppState<'_>,
     text: String,
     operation_id: String,
+    voice_id: Option<String>,
 ) -> Result<TaskSnapshot, AppError> {
-    app.speech_start(text, operation_id)
+    app.speech_start(text, operation_id, voice_id)
 }
 #[tauri::command]
 fn native_status(handle: tauri::AppHandle) -> NativeStatus {
@@ -773,6 +820,11 @@ pub fn run() {
             explanations_status,
             online_query_start,
             settings_get,
+            practice_get,
+            practice_import,
+            practice_progress_save,
+            practice_audio_save,
+            practice_example,
             connection_status,
             connection_start,
             connection_check,

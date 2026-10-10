@@ -1,4 +1,5 @@
 pub mod application;
+mod batch_explanations;
 pub mod corpus;
 pub mod desktop_layout;
 pub mod error;

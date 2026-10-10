@@ -19,6 +19,31 @@ use std::{
 use uuid::Uuid;
 
 const ENABLED_KEY: &str = "explanation_preparation_enabled";
+const TARGETS_PER_REQUEST: usize = 8;
+
+#[derive(Clone)]
+struct PreparationBatch {
+    inputs: Vec<PreparationInput>,
+}
+
+fn group_batches(inputs: Vec<PreparationInput>) -> VecDeque<PreparationBatch> {
+    let mut batches = Vec::<PreparationBatch>::new();
+    let mut indexes = HashMap::<(String, String), usize>::new();
+    for input in inputs {
+        let key = (input.source_id.clone(), input.context.clone());
+        let index = match indexes.get(&key).copied() {
+            Some(index) if batches[index].inputs.len() < TARGETS_PER_REQUEST => index,
+            _ => {
+                let index = batches.len();
+                batches.push(PreparationBatch { inputs: Vec::new() });
+                indexes.insert(key, index);
+                index
+            }
+        };
+        batches[index].inputs.push(input);
+    }
+    batches.into()
+}
 
 fn retry_delay(attempt: u32) -> Duration {
     Duration::from_secs(2u64.pow(attempt.min(6)).min(60))
@@ -66,10 +91,12 @@ struct PreparationProgress {
     concurrency: usize,
     in_flight: usize,
     waiting: usize,
+    batches_in_flight: usize,
+    batch_size: usize,
 }
 
 struct ActivePreparation {
-    input: PreparationInput,
+    batch: PreparationBatch,
     stage: &'static str,
 }
 
@@ -81,7 +108,7 @@ enum PreparationEvent {
     },
     Finished {
         id: usize,
-        result: Result<Option<bool>, AppError>,
+        result: Result<Vec<Result<Option<bool>, AppError>>, AppError>,
     },
 }
 
@@ -354,6 +381,124 @@ impl Application {
         }
     }
 
+    fn explain_prepared_batch(
+        &self,
+        batch: &PreparationBatch,
+        context: &TaskContext,
+        report: impl Fn(&'static str, String),
+    ) -> Result<Vec<Result<Option<bool>, AppError>>, AppError> {
+        if batch.inputs.len() == 1 {
+            return Ok(vec![self.explain_prepared(
+                &batch.inputs[0],
+                context,
+                report,
+            )]);
+        }
+        let first = &batch.inputs[0];
+        let mut outcomes = vec![None; batch.inputs.len()];
+        let mut connection_retries: u32 = 0;
+        let mut output_retried = false;
+        loop {
+            let epoch = self.preparation_retry_epoch.load(Ordering::Relaxed);
+            context.check_cancelled()?;
+            if self.preparation_shutdown.load(Ordering::Relaxed) {
+                return Err(AppError::new("cancelled", "应用正在退出。"));
+            }
+            let mut texts = Vec::new();
+            let mut unique = HashSet::new();
+            for (index, input) in batch.inputs.iter().enumerate() {
+                if outcomes[index].is_some() {
+                    continue;
+                }
+                if let Err(error) = crate::explanations::validate_input(&input.text, &input.context)
+                {
+                    outcomes[index] = Some(Err(error));
+                } else if self.store.is_known_target(&input.kind, &input.text)? {
+                    outcomes[index] = Some(Ok(None));
+                } else if unique.insert(input.text.trim().to_owned()) {
+                    texts.push(input.text.trim().to_owned());
+                }
+            }
+            if texts.is_empty() {
+                return Ok(outcomes.into_iter().map(Option::unwrap).collect());
+            }
+            report(
+                "translations",
+                format!("{} · 同句准备 {} 个词", first.title, texts.len()),
+            );
+            let mut retry_error = None;
+            match self.explain_many(&texts, &first.context, context) {
+                Ok(mut values) => {
+                    for (index, input) in batch.inputs.iter().enumerate() {
+                        if outcomes[index].is_some() {
+                            continue;
+                        }
+                        let result = values.remove(input.text.trim()).unwrap_or_else(|| {
+                            self.store
+                                .explanation(&input.text, &input.context)
+                                .and_then(|value| {
+                                    if value.is_some() {
+                                        Ok(false)
+                                    } else {
+                                        Err(AppError::new(
+                                            "invalid_data",
+                                            "批量结果缺少当前词语解释。",
+                                        ))
+                                    }
+                                })
+                        });
+                        match result {
+                            Err(error)
+                                if (error.code == "provider_unavailable" && error.retryable)
+                                    || (error.code == "invalid_data" && !output_retried) =>
+                            {
+                                retry_error = Some(error)
+                            }
+                            value => outcomes[index] = Some(value.map(Some)),
+                        }
+                    }
+                }
+                Err(error) => retry_error = Some(error),
+            }
+            let Some(error) = retry_error else {
+                return Ok(outcomes.into_iter().map(Option::unwrap).collect());
+            };
+            let (delay, message) = if error.code == "provider_unavailable" && error.retryable {
+                connection_retries = connection_retries.saturating_add(1);
+                let delay = retry_delay(connection_retries);
+                (
+                    delay,
+                    format!(
+                        "{} · {} 秒后自动重试同句缺失资料（第 {} 次）。{}",
+                        first.title,
+                        delay.as_secs(),
+                        connection_retries,
+                        error.message
+                    ),
+                )
+            } else if error.code == "invalid_data" && !output_retried {
+                output_retried = true;
+                connection_retries = 0;
+                (
+                    Duration::from_secs(1),
+                    format!(
+                        "{} · 1 秒后补试本句未完成的词语。{}",
+                        first.title, error.message
+                    ),
+                )
+            } else {
+                for value in &mut outcomes {
+                    if value.is_none() {
+                        *value = Some(Err(error.clone()));
+                    }
+                }
+                return Ok(outcomes.into_iter().map(Option::unwrap).collect());
+            };
+            report("retry_wait", message);
+            self.wait_preparation_retry(context, delay, epoch)?;
+        }
+    }
+
     fn publish_preparation(
         &self,
         context: &TaskContext,
@@ -364,12 +509,15 @@ impl Application {
         message: &str,
     ) {
         progress.concurrency = self.model_gate.limit();
-        progress.in_flight = active.len();
+        progress.in_flight = active.values().map(|job| job.batch.inputs.len()).sum();
         progress.waiting = active
             .values()
             .filter(|job| job.stage == "retry_wait")
-            .count();
-        let stage = if !active.is_empty() && progress.waiting == active.len() {
+            .map(|job| job.batch.inputs.len())
+            .sum();
+        progress.batches_in_flight = active.len();
+        progress.batch_size = TARGETS_PER_REQUEST;
+        let stage = if !active.is_empty() && progress.waiting == progress.in_flight {
             "retry_wait"
         } else {
             "translations"
@@ -380,8 +528,12 @@ impl Application {
             current,
             total,
             &format!(
-                "并发上限 {} · 执行中 {} 项 · 等待重试 {} 项 · {}",
-                progress.concurrency, progress.in_flight, progress.waiting, message
+                "并发上限 {} · 执行中 {} 批/{} 项 · 等待重试 {} 项 · {}",
+                progress.concurrency,
+                progress.batches_in_flight,
+                progress.in_flight,
+                progress.waiting,
+                message
             ),
         );
     }
@@ -417,10 +569,10 @@ impl Application {
                 )
             })
             .collect::<HashSet<_>>();
-        let mut queue: VecDeque<_> = inputs.into();
+        let mut queue = group_batches(inputs);
         let mut active = HashMap::<usize, ActivePreparation>::new();
         let (mut current, mut next_id, mut workers) = (0, 0, 0);
-        let (work_sender, work_receiver) = mpsc::channel::<(usize, PreparationInput)>();
+        let (work_sender, work_receiver) = mpsc::channel::<(usize, PreparationBatch)>();
         let work_receiver = Arc::new(Mutex::new(work_receiver));
         let (events, receiver) = mpsc::channel::<PreparationEvent>();
         let stopped = Arc::new(AtomicBool::new(false));
@@ -441,6 +593,7 @@ impl Application {
                         return Err(AppError::new("cancelled", "应用正在退出。"));
                     }
                     if self.preparation_requested.swap(false, Ordering::Relaxed) {
+                        let mut added = Vec::new();
                         for input in self.store.explanation_work(None)? {
                             let key = (
                                 input.source_id.clone(),
@@ -461,9 +614,10 @@ impl Application {
                                     });
                                 progress.sources[index].total += 1;
                                 total += 1;
-                                queue.push_back(input);
+                                added.push(input);
                             }
                         }
+                        queue.extend(group_batches(added));
                         context
                             .subject(&format!("中文资料准备 · {} 份剧集", progress.sources.len()));
                     }
@@ -482,13 +636,13 @@ impl Application {
                                     }
                                     work.recv_timeout(Duration::from_millis(100))
                                 };
-                                let (id, input) = match next {
+                                let (id, batch) = match next {
                                     Ok(value) => value,
                                     Err(mpsc::RecvTimeoutError::Timeout) => continue,
                                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                                 };
-                                let output = self.explain_prepared(
-                                    &input,
+                                let output = self.explain_prepared_batch(
+                                    &batch,
                                     &worker_context,
                                     |stage, message| {
                                         let _ = events.send(PreparationEvent::Progress {
@@ -510,24 +664,26 @@ impl Application {
                                 AppError::new("internal_error", "剧集优先级不可用。")
                             })?;
                             let index = priority.as_ref().and_then(|id| {
-                                queue.iter().position(|input| &input.source_id == id)
+                                queue
+                                    .iter()
+                                    .position(|batch| &batch.inputs[0].source_id == id)
                             });
                             if index.is_none() {
                                 *priority = None;
                             }
                             index.unwrap_or(0)
                         };
-                        let input = queue.remove(index).unwrap();
+                        let batch = queue.remove(index).unwrap();
                         next_id += 1;
                         active.insert(
                             next_id,
                             ActivePreparation {
-                                input: input.clone(),
+                                batch: batch.clone(),
                                 stage: "translations",
                             },
                         );
                         work_sender
-                            .send((next_id, input))
+                            .send((next_id, batch))
                             .map_err(|_| AppError::new("internal_error", "中文准备队列不可用。"))?;
                     }
                     if active.is_empty() && queue.is_empty() {
@@ -558,36 +714,45 @@ impl Application {
                                 continue;
                             };
                             job.stage = stage;
-                            let source = &progress.sources[indexes[&job.input.source_id]];
+                            let source = &progress.sources[indexes[&job.batch.inputs[0].source_id]];
                             format!("{} · 本集 {}/{}", message, source.current, source.total)
                         }
                         PreparationEvent::Finished { id, result } => {
                             let job = active.remove(&id).unwrap();
-                            match result {
-                                Ok(None) => progress.skipped += 1,
-                                Ok(Some(true)) => progress.generated += 1,
-                                Ok(Some(false)) => progress.reused += 1,
-                                Err(error)
-                                    if matches!(
-                                        error.code.as_str(),
-                                        "invalid_data" | "invalid_input"
-                                    ) =>
-                                {
-                                    progress.failed += 1;
-                                    if progress.failures.len() < 20 {
-                                        progress.failures.push(json!({"source":job.input.title,"text":job.input.text,"message":error.message}));
+                            let results = result.unwrap_or_else(|error| {
+                                job.batch
+                                    .inputs
+                                    .iter()
+                                    .map(|_| Err(error.clone()))
+                                    .collect()
+                            });
+                            for (input, result) in job.batch.inputs.iter().zip(results) {
+                                match result {
+                                    Ok(None) => progress.skipped += 1,
+                                    Ok(Some(true)) => progress.generated += 1,
+                                    Ok(Some(false)) => progress.reused += 1,
+                                    Err(error)
+                                        if matches!(
+                                            error.code.as_str(),
+                                            "invalid_data" | "invalid_input"
+                                        ) =>
+                                    {
+                                        progress.failed += 1;
+                                        if progress.failures.len() < 20 {
+                                            progress.failures.push(json!({"source":input.title,"text":input.text,"message":error.message}));
+                                        }
+                                    }
+                                    Err(error) => {
+                                        if error.code != "cancelled" {
+                                            self.preparation_paused.store(true, Ordering::Relaxed);
+                                        }
+                                        return Err(error);
                                     }
                                 }
-                                Err(error) => {
-                                    if error.code != "cancelled" {
-                                        self.preparation_paused.store(true, Ordering::Relaxed);
-                                    }
-                                    return Err(error);
-                                }
+                                current += 1;
+                                progress.sources[indexes[&input.source_id]].current += 1;
                             }
-                            current += 1;
-                            let source = &mut progress.sources[indexes[&job.input.source_id]];
-                            source.current += 1;
+                            let source = &progress.sources[indexes[&job.batch.inputs[0].source_id]];
                             format!(
                                 "{} · 本集 {}/{}",
                                 source.title, source.current, source.total
@@ -605,6 +770,7 @@ impl Application {
                 }
                 progress.in_flight = 0;
                 progress.waiting = 0;
+                progress.batches_in_flight = 0;
                 Ok(json!({"preparation":progress}))
             })();
             stopped.store(true, Ordering::Relaxed);
@@ -710,6 +876,137 @@ mod tests {
     fn finish(app: &Application, task: &TaskSnapshot) -> TaskSnapshot {
         wait_until(|| app.tasks.get(&task.id).unwrap().terminal());
         app.tasks.get(&task.id).unwrap()
+    }
+
+    #[test]
+    fn same_sentence_targets_share_one_request_and_keep_cached_explanations() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let sentence =
+            "Initially, the reluctant apprentice carefully adjusted the unfamiliar apparatus.";
+        let words = [
+            "initially",
+            "the",
+            "reluctant",
+            "apprentice",
+            "carefully",
+            "adjusted",
+            "unfamiliar",
+            "apparatus",
+        ];
+        seed(
+            &store,
+            "episode",
+            &words
+                .iter()
+                .map(|word| (*word, sentence))
+                .collect::<Vec<_>>(),
+        );
+        let cached = value();
+        store
+            .save_explanation("initially", sentence, &cached, "cached", "cached")
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let real_model = std::env::var("SVL_VALIDATE_BATCH_MODEL_URL").ok();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut data = Vec::new();
+            let (body_start, body_length) = loop {
+                let mut buffer = [0; 4096];
+                let size = stream.read(&mut buffer).unwrap();
+                assert!(size > 0);
+                data.extend_from_slice(&buffer[..size]);
+                if let Some(end) = data.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                    let length = String::from_utf8_lossy(&data[..end])
+                        .lines()
+                        .find_map(|line| {
+                            line.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap();
+                    if data.len() >= end + 4 + length {
+                        break (end + 4, length);
+                    }
+                }
+            };
+            let request: serde_json::Value =
+                serde_json::from_slice(&data[body_start..body_start + body_length]).unwrap();
+            let input: serde_json::Value =
+                serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(input["context"], sentence);
+            assert_eq!(input["targets"].as_array().unwrap().len(), 7);
+            let body = if let Some(model_url) = real_model {
+                reqwest::blocking::Client::builder()
+                    .no_proxy()
+                    .timeout(Duration::from_secs(65))
+                    .build()
+                    .unwrap()
+                    .post(format!(
+                        "{}/v1/chat/completions",
+                        model_url.trim_end_matches('/')
+                    ))
+                    .json(&request)
+                    .send()
+                    .unwrap()
+                    .error_for_status()
+                    .unwrap()
+                    .bytes()
+                    .unwrap()
+                    .to_vec()
+            } else {
+                let items = input["targets"].as_array().unwrap().iter().map(|target| json!({"id":target["id"],"meaning":format!("合成释义 {}",target["text"].as_str().unwrap()),"notes":"合成中文用法。"})).collect::<Vec<_>>();
+                let content = json!({"translation":"合成原句译文。","items":items}).to_string();
+                json!({"choices":[{"message":{"content":content}}]})
+                    .to_string()
+                    .into_bytes()
+            };
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",body.len()).unwrap();
+            stream.write_all(&body).unwrap();
+        });
+        let app = application(Arc::clone(&store), url);
+        let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        let started = Instant::now();
+        let ended = loop {
+            let snapshot = app.tasks.get(&task.id).unwrap();
+            if snapshot.terminal() {
+                break snapshot;
+            }
+            if started.elapsed() > Duration::from_secs(90) {
+                app.pause_preparation().unwrap();
+                panic!("normal batch request did not complete");
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        assert_eq!(ended.state, "succeeded");
+        assert_eq!(ended.current, 7);
+        assert_eq!(ended.total, 7);
+        assert_eq!(ended.result.unwrap()["preparation"]["generated"], 7);
+        assert_eq!(
+            store.explanation("initially", sentence).unwrap().unwrap(),
+            cached
+        );
+        let translations = words[1..]
+            .iter()
+            .map(|word| {
+                store
+                    .explanation(word, sentence)
+                    .unwrap()
+                    .unwrap()
+                    .translation
+            })
+            .collect::<HashSet<_>>();
+        assert_eq!(translations.len(), 1);
+        assert!(store.explanation_work(None).unwrap().is_empty());
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        server.join().unwrap();
+        println!(
+            "Shared-context normal path: one HTTP request, seven saved explanations, cached entry preserved."
+        );
     }
 
     #[test]

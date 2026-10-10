@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.14 |
-| 更新日期 | 2026-10-09 |
+| 文档版本 | 0.15 |
+| 更新日期 | 2026-10-10 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-12、NFR-02 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-04、ARC-05、ARC-07、ARC-08 |
@@ -123,6 +123,8 @@ explanation_batch 为持久化业务后台执行，聚合缺失的“目标+语�
 
 settings 的 application JSON 增加 modelConcurrency，缺省为 1，与其他偏好一起保存；请求许可、在途目标/语境集合和重试唤醒序号属于运行期状态。多个工作线程共享 explanations 的精确目标/原句身份，按现有 SQLite 规则保存；聚合任务快照只由协调线程更新，附带 concurrency/inFlight/waiting 数量，不增加逐工作线程 tasks 行，不改变 schema 6。
 
+同句批量解释的共享 translation 按现有 explanations 目标/完整语境键与每项 meaning、notes 一起保存，不新增独立译句表，不覆盖旧资料。批量请求只保护运行期在途键；进度包含 batchesInFlight/batchSize 元数据，schema 仍为 6，确认词库与学习历史不受自动准备影响。
+
 剧名和季集分组由 SourceSummary.title 派生，源标识、字幕/音轨版本、出处和原声关系保持原数据。分组与后台准备都复用 schema 6，没有新增季集元数据表或改变同步载荷；未收录语料的中文准备仍为本地资料。
 
 ### 6.1 本机已掌握筛选偏好
@@ -170,3 +172,4 @@ settings 的 application JSON 增加 modelConcurrency，缺省为 1，与其他�
 | 0.12 | 2026-10-08 | 对齐聚合中文准备快照、缺失数据恢复、暂停偏好及只读来源分组，保持 schema 6 |
 | 0.13 | 2026-10-08 | 区分临时 retry_wait 与不可恢复错误暂停，定义进程内唤醒及同任务进度保持，schema 6 不变 |
 | 0.14 | 2026-10-09 | 定义本机并发偏好和协调提交的统计字段，保留解释身份、单聚合任务及 schema 6 |
+| 0.15 | 2026-10-10 | 定义同句共享译文的逐词保存及批量元数据，schema 6 保持 |

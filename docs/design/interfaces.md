@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.25 |
-| 更新日期 | 2026-10-09 |
+| 文档版本 | 0.26 |
+| 更新日期 | 2026-10-10 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-12、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
@@ -132,6 +132,8 @@ explanation_batch 通过 task_get/list/history 查询统一进度与 result.prep
 存在等待批次时，显式 `explanations_prepare` 复用并唤醒同一 taskId；没有活跃批次时重新查询缺失资料启动新执行。`explanations_status` 在等待期间仍为 running，历史失败不当作实时健康检查。取消与退出检查适用于等待，并在下一次请求前复核已掌握偏好。重试唤醒标志是进程内状态；解释、暂停偏好和任务回执继续采用原持久化规则，schema 仍为 6。
 
 Settings 增加 `modelConcurrency:number`，默认 1，接受 1～16 的整数；settings_get 返回已保存值，settings_update 校验并保存后更新共享请求许可。该上限覆盖 explain_start 及准备线程；已有请求不因降低上限被取消。`result.preparation` 增加 `concurrency`、`inFlight`、`waiting`，表示当前上限、已分配且未结束的项目和其中等待重试的项目，不等同于服务端实际计算数；历史结果缺少这些字段时继续显示原统计。工作线程只发内部状态/结果事件，由协调线程单独提交聚合快照。唤醒用运行期递增序号，使一次显式重试通知全部等待工作线程。
+
+后台多词请求使用同一 chat/completions 入口：输入为完整 context 和 targets:[{id,text}]，结构化输出为 translation 及 items:[{id,meaning,notes}]。一批最多 8 项，id 必须唯一且完整对应输入；共享译文组合成各词的原 Explanation 保存。只有一个缺失词时沿用原单项协议。result.preparation 的 inFlight/waiting 保持词语语境单位，新增 batchesInFlight/batchSize 明确 HTTP 合批量；并发上限仍是请求数，不按词数占用许可。
 
 本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
@@ -271,3 +273,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.23 | 2026-10-08 | 明确语境进度、来源候选统计关联及旧记录兼容，补充缩略词中文提示与校验保持 |
 | 0.24 | 2026-10-08 | 明确模型错误可重试分类、retry_wait、同 taskId 唤醒及输出有限补试，保持 schema 和缓存规则 |
 | 0.25 | 2026-10-09 | 增加 modelConcurrency、聚合并发统计及协调提交契约，按用户规则限定最小正常路径验证 |
+| 0.26 | 2026-10-10 | 补充同句多词请求与编号对应契约，区分请求批数和词语进度 |

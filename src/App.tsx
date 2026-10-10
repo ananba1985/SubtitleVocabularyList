@@ -192,34 +192,42 @@ export default function App() {
               }
             </h1>
           </div>
-          <div className="actions">
-            {tab === "episodes" && (
-              <button
-                className="secondary"
-                aria-expanded={episodePanel === "import"}
-                aria-controls="episode-import"
-                onClick={() =>
-                  setEpisodePanel((current) =>
-                    current === "import" ? null : "import",
-                  )
-                }
-              >
-                导入剧集
-              </button>
-            )}
-            <button
-              className="secondary"
-              onClick={() => call("capture_ocr").catch(report)}
-            >
-              截图收录
-            </button>
-            <button
-              className="primary"
-              onClick={() => setSeed({ text: "", kind: "word", context: "" })}
-            >
-              ＋ 收录词条
-            </button>
-          </div>
+          {(tab === "library" || tab === "episodes") && (
+            <div className="actions">
+              {tab === "episodes" && (
+                <button
+                  className="secondary"
+                  aria-expanded={episodePanel === "import"}
+                  aria-controls="episode-import"
+                  onClick={() =>
+                    setEpisodePanel((current) =>
+                      current === "import" ? null : "import",
+                    )
+                  }
+                >
+                  导入剧集
+                </button>
+              )}
+              {tab === "library" && (
+                <>
+                  <button
+                    className="secondary"
+                    onClick={() => call("capture_ocr").catch(report)}
+                  >
+                    截图收录
+                  </button>
+                  <button
+                    className="primary"
+                    onClick={() =>
+                      setSeed({ text: "", kind: "word", context: "" })
+                    }
+                  >
+                    ＋ 收录词条
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </header>
         {error && (
           <div className="error banner" role="alert">

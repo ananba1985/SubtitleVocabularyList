@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.27 |
+| 文档版本 | 0.28 |
 | 更新日期 | 2026-10-10 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-13、NFR-02 至 NFR-05 |
@@ -140,7 +140,9 @@ explanation_batch 通过 task_get/list/history 查询统一进度与 result.prep
 
 Settings 增加 `modelConcurrency:number`，默认 1，接受 1～16 的整数；settings_get 返回已保存值，settings_update 校验并保存后更新共享请求许可。该上限覆盖 explain_start 及准备线程；已有请求不因降低上限被取消。`result.preparation` 增加 `concurrency`、`inFlight`、`waiting`，表示当前上限、已分配且未结束的项目和其中等待重试的项目，不等同于服务端实际计算数；历史结果缺少这些字段时继续显示原统计。工作线程只发内部状态/结果事件，由协调线程单独提交聚合快照。唤醒用运行期递增序号，使一次显式重试通知全部等待工作线程。
 
-后台多词请求使用同一 chat/completions 入口：输入为完整 context 和 targets:[{id,text}]，结构化输出为 translation 及 items:[{id,meaning,notes}]。一批最多 8 项，id 必须唯一且完整对应输入；共享译文组合成各词的原 Explanation 保存。只有一个缺失词时沿用原单项协议。result.preparation 的 inFlight/waiting 保持词语语境单位，新增 batchesInFlight/batchSize 明确 HTTP 合批量；并发上限仍是请求数，不按词数占用许可。
+后台多词请求使用同一 chat/completions 入口：输入为完整 context 和 targets:[{id,text}]，结构化输出为 translation 及 items:[{id,meaning,notes}]。一批最多 modelBatchSize 项，id 必须唯一且完整对应输入；共享译文组合成各词的原 Explanation 保存。只有一个缺失词时沿用原单项协议。result.preparation 的 inFlight/waiting 保持词语语境单位，新增 batchesInFlight/batchSize 明确 HTTP 合批量；并发上限仍是请求数，不按词数占用许可。
+
+Settings 增加 `modelBatchSize:number`，默认 8，接受 1～64 的整数，和 modelConcurrency 独立设置。settings_update 校验后保存到 application JSON，并更新运行期偏好；协调线程在下一次调度重组待执行队列，不重启任务或打断已分配的请求。settings_get 返回已保存值；旧 JSON 缺少字段时使用默认值。batchSize 表示当前新请求的词数上限，在途批次可能采用此前设置；实际请求只包含同一来源、同一句完整对白的缺失词，数量可以小于上限。
 
 本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
@@ -282,3 +284,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.25 | 2026-10-09 | 增加 modelConcurrency、聚合并发统计及协调提交契约，按用户规则限定最小正常路径验证 |
 | 0.26 | 2026-10-10 | 补充同句多词请求与编号对应契约，区分请求批数和词语进度 |
 | 0.27 | 2026-10-10 | 增加 FR-13 练习命令、二进制原声 IPC、位置数据与单次声音覆盖 |
+| 0.28 | 2026-10-10 | 增加 modelBatchSize 设置契约及运行期待执行分组调整 |

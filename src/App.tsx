@@ -467,6 +467,27 @@ export default function App() {
               1 表示串行，最多可设为
               16。保存后应用新上限，已开始的请求会继续完成；实际速度取决于模型服务的并行能力。
             </p>
+            <label>
+              每次请求最多词数
+              <input
+                type="number"
+                min={1}
+                max={64}
+                step={1}
+                value={settings.modelBatchSize}
+                onChange={(event) =>
+                  setSettings({
+                    ...settings,
+                    modelBatchSize: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <p className="muted">
+              默认 8，可设为
+              1～64。只合并同一句对白中的待解释词，不足时按实际数量请求； 1
+              表示逐词处理。保存后调整待执行请求，正在执行的请求继续完成。
+            </p>
             <label className="check-label">
               <input
                 type="checkbox"

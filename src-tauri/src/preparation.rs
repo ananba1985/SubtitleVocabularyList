@@ -19,20 +19,18 @@ use std::{
 use uuid::Uuid;
 
 const ENABLED_KEY: &str = "explanation_preparation_enabled";
-const TARGETS_PER_REQUEST: usize = 8;
-
 #[derive(Clone)]
 struct PreparationBatch {
     inputs: Vec<PreparationInput>,
 }
 
-fn group_batches(inputs: Vec<PreparationInput>) -> VecDeque<PreparationBatch> {
+fn group_batches(inputs: Vec<PreparationInput>, batch_size: usize) -> VecDeque<PreparationBatch> {
     let mut batches = Vec::<PreparationBatch>::new();
     let mut indexes = HashMap::<(String, String), usize>::new();
     for input in inputs {
         let key = (input.source_id.clone(), input.context.clone());
         let index = match indexes.get(&key).copied() {
-            Some(index) if batches[index].inputs.len() < TARGETS_PER_REQUEST => index,
+            Some(index) if batches[index].inputs.len() < batch_size => index,
             _ => {
                 let index = batches.len();
                 batches.push(PreparationBatch { inputs: Vec::new() });
@@ -516,7 +514,6 @@ impl Application {
             .map(|job| job.batch.inputs.len())
             .sum();
         progress.batches_in_flight = active.len();
-        progress.batch_size = TARGETS_PER_REQUEST;
         let stage = if !active.is_empty() && progress.waiting == progress.in_flight {
             "retry_wait"
         } else {
@@ -544,7 +541,10 @@ impl Application {
         context: TaskContext,
     ) -> Result<serde_json::Value, AppError> {
         let mut total = inputs.len();
-        let mut progress = PreparationProgress::default();
+        let mut progress = PreparationProgress {
+            batch_size: self.model_batch_size.load(Ordering::Relaxed).clamp(1, 64),
+            ..Default::default()
+        };
         let mut indexes = HashMap::new();
         for input in &inputs {
             let index = *indexes.entry(input.source_id.clone()).or_insert_with(|| {
@@ -569,7 +569,7 @@ impl Application {
                 )
             })
             .collect::<HashSet<_>>();
-        let mut queue = group_batches(inputs);
+        let mut queue = group_batches(inputs, progress.batch_size);
         let mut active = HashMap::<usize, ActivePreparation>::new();
         let (mut current, mut next_id, mut workers) = (0, 0, 0);
         let (work_sender, work_receiver) = mpsc::channel::<(usize, PreparationBatch)>();
@@ -591,6 +591,22 @@ impl Application {
                     context.check_cancelled()?;
                     if self.preparation_shutdown.load(Ordering::Relaxed) {
                         return Err(AppError::new("cancelled", "应用正在退出。"));
+                    }
+                    let batch_size = self.model_batch_size.load(Ordering::Relaxed).clamp(1, 64);
+                    if progress.batch_size != batch_size {
+                        queue = group_batches(
+                            queue.drain(..).flat_map(|batch| batch.inputs).collect(),
+                            batch_size,
+                        );
+                        progress.batch_size = batch_size;
+                        self.publish_preparation(
+                            &context,
+                            current,
+                            total,
+                            &mut progress,
+                            &active,
+                            "已应用新的每次请求词数",
+                        );
                     }
                     if self.preparation_requested.swap(false, Ordering::Relaxed) {
                         let mut added = Vec::new();
@@ -617,7 +633,7 @@ impl Application {
                                 added.push(input);
                             }
                         }
-                        queue.extend(group_batches(added));
+                        queue.extend(group_batches(added, progress.batch_size));
                         context
                             .subject(&format!("中文资料准备 · {} 份剧集", progress.sources.len()));
                     }
@@ -1006,6 +1022,116 @@ mod tests {
         server.join().unwrap();
         println!(
             "Shared-context normal path: one HTTP request, seven saved explanations, cached entry preserved."
+        );
+    }
+
+    #[test]
+    fn saved_batch_size_regroups_pending_requests_when_changed() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let sentence =
+            "The reluctant apprentice carefully adjusted unfamiliar equipment yesterday.";
+        let words = [
+            "reluctant",
+            "apprentice",
+            "carefully",
+            "adjusted",
+            "unfamiliar",
+            "equipment",
+            "yesterday",
+        ];
+        seed(
+            &store,
+            "episode",
+            &words
+                .iter()
+                .map(|word| (*word, sentence))
+                .collect::<Vec<_>>(),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let app = application(Arc::clone(&store), url.clone());
+        assert_eq!(app.settings().unwrap().model_batch_size, 8);
+        let mut settings = app.settings().unwrap();
+        settings.model_batch_size = 3;
+        assert_eq!(app.save_settings(settings).unwrap().model_batch_size, 3);
+        drop(app);
+        drop(store);
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let app = application(Arc::clone(&store), url);
+        assert_eq!(app.settings().unwrap().model_batch_size, 3);
+        let (reached, boundary) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let mut counts = Vec::new();
+            for index in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut data = Vec::new();
+                let body_start = loop {
+                    let mut buffer = [0; 4096];
+                    let size = stream.read(&mut buffer).unwrap();
+                    assert!(size > 0);
+                    data.extend_from_slice(&buffer[..size]);
+                    if let Some(end) = data.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                        let length = String::from_utf8_lossy(&data[..end])
+                            .lines()
+                            .find_map(|line| {
+                                line.to_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|value| value.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap();
+                        if data.len() >= end + 4 + length {
+                            break end + 4;
+                        }
+                    }
+                };
+                let request: serde_json::Value =
+                    serde_json::from_slice(&data[body_start..]).unwrap();
+                let input: serde_json::Value =
+                    serde_json::from_str(request["messages"][1]["content"].as_str().unwrap())
+                        .unwrap();
+                assert_eq!(input["context"], sentence);
+                let targets = input["targets"].as_array().unwrap();
+                counts.push(targets.len());
+                if index == 0 {
+                    reached.send(()).unwrap();
+                    gate.recv_timeout(Duration::from_secs(5)).unwrap();
+                }
+                let items = targets
+                    .iter()
+                    .map(|target| {
+                        json!({
+                            "id":target["id"],"meaning":"合成中文词义","notes":"合成中文用法。"
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let content = json!({"translation":"合成原句译文。","items":items}).to_string();
+                let body = json!({"choices":[{"message":{"content":content}}]}).to_string();
+                write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+            }
+            counts
+        });
+        let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
+        boundary.recv_timeout(Duration::from_secs(5)).unwrap();
+        let mut settings = app.settings().unwrap();
+        settings.model_batch_size = 4;
+        app.save_settings(settings).unwrap();
+        release.send(()).unwrap();
+        let ended = finish(&app, &task);
+        assert_eq!(ended.state, "succeeded");
+        assert_eq!((ended.current, ended.total), (7, 7));
+        let progress = &ended.result.unwrap()["preparation"];
+        assert_eq!(progress["generated"], 7);
+        assert_eq!(progress["batchSize"], 4);
+        assert_eq!(server.join().unwrap(), vec![3, 4]);
+        assert!(store.explanation_work(None).unwrap().is_empty());
+        assert_eq!(app.tasks.history(0, 10).unwrap().total, 1);
+        println!(
+            "Batch setting normal path: saved 3 survives reopen; changing to 4 produces requests of 3 and 4; seven explanations saved."
         );
     }
 

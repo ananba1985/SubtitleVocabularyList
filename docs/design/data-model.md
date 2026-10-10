@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.16 |
+| 文档版本 | 0.17 |
 | 更新日期 | 2026-10-10 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02 |
@@ -121,7 +121,7 @@ schema 4 的关联范围键首先使用 meaning_id 或 entry；同一释义的�
 
 explanation_batch 为持久化业务后台执行，聚合缺失的“目标+语境”项目，不创建逐词 tasks 行。result.preparation 保存生成/复用/中途跳过/失败数量、各来源处理量及最多 20 条失败样本；任务进度表示已处理项，不把失败数当作已获得解释。数据恢复以 explanations 是否存在为准，不依赖旧任务进度准确覆盖最后一次提交窗口。settings 的 explanation_preparation_enabled 保存用户暂停选择，默认启用；不可自动恢复错误的暂停标记与立即重试唤醒序号仅在本次运行内保存。临时请求失败在原 taskId 内等待，全部在途项目都等待时阶段为 retry_wait，不新增历史或增长已处理数；重开仍按库中缺失资料恢复，schema 保持 6。
 
-settings 的 application JSON 增加 modelConcurrency，缺省为 1，与其他偏好一起保存；请求许可、在途目标/语境集合和重试唤醒序号属于运行期状态。多个工作线程共享 explanations 的精确目标/原句身份，按现有 SQLite 规则保存；聚合任务快照只由协调线程更新，附带 concurrency/inFlight/waiting 数量，不增加逐工作线程 tasks 行，不改变 schema 6。
+settings 的 application JSON 包含 modelConcurrency（缺省 1）和 modelBatchSize（缺省 8），与其他偏好一起保存；请求许可、在途目标/语境集合和重试唤醒序号属于运行期状态。多个工作线程共享 explanations 的精确目标/原句身份，按现有 SQLite 规则保存；聚合任务快照只由协调线程更新，附带 concurrency/inFlight/waiting 数量，不增加逐工作线程 tasks 行，不改变 schema 6。modelBatchSize 由设置接口校验为 1～64 的整数，旧 JSON 缺省补 8；无需迁移或重写 explanations。
 
 同句批量解释的共享 translation 按现有 explanations 目标/完整语境键与每项 meaning、notes 一起保存，不新增独立译句表，不覆盖旧资料。批量请求只保护运行期在途键；进度包含 batchesInFlight/batchSize 元数据，schema 仍为 6，确认词库与学习历史不受自动准备影响。
 
@@ -180,3 +180,4 @@ SQLite `settings` 的 `practice` 键保存一个 `PracticeState`：完整阅读�
 | 0.14 | 2026-10-09 | 定义本机并发偏好和协调提交的统计字段，保留解释身份、单聚合任务及 schema 6 |
 | 0.15 | 2026-10-10 | 定义同句共享译文的逐词保存及批量元数据，schema 6 保持 |
 | 0.16 | 2026-10-10 | 增加 FR-13 当前阅读、位置与课程完整音轨的本机保存和统一来源关系，schema 6 保持 |
+| 0.17 | 2026-10-10 | 在 application JSON 保存 modelBatchSize，保留解释身份及 schema 6 |

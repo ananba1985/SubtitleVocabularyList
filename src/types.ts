@@ -146,6 +146,7 @@ export interface Settings {
   modelUrl: string;
   modelName: string;
   modelConcurrency: number;
+  modelBatchSize: number;
   offlineMode: boolean;
   selectionShortcut: string;
   ocrShortcut: string;

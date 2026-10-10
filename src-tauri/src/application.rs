@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
 use uuid::Uuid;
@@ -26,6 +26,7 @@ pub struct Settings {
     pub model_url: String,
     pub model_name: String,
     pub model_concurrency: usize,
+    pub model_batch_size: usize,
     pub offline_mode: bool,
     pub selection_shortcut: String,
     pub ocr_shortcut: String,
@@ -42,6 +43,7 @@ impl Default for Settings {
             model_url: "http://127.0.0.1:8096".into(),
             model_name: "Qwen3.5-9B".into(),
             model_concurrency: 1,
+            model_batch_size: 8,
             offline_mode: false,
             selection_shortcut: "Ctrl+Alt+Shift+W".into(),
             ocr_shortcut: "Ctrl+Alt+Shift+S".into(),
@@ -69,6 +71,7 @@ pub struct Application {
     import_guard: Arc<Mutex<()>>,
     network_unavailable: Arc<AtomicBool>,
     pub(crate) model_gate: Arc<ModelGate>,
+    pub(crate) model_batch_size: AtomicUsize,
     pub(crate) preparation_guard: Mutex<()>,
     pub(crate) preparation_requested: Arc<AtomicBool>,
     pub(crate) preparation_paused: AtomicBool,
@@ -222,6 +225,7 @@ impl Application {
             store,
             tasks,
             drafts: Mutex::new(HashMap::new()),
+            model_batch_size: AtomicUsize::new(defaults.model_batch_size),
             defaults,
             import_guard: Arc::new(Mutex::new(())),
             network_unavailable: Arc::new(AtomicBool::new(false)),
@@ -239,6 +243,8 @@ impl Application {
         };
         if let Ok(settings) = app.settings() {
             app.model_gate.set_limit(settings.model_concurrency);
+            app.model_batch_size
+                .store(settings.model_batch_size, Ordering::Relaxed);
         }
         app
     }
@@ -306,6 +312,12 @@ impl Application {
                 "模型并发请求数必须是 1 至 16 的整数。",
             ));
         }
+        if !(1..=64).contains(&settings.model_batch_size) {
+            return Err(AppError::new(
+                "invalid_input",
+                "每次请求最多词数必须是 1 至 64 的整数。",
+            ));
+        }
         let previous = self.settings()?;
         crate::site_connection::site_origin(&settings.site_url)?;
         let url = reqwest::Url::parse(&settings.model_url)
@@ -326,6 +338,8 @@ impl Application {
         stored.as_object_mut().unwrap().remove("tools");
         self.store.connection()?.execute("INSERT INTO settings(key,value_json) VALUES ('application',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",[serde_json::to_string(&stored)?])?;
         self.model_gate.set_limit(settings.model_concurrency);
+        self.model_batch_size
+            .store(settings.model_batch_size, Ordering::Relaxed);
         if previous.model_url != settings.model_url || previous.model_name != settings.model_name {
             self.preparation_paused.store(false, Ordering::Relaxed);
             self.preparation_requested.store(true, Ordering::Relaxed);

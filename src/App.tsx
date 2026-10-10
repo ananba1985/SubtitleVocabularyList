@@ -11,7 +11,7 @@ import type {
 } from "./types";
 import { CollectionModal } from "./components/CollectionModal";
 import { LibraryView } from "./components/LibraryView";
-import { EpisodesView } from "./components/EpisodesView";
+import { EpisodesView, type EpisodePanel } from "./components/EpisodesView";
 import { ReviewView } from "./components/ReviewView";
 import { SyncView } from "./components/SyncView";
 import { TasksView } from "./components/TasksView";
@@ -43,6 +43,7 @@ export default function App() {
   const [skippedCapture, setSkippedCapture] = useState<CollectionSeed | null>(
     null,
   );
+  const [episodePanel, setEpisodePanel] = useState<EpisodePanel>(null);
   const refresh = useCallback(async () => {
     const [nextInfo, nextTasks] = await Promise.all([
       call<AppInfo>("app_info"),
@@ -143,6 +144,7 @@ export default function App() {
               key={key}
               onClick={() => {
                 setTab(key);
+                setEpisodePanel(null);
                 setError("");
                 setNotice("");
               }}
@@ -173,7 +175,9 @@ export default function App() {
       <main className="workspace">
         <header className="workspace-header">
           <div>
-            <p className="eyebrow">英语学习，从真实语境开始</p>
+            {tab !== "episodes" && (
+              <p className="eyebrow">英语学习，从真实语境开始</p>
+            )}
             <h1>
               {
                 {
@@ -189,6 +193,20 @@ export default function App() {
             </h1>
           </div>
           <div className="actions">
+            {tab === "episodes" && (
+              <button
+                className="secondary"
+                aria-expanded={episodePanel === "import"}
+                aria-controls="episode-import"
+                onClick={() =>
+                  setEpisodePanel((current) =>
+                    current === "import" ? null : "import",
+                  )
+                }
+              >
+                导入剧集
+              </button>
+            )}
             <button
               className="secondary"
               onClick={() => call("capture_ocr").catch(report)}
@@ -271,6 +289,8 @@ export default function App() {
             collect={setSeed}
             report={report}
             notify={setNotice}
+            panel={episodePanel}
+            onPanelChange={setEpisodePanel}
           />
         )}
         {(tab === "reviews" || tab === "leech") && (

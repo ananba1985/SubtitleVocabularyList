@@ -132,11 +132,6 @@ export function SourcePicker({
           没有匹配的剧集资料，请调整或清除搜索。
         </p>
       )}
-      {selected && (
-        <p className="source-current" title={selected.title}>
-          当前预习：{selected.title}
-        </p>
-      )}
     </section>
   );
 }

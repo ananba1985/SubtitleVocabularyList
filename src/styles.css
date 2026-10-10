@@ -318,12 +318,6 @@ h3 {
   color: #233c35;
   font-size: 14px;
 }
-.source-current {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: #81917f;
-  overflow-wrap: anywhere;
-}
 @media (max-width: 900px) {
   .source-filters { grid-template-columns: minmax(0, 1fr) minmax(110px, 0.6fr); }
   .source-filters label:last-child { grid-column: 1 / -1; }
@@ -483,12 +477,60 @@ h3 {
 .empty h3 {
   color: #6d8361;
 }
+.preview-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.preview-source {
+  flex: 1;
+  min-width: 160px;
+}
+.preview-source strong {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.preview-context .actions {
+  margin: 0;
+}
+.preview-context button {
+  padding: 7px 11px;
+  font-size: 12px;
+}
+.preview-options {
+  border: 1px solid #dce5d9;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: #fff;
+}
+.preview-options[hidden] {
+  display: none;
+}
+.preview-options > .source-picker {
+  margin-bottom: 0;
+}
+.import-box.preview-options {
+  margin-bottom: 16px;
+}
+.preview-context button[aria-expanded="true"],
+.workspace-header button[aria-expanded="true"] {
+  border-color: #7fa98e;
+  background: #eaf1e4;
+}
 .import-box {
   border: 1px dashed #b8c9ad;
   background: #eef3e8;
   border-radius: 12px;
   padding: 22px;
-  margin-bottom: 23px;
+  margin-bottom: 0;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;

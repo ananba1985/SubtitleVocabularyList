@@ -17,18 +17,23 @@ import { OnlineLookup } from "./OnlineLookup";
 import { CandidateMeaning } from "./CandidateMeaning";
 import { useLocalExplanation } from "../localExplanations";
 import { SourcePicker } from "./SourcePicker";
+export type EpisodePanel = "import" | "sources" | "filters" | null;
 export function EpisodesView({
   sourceCount,
   refreshKey,
   collect,
   report,
   notify,
+  panel,
+  onPanelChange,
 }: {
   sourceCount: number;
   refreshKey: number;
   collect: (seed: CollectionSeed) => void;
   report: (error: unknown) => void;
   notify: (text: string) => void;
+  panel: EpisodePanel;
+  onPanelChange: (panel: EpisodePanel) => void;
 }) {
   const [sources, setSources] = useState<SourceSummary[]>([]),
     [sourceId, setSourceId] = useState(""),
@@ -74,6 +79,12 @@ export function EpisodesView({
     [editStart, setEditStart] = useState(0),
     [editEnd, setEditEnd] = useState(0);
   const example = examples[index];
+  const currentSource = sources.find((source) => source.id === sourceId);
+  const filterCount =
+    Number(Boolean(search.trim())) +
+    Number(Boolean(kind)) +
+    Number(!pendingOnly) +
+    Number(showKnown);
   const explanation = useLocalExplanation(
     candidate?.text ?? "",
     example?.text ?? "",
@@ -411,10 +422,45 @@ export function EpisodesView({
   }
   return (
     <>
-      <div className="import-box">
+      {sources.length > 0 && (
+        <div className="preview-context">
+          <div className="preview-source">
+            <span className="muted">当前剧集</span>
+            <strong title={currentSource?.title}>
+              {currentSource?.title ?? "请选择剧集"}
+            </strong>
+          </div>
+          <div className="actions">
+            <button
+              className="secondary"
+              aria-expanded={panel === "sources"}
+              aria-controls="episode-sources"
+              onClick={() =>
+                onPanelChange(panel === "sources" ? null : "sources")
+              }
+            >
+              {panel === "sources" ? "收起选择" : "切换剧集"}
+            </button>
+            <button
+              className="secondary"
+              aria-expanded={panel === "filters"}
+              aria-controls="episode-filters"
+              onClick={() =>
+                onPanelChange(panel === "filters" ? null : "filters")
+              }
+            >
+              搜索筛选{filterCount > 0 ? `（${filterCount}）` : ""}
+            </button>
+          </div>
+        </div>
+      )}
+      <div
+        id="episode-import"
+        className="import-box preview-options"
+        hidden={panel !== "import"}
+      >
         <div>
-          <h3>准备下一集</h3>
-          <p>提取对白和原声，按词确认需要学习的内容。</p>
+          <h3>导入视频或目录</h3>
         </div>
         <div className="actions">
           <button
@@ -456,11 +502,6 @@ export function EpisodesView({
             查看轨道与字幕
           </button>
         </div>
-        {importNotice && (
-          <p className="muted" role="status">
-            {importNotice}
-          </p>
-        )}
         {inspection && (
           <div className="import-options">
             <label>
@@ -552,87 +593,104 @@ export function EpisodesView({
           </div>
         )}
       </div>
+      {importNotice && (
+        <p className="muted" role="status">
+          {importNotice}
+        </p>
+      )}
       {sources.length > 0 ? (
         <>
-          <SourcePicker
-            sources={sources}
-            sourceId={sourceId}
-            onSelect={selectSource}
-            action={
-              <button
-                className="secondary"
-                disabled={busy || !sourceId}
-                onClick={prepareCurrent}
-                title="优先准备当前集的词义和译文，进度在后台任务中查看"
-              >
-                优先准备当前集
-              </button>
-            }
-          />
-          <div className="toolbar">
-            <input
-              aria-label="搜索候选词"
-              placeholder="搜索候选词或短语"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setOffset(0);
-              }}
+          <div
+            id="episode-sources"
+            className="preview-options"
+            hidden={panel !== "sources"}
+          >
+            <SourcePicker
+              sources={sources}
+              sourceId={sourceId}
+              onSelect={selectSource}
+              action={
+                <button
+                  className="secondary"
+                  disabled={busy || !sourceId}
+                  onClick={prepareCurrent}
+                  title="优先准备当前集的词义和译文，进度在后台任务中查看"
+                >
+                  优先准备当前集
+                </button>
+              }
             />
-            <select
-              aria-label="候选类型"
-              value={kind}
-              onChange={(event) => {
-                setKind(event.target.value);
-                setOffset(0);
-              }}
-            >
-              <option value="">单词与短语</option>
-              <option value="word">单词</option>
-              <option value="phrase">短语</option>
-            </select>
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={pendingOnly}
-                onChange={(event) => {
-                  setPendingOnly(event.target.checked);
-                  setOffset(0);
-                }}
-              />
-              仅待确认语境
-            </label>
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={showKnown}
-                onChange={(event) => {
-                  setShowKnown(event.target.checked);
-                  setOffset(0);
-                  if (!event.target.checked && candidate?.isKnown) {
-                    selectionVersion.current++;
-                    setCandidate(null);
-                    setExamples([]);
-                    setAudioPath("");
-                  }
-                }}
-              />
-              显示已掌握
-            </label>
           </div>
-          <p className="muted">
-            已掌握默认隐藏；已收录仍可再次判断。文本来源：
-            {sources.find((source) => source.id === sourceId)?.textSource ===
-            "pgs_ocr"
-              ? "图片字幕 OCR，可纠错"
-              : sources.find((source) => source.id === sourceId)?.textSource ===
-                  "local_speech"
-                ? "本地语音转写，可纠错"
+          <div
+            id="episode-filters"
+            className="preview-options"
+            hidden={panel !== "filters"}
+          >
+            <div className="toolbar">
+              <input
+                aria-label="搜索候选词"
+                placeholder="搜索候选词或短语"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setOffset(0);
+                }}
+              />
+              <select
+                aria-label="候选类型"
+                value={kind}
+                onChange={(event) => {
+                  setKind(event.target.value);
+                  setOffset(0);
+                }}
+              >
+                <option value="">单词与短语</option>
+                <option value="word">单词</option>
+                <option value="phrase">短语</option>
+              </select>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={pendingOnly}
+                  onChange={(event) => {
+                    setPendingOnly(event.target.checked);
+                    setOffset(0);
+                  }}
+                />
+                仅待确认语境
+              </label>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={showKnown}
+                  onChange={(event) => {
+                    setShowKnown(event.target.checked);
+                    setOffset(0);
+                    if (!event.target.checked && candidate?.isKnown) {
+                      selectionVersion.current++;
+                      setCandidate(null);
+                      setExamples([]);
+                      setAudioPath("");
+                    }
+                  }}
+                />
+                显示已掌握
+              </label>
+            </div>
+            <p className="muted">
+              已掌握默认隐藏；已收录仍可再次判断。文本来源：
+              {sources.find((source) => source.id === sourceId)?.textSource ===
+              "pgs_ocr"
+                ? "图片字幕 OCR，可纠错"
                 : sources.find((source) => source.id === sourceId)
-                      ?.textSource === "external_text"
-                  ? "外置文本字幕"
-                  : "原始文本字幕"}
-          </p>
+                      ?.textSource === "local_speech"
+                  ? "本地语音转写，可纠错"
+                  : sources.find((source) => source.id === sourceId)
+                        ?.textSource === "external_text"
+                    ? "外置文本字幕"
+                    : "原始文本字幕"}
+            </p>
+          </div>
           <div className="split-view">
             <section className="list-panel" aria-label="候选词列表">
               {candidates.map((value) => (

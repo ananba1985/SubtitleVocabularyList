@@ -97,8 +97,6 @@ export function TasksView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const [preparing, setPreparing] = useState(false);
-  const [preparationNotice, setPreparationNotice] = useState("");
   const [sources, setSources] = useState<SourceSummary[] | null>(null);
   const [sourceError, setSourceError] = useState("");
   useEffect(() => {
@@ -119,25 +117,6 @@ export function TasksView({
   const candidateCounts = new Map(
     (sources ?? []).map((source) => [source.id, source.candidateCount]),
   );
-  async function prepare() {
-    setPreparing(true);
-    try {
-      const value = await call<{ task: TaskSnapshot | null }>(
-        "explanations_prepare",
-      );
-      setPreparationNotice(
-        value.task
-          ? value.task.stage === "retry_wait"
-            ? "已请求立即重试，继续使用当前后台任务。"
-            : "中文资料准备已在后台运行，已保存内容会复用。"
-          : "已导入剧集的中文资料已准备完成。",
-      );
-    } catch (error) {
-      setPreparationNotice(message(error));
-    } finally {
-      setPreparing(false);
-    }
-  }
   useEffect(() => {
     if (!historyOpen) return;
     let disposed = false;
@@ -166,16 +145,6 @@ export function TasksView({
   }, [historyOpen, page, latest?.id, latest?.updatedAt, retry]);
   return (
     <div className="task-list">
-      <div className="preparation-action">
-        <button className="secondary" disabled={preparing} onClick={prepare}>
-          准备 / 继续中文资料
-        </button>
-        {preparationNotice && (
-          <p role="status" className="muted">
-            {preparationNotice}
-          </p>
-        )}
-      </div>
       {sourceError && <p className="error">候选数量读取失败：{sourceError}</p>}
       <section aria-label="进行中的任务" className="task-section">
         <h2>进行中{active.length > 0 ? `（${active.length}）` : ""}</h2>
@@ -185,8 +154,6 @@ export function TasksView({
             task={task}
             cancel={cancel}
             candidateCounts={candidateCounts}
-            prepare={prepare}
-            preparing={preparing}
           />
         ))}
         {!active.length && <p className="muted">当前没有进行中的任务。</p>}
@@ -199,8 +166,6 @@ export function TasksView({
             task={latest}
             cancel={cancel}
             candidateCounts={candidateCounts}
-            prepare={prepare}
-            preparing={preparing}
           />
         </section>
       )}
@@ -236,8 +201,6 @@ export function TasksView({
                       task={task}
                       cancel={cancel}
                       candidateCounts={candidateCounts}
-                      prepare={prepare}
-                      preparing={preparing}
                     />
                   ))}
                   {!history.total && (
@@ -282,15 +245,32 @@ function TaskCard({
   task,
   cancel,
   candidateCounts,
-  prepare,
-  preparing,
 }: {
   task: TaskSnapshot;
   cancel: (id: string) => void;
   candidateCounts: Map<string, number>;
-  prepare: () => Promise<void>;
-  preparing: boolean;
 }) {
+  const [preparing, setPreparing] = useState(false);
+  const [preparationNotice, setPreparationNotice] = useState("");
+  async function prepare() {
+    setPreparing(true);
+    try {
+      const value = await call<{ task: TaskSnapshot | null }>(
+        "explanations_prepare",
+      );
+      setPreparationNotice(
+        value.task
+          ? value.task.stage === "retry_wait"
+            ? "已请求立即重试，继续使用当前后台任务。"
+            : "中文资料准备已在后台运行，已保存内容会复用。"
+          : "已导入剧集的中文资料已准备完成。",
+      );
+    } catch (error) {
+      setPreparationNotice(message(error));
+    } finally {
+      setPreparing(false);
+    }
+  }
   const ended = terminal(task);
   const value = (task.result ?? {}) as Result;
   const preparation = value.preparation;
@@ -517,6 +497,11 @@ function TaskCard({
       )}
       {task.state === "cancelled" && !task.error && (
         <p className="muted">处理已取消，已保存内容保留。</p>
+      )}
+      {preparationNotice && (
+        <p role="status" className="muted">
+          {preparationNotice}
+        </p>
       )}
     </article>
   );

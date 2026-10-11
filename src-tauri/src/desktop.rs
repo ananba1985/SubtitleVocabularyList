@@ -13,11 +13,34 @@ use crate::{
     windows_native::SystemVoice,
 };
 use serde::Serialize;
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 type AppState<'a> = State<'a, Arc<Application>>;
+
+#[derive(Default)]
+struct TrayAction(Mutex<Option<String>>);
+
+#[tauri::command]
+fn tray_action_get(action: State<'_, TrayAction>) -> Result<Option<String>, AppError> {
+    Ok(action
+        .0
+        .lock()
+        .map_err(|_| AppError::new("internal_error", "托盘操作暂时不可用。"))?
+        .take())
+}
+
+fn tray_navigate(app: &tauri::AppHandle, action: &str) {
+    if let Ok(mut pending) = app.state::<TrayAction>().0.lock() {
+        *pending = Some(action.to_owned());
+    }
+    desktop_capture::show_main(app);
+    let _ = app.emit_to("main", "tray_action", ());
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -717,6 +740,7 @@ pub fn run() {
             application.start_preparation_scheduler();
             app.manage(application);
             app.manage(NativeDesktop::default());
+            app.manage(TrayAction::default());
             if let Err(error) = app.state::<NativeDesktop>().configure(
                 app.handle(),
                 &settings.selection_shortcut,
@@ -736,19 +760,76 @@ pub fn run() {
                 app.state::<NativeDesktop>().remember_error(&error);
             }
             use tauri::{
-                menu::{Menu, MenuItem},
-                tray::TrayIconBuilder,
+                menu::{Menu, MenuItem, PredefinedMenuItem},
+                tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
             };
             let show = MenuItem::with_id(app, "show", "打开单词本", true, None::<&str>)?;
-            let exit = MenuItem::with_id(app, "exit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &exit])?;
+            let collect = MenuItem::with_id(app, "collect", "收录词条", true, None::<&str>)?;
+            let ocr = MenuItem::with_id(app, "ocr", "截图收录", true, None::<&str>)?;
+            let import = MenuItem::with_id(app, "import", "导入剧集", true, None::<&str>)?;
+            let episodes = MenuItem::with_id(app, "episodes", "观看前预习", true, None::<&str>)?;
+            let practice = MenuItem::with_id(app, "practice", "听读练习", true, None::<&str>)?;
+            let reviews = MenuItem::with_id(app, "reviews", "主动回忆测验", true, None::<&str>)?;
+            let leech = MenuItem::with_id(app, "leech", "易忘词专项", true, None::<&str>)?;
+            let sync = MenuItem::with_id(app, "sync", "站点同步", true, None::<&str>)?;
+            let tasks = MenuItem::with_id(app, "tasks", "后台任务", true, None::<&str>)?;
+            let settings = MenuItem::with_id(app, "settings", "本地设置", true, None::<&str>)?;
+            let exit = MenuItem::with_id(app, "exit", "完全退出", true, None::<&str>)?;
+            let capture_separator = PredefinedMenuItem::separator(app)?;
+            let learning_separator = PredefinedMenuItem::separator(app)?;
+            let settings_separator = PredefinedMenuItem::separator(app)?;
+            let exit_separator = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &show,
+                    &capture_separator,
+                    &collect,
+                    &ocr,
+                    &import,
+                    &learning_separator,
+                    &episodes,
+                    &practice,
+                    &reviews,
+                    &leech,
+                    &settings_separator,
+                    &sync,
+                    &tasks,
+                    &settings,
+                    &exit_separator,
+                    &exit,
+                ],
+            )?;
             let icon = image::load_from_memory(include_bytes!("../icons/32x32.png"))?.into_rgba8();
             TrayIconBuilder::with_id("main-tray")
                 .icon(tauri::image::Image::new_owned(icon.into_raw(), 32, 32))
                 .tooltip("SubtitleVocabularyList")
                 .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if matches!(
+                        event,
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } | TrayIconEvent::DoubleClick {
+                            button: MouseButton::Left,
+                            ..
+                        }
+                    ) {
+                        desktop_capture::show_main(tray.app_handle());
+                    }
+                })
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => desktop_capture::show_main(app),
+                    "show" => tray_navigate(app, "library"),
+                    "collect" | "import" | "episodes" | "practice" | "reviews" | "leech"
+                    | "sync" | "tasks" | "settings" => tray_navigate(app, event.id.as_ref()),
+                    "ocr" => {
+                        if let Err(error) = app.state::<NativeDesktop>().ocr_start(app) {
+                            desktop_capture::capture_failed(app, &error);
+                        }
+                    }
                     "exit" => desktop_capture::quit(app),
                     _ => {}
                 })
@@ -837,6 +918,7 @@ pub fn run() {
             speech_voices,
             speech_start,
             native_status,
+            tray_action_get,
             capture_selection,
             app_quit,
             capture_ocr,

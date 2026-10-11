@@ -106,6 +106,34 @@ export default function App() {
     )
       .then(keep)
       .catch((error) => setError(message(error)));
+    const receiveTrayAction = async () => {
+      try {
+        const action = await call<Tab | "collect" | "import" | null>(
+          "tray_action_get",
+        );
+        if (disposed || !action) return;
+        setError("");
+        setNotice("");
+        setEpisodePanel(action === "import" ? "import" : null);
+        if (action === "collect") {
+          setTab("library");
+          dispatchCollection({
+            type: "open",
+            seed: { text: "", kind: "word", context: "" },
+          });
+        } else {
+          setTab(action === "import" ? "episodes" : action);
+        }
+      } catch (error) {
+        if (!disposed) setError(message(error));
+      }
+    };
+    listen("tray_action", receiveTrayAction)
+      .then((stop) => {
+        keep(stop);
+        if (!disposed) void receiveTrayAction();
+      })
+      .catch((error) => setError(message(error)));
     return () => {
       disposed = true;
       stops.forEach((stop) => stop());

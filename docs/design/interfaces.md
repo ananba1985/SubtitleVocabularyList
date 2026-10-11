@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.28 |
+| 文档版本 | 0.29 |
 | 更新日期 | 2026-10-10 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-13、NFR-02 至 NFR-05 |
@@ -107,6 +107,7 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 | `capture_ocr_submit`、`capture_ocr_cancel` | 前者 `{sessionId,rect:{x,y,width,height}}` → OCR TaskSnapshot，坐标相对本次快照；后者 `{sessionId}` → 取消本次选区，过期标识不能取消新会话 |
 | `speech_voices`、`speech_start` | 前者列出本地英语声音；后者 `{text,operationId}` → 语音准备任务，结果含 path、kind=system、voice |
 | `native_status`、`app_quit` | 前者返回当前快捷键注册与失败信息；后者请求取消后台任务并退出应用 |
+| `tray_action_get` | 返回并取走最近待处理托盘操作，返回 string 或 null，仅用于主窗口导航和手动收录 |
 | `review_units` | `{mode:'due'/'all'/'leech',dimension:'meaning'/'listening'/'',offset,limit}` → 分页学习单元、独立状态、可练习标识与专项原因，兼容 CMD-18 的专项列表语义 |
 | `review_question` | `{unitId,expectedRevision}` → CMD-15 的当前题目实现，返回题目 id、维度、题面、可见语境与音频类型；不返回参考答案 |
 | `review_hint` | `{questionId}` → 首字提示，同时持久化提示事实；已提交题目不能补写提示 |
@@ -125,6 +126,8 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 设置新增 selectionShortcut、ocrShortcut、systemVoice，旧 JSON 使用默认值读取，不改变数据库 schema。两个快捷键不得相同；更新先尝试注册新值，成功后释放旧值并保存，失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入；当前只保留一份待确认采集结果，连续采集队列仍需完善。
 
 设置增加 `closeToTray:boolean`，缺省为 false；旧设置缺少该字段时采用默认完全退出，不改变 schema。`settings_update` 与其他偏好共同保存，主窗口 CloseRequested 读取已保存值：true 隐藏窗口，false 或设置读取失败调用共享退出流程。`app_quit` 和托盘“退出”始终取消未结束任务，最多等待 3 秒后请求应用退出；不关闭调用者已存在的终端窗口。
+
+托盘左键恢复当前窗口，show_menu_on_left_click 为 false，右键展示系统菜单。页面类菜单先保存运行期操作，再显示主窗口并向 main 发出 tray_action 通知；前端建立监听后主动读取一次，后续通知使用 tray_action_get 单次消费。可返回 library、episodes、practice、reviews、leech、sync、tasks、settings，以及 collect（词库页手动收录）和 import（预习页展开导入）。截图菜单直接沿用 NativeDesktop.ocr_start 和已有采集完成／失败事件；退出沿用完整退出流程。
 
 `offlineMode:boolean` 默认 false，表示是否手动禁止外网；旧资料显式保存的 true 保留，无设置或缺字段采用新默认。`app_info` 增加 `networkUnavailable:boolean`，只返回当前进程最近完成的在线任务连接降级状态，不持久化、不触发联网。网络任务报 `network_unavailable` 时置 true；成功及可取得响应的 `network_error`/`auth_required`/`not_found`/`invalid_data` 置 false；取消和其他本地控制错误保持原状态。手动离线检查只依赖 offlineMode，自动降级不拒绝重试；离线偏好与降级状态本身不改变数据库 schema。
 
@@ -285,3 +288,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.26 | 2026-10-10 | 补充同句多词请求与编号对应契约，区分请求批数和词语进度 |
 | 0.27 | 2026-10-10 | 增加 FR-13 练习命令、二进制原声 IPC、位置数据与单次声音覆盖 |
 | 0.28 | 2026-10-10 | 增加 modelBatchSize 设置契约及运行期待执行分组调整 |
+| 0.29 | 2026-10-10 | 增加主窗口托盘操作通知和单次消费接口 |

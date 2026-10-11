@@ -79,7 +79,7 @@ licenses 包含 Rust 与前端依赖的许可、版本和补取许可的固定�
 媒体工具许可和模型来源还可在安装目录 tools 中查看。
 
 解压应用 ZIP 后按 docs/development/windows-environment.md 准备开发工具，
-运行根目录 package-release.ps1。模型下载地址及摘要在对应构建脚本中。
+运行根目录 生成安装包.ps1。模型下载地址及摘要在对应构建脚本中。
 微软 WebView2、Windows SDK、编译器和系统声音按微软许可另行准备。
 本资料包不含个人词库、剧集、原声片段、截图或同步凭据。
 "@

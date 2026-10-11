@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.9 |
+| 文档版本 | 0.10 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 项目开发中；手动入口与本机环境检查通过，未执行本轮发行打包 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
@@ -48,15 +48,15 @@
 pnpm desktop:dev
 ```
 
-常用入口 `run-dev.ps1`、`build-local.ps1`、`package-release.ps1` 均位于项目根目录；环境、清理、媒体构建和源码导出等内部脚本保留在 `scripts/`。既有 pnpm 命令调用根目录入口。
+常用入口 `本地调试运行.ps1`、`本地打包运行.ps1`、`生成安装包.ps1` 均位于项目根目录；环境、清理、媒体构建和源码导出等内部脚本保留在 `scripts/`。既有 pnpm 命令调用根目录入口。
 
-`run-dev.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和 `.local/dev-data`，退出后恢复调用环境。开发配置使用独立应用标识，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
+`本地调试运行.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和 `.local/dev-data`，退出后恢复调用环境。开发配置使用独立应用标识，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
 
 每次启动在运行 Tauri 前调用 `development-cleanup.ps1`：清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。只枚举这些范围，不扫描整个工具源码目录。词库、原声、媒体工具、正常 `node_modules/.vite`、Cargo 产物和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后，提示原因后继续启动，下次启动再尝试。`-CheckOnly` 只显示环境与可清理目录，不删除、不启动。`pnpm desktop:dev`、双击 cmd 和直接调用 PowerShell 共用此流程，无需另记手动清理步骤。
 
 Windows PowerShell 5.1 的独立夹具实际验证了临时目录删除、CheckOnly 无副作用、普通/自定义数据目录和正常缓存保留、junction 目标保留、锁定文件不阻止启动及释放后重试；实际启动脚本在模拟 pnpm 下确认清理先发生、执行继续且环境恢复。结果见[验证记录](../testing/performance-results.md#7-开发启动自动清理临时目录)。本轮为开发脚本维护，不改变应用版本或生成安装包。
 
-可双击根目录 `run-dev.cmd` 启动同一开发入口，脚本结束后不执行 pause；专用控制台可随启动命令结束关闭，Windows Terminal 的标签关闭也受其配置影响。在用户已打开的终端执行 `pnpm desktop:dev`，退出后应返回提示符，不强制关闭整个终端。主窗口默认完全退出；选择并保存“常驻托盘”时，开发进程和终端继续等待，需从托盘“退出”。
+可双击根目录 `本地调试运行.cmd` 启动同一开发入口，脚本结束后不执行 pause；专用控制台可随启动命令结束关闭，Windows Terminal 的标签关闭也受其配置影响。在用户已打开的终端执行 `pnpm desktop:dev`，退出后应返回提示符，不强制关闭整个终端。主窗口默认完全退出；选择并保存“常驻托盘”时，开发进程和终端继续等待，需从托盘“退出”。
 
 调试日志以 `[startup]` 记录原生 setup、窗口尺寸、数据库、服务就绪和页面加载的累计耗时；前端控制台记录模块及首次视图耗时。应将 pnpm/Vite/Rust 编译与运行期分开测量，冷启动和再次启动分别记录。Windows 的 webview Started 对应内容加载，Finished 对应页面导航完成，都不等于完整 React 界面已可用；还需核对 `[startup] first view` 和实际界面。早期约 27/41 秒及 498 ms 的采样保留在[桌面记录](../testing/desktop-import-results.md#8-窗口启动与关闭行为修复)，2026-10-08 的请求跟踪已将本机长等待定位到 Vite 对大量生成目录的扫描，最新结论见[启动性能修复](../testing/performance-results.md#6-开发启动扫描瓶颈与修复)。
 
@@ -72,11 +72,13 @@ Tauri CLI 在应用正常退出时[停止 beforeDevCommand 的子进程树](http
 pnpm desktop:build
 ```
 
-`build-local.ps1` 使用 debug 和 no-bundle，不要求 Git 工作区干净；输出 `.local/build/SubtitleVocabularyList.exe` 与 `run-local.ps1`。优先执行生成的 launcher，它会补齐本机 PATH 和指定的数据目录。此 exe 仍依赖当前工作区、本机媒体工具和 WebView2，不用来代替独立发行目录。调试代码默认数据目录为当前编译工作区的 `.local/dev-data`，可通过脚本 `-DataDirectory` 或进程 `SVL_DATA_DIR` 显式覆盖；发行程序仍使用正式应用数据目录。
+`本地打包运行.ps1` 使用 debug 和 no-bundle，不要求 Git 工作区干净；输出 `.local/build/SubtitleVocabularyList.exe` 与 `run-local.ps1`。优先执行生成的 launcher，它会补齐本机 PATH 和指定的数据目录。此 exe 仍依赖当前工作区、本机媒体工具和 WebView2，不用来代替独立发行目录。调试代码默认数据目录为当前编译工作区的 `.local/dev-data`，可通过脚本 `-DataDirectory` 或进程 `SVL_DATA_DIR` 显式覆盖；发行程序仍使用正式应用数据目录。
 
 三个脚本均支持 `-CheckOnly`；开发运行、调试构建和发行打包的执行计划可在不启动应用、不构建安装包的情况下检查。此次在工作区父目录使用 Windows PowerShell 5.1 执行三个 CheckOnly 均通过，识别到本机 FFmpeg/ffprobe/Tesseract、Whisper 与模型；PowerShell 语法和 Rust 全目标检查通过；以模拟 pnpm/cargo 验证了本地构建的 debug/no-bundle 参数、exe 导出、生成 launcher 的语法、带空格路径及环境恢复，没有调用真实编译器或启动程序。未据这些检查声称本轮启动了调试程序或生成了新安装包。
 
 2026-10-11 根目录入口迁移后，在工作区父目录用 Windows PowerShell 5.1 执行三个脚本的 `-CheckOnly`，均返回 0，工作区、数据目录和输出目录正确；三个入口及源码导出脚本的语法检查通过。未启动客户端、生成 exe 或构建安装包；此项维护保持应用版本 0.6.0。
+
+同日中文命名后，三个 pnpm 入口的 `-CheckOnly` 和从工作区父目录调用的 `本地调试运行.cmd -CheckOnly` 均返回 0。CMD 入口使用 UTF-8 和 CRLF，调用结束恢复原代码页；语法检查通过，未执行实际编译或打包。
 
 日常验证按实际变更选用：
 
@@ -99,7 +101,7 @@ pnpm desktop:dev
 仅在需要打包或发布版本时，提交源码并保持当前分支工作区干净，然后手动执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File package-release.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 ```
 
 已有本次源码构建、校验过的资源时，可指定 `-SkipToolBuild`。入口仍收集许可、构建 NSIS、检查资源摘要并导出源码材料。交付目录按 tauri.conf.json 的版本生成 `release/<版本>`，包含安装器、`standalone/SubtitleVocabularyList.exe` 及其完整 `tools`、源码材料 ZIP 与 SHA256SUMS；此目录不提交 Git。源码未提交、依赖条款缺失或原始 Cargo 归档摘要不符时停止。独立 exe 使用随目录的发行资源，复制或移动时须保留整个 standalone 目录；用户词库仍留在应用数据目录。脚本不启动或安装程序。`pnpm desktop:package` 是复用已准备工具的手动快捷入口，资源未准备时执行上面的完整脚本。最终用户说明见[安装使用](../release/installation.md)，实际结果见[安装验证](../testing/offline-release-results.md)。
@@ -119,3 +121,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File package-release.ps1
 | 0.7 | 2026-10-08 | 定位并修复 Vite 对原生/私有生成目录的扫描，明确页面与 React 首次视图耗时和热更新边界 |
 | 0.8 | 2026-10-08 | 接入限定范围的开发启动自动清理、词库/缓存保护、CheckOnly 和失败延后，记录实际脚本验证 |
 | 0.9 | 2026-10-11 | 将三个常用 PowerShell 入口和调试 CMD 入口移至根目录，更新辅助脚本定位及 pnpm／文档引用 |
+| 0.10 | 2026-10-11 | 按用户指定改为中文文件名，同步 CMD、pnpm、使用文档及源码材料说明 |

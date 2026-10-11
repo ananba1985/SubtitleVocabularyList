@@ -101,4 +101,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
 
 媒体原型另需 FFmpeg、ffprobe 与英语 Tesseract。`scripts/setup-tools.ps1` 准备私有的 Whisper 程序和模型，并校验模型摘要；它用于开发资源准备，不是最终用户安装说明。
 
-当前划词默认使用 `Ctrl+Alt+Shift+W`，截图使用 `Ctrl+Alt+Shift+S`，可在本地设置修改；声音选项列出已安装的 Windows 英语声音。当前开发版本默认关闭主窗口时完全退出；可在本地设置选择“常驻托盘，保留取词快捷键”并保存，托盘菜单仍可完全退出。初始窗口按当前屏幕可用空间缩小，内容与侧栏分别滚动。启动加载、实际显示与退出证据见[桌面增量验证](docs/testing/desktop-import-results.md#8-窗口启动与关闭行为修复)。历史安装包仍对应其原版本行为。
+当前按本机 Pot 的已核实配置对齐快捷键：划词 `Alt+C`、截图 `Alt+E`、输入翻译／收录 `Alt+D`。可在本地设置自定义、禁用或采用 Pot 快捷键后保存；切换前需退出占用相同快捷键的 Pot。旧工厂快捷键升级，自定义值保持；输入入口复用确认窗口，可查询后不收藏。替代范围与当前缺口见[Windows 增量记录](docs/testing/windows-capture-results.md)。声音选项列出已安装的 Windows 英语声音。当前开发版本默认关闭主窗口时完全退出；可在本地设置选择“常驻托盘，保留取词快捷键”并保存，托盘菜单仍可完全退出。初始窗口按当前屏幕可用空间缩小，内容与侧栏分别滚动。启动加载、实际显示与退出证据见[桌面增量验证](docs/testing/desktop-import-results.md#8-窗口启动与关闭行为修复)。历史安装包仍对应其原版本行为。

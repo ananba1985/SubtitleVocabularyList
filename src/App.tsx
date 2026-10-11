@@ -416,7 +416,7 @@ export default function App() {
             <p className="muted">
               保存设置后生效。完全退出会停止后台任务并释放快捷键；托盘菜单始终可以完全退出。
             </p>
-            <h2>划词与系统语音</h2>
+            <h2>取词、输入与系统语音</h2>
             <p className="muted">
               在原应用选择文字后按快捷键，本次文字将在收录窗口中确认。选择常驻托盘时，关闭主窗口后快捷键仍可使用。
             </p>
@@ -451,6 +451,41 @@ export default function App() {
             <p className="muted">
               {native?.ocrRegistered ? "截图快捷键已注册" : "截图快捷键未启用"}
               。识别在本机执行；拖选区域后进入收录确认。
+            </p>
+            <label>
+              输入翻译 / 收录快捷键
+              <input
+                value={settings.inputShortcut}
+                onChange={(event) =>
+                  setSettings({
+                    ...settings,
+                    inputShortcut: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <p className="muted">
+              {native?.inputRegistered
+                ? "输入快捷键已注册"
+                : "输入快捷键未启用"}
+              。打开输入窗口后，可查询释义、朗读并按需收录；留空可禁用。
+            </p>
+            <button
+              className="secondary"
+              onClick={() =>
+                setSettings({
+                  ...settings,
+                  selectionShortcut: "Alt+C",
+                  ocrShortcut: "Alt+E",
+                  inputShortcut: "Alt+D",
+                })
+              }
+            >
+              使用 Pot 快捷键
+            </button>
+            <p className="muted">
+              划词 Alt+C、截图 Alt+E、输入 Alt+D。采用后点“保存设置”；
+              切换前先退出 Pot，释放相同快捷键。
             </p>
             <label>
               Windows 英语声音

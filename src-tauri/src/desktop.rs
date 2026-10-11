@@ -540,6 +540,7 @@ async fn settings_update(
             &handle,
             &settings.selection_shortcut,
             &settings.ocr_shortcut,
+            &settings.input_shortcut,
         )?;
         match app.save_settings(settings) {
             Ok(settings) => Ok(settings),
@@ -548,6 +549,7 @@ async fn settings_update(
                     &handle,
                     &previous.selection_shortcut,
                     &previous.ocr_shortcut,
+                    &previous.input_shortcut,
                 );
                 Err(error)
             }
@@ -650,6 +652,10 @@ pub fn run() {
                             Some(crate::desktop_capture::CaptureAction::Ocr) => {
                                 Some(native.ocr_start(app))
                             }
+                            Some(crate::desktop_capture::CaptureAction::Input) => {
+                                tray_navigate(app, "collect");
+                                None
+                            }
                             None => None,
                         };
                         if let Some(Err(error)) = result
@@ -741,23 +747,27 @@ pub fn run() {
             app.manage(application);
             app.manage(NativeDesktop::default());
             app.manage(TrayAction::default());
-            if let Err(error) = app.state::<NativeDesktop>().configure(
-                app.handle(),
-                &settings.selection_shortcut,
-                &settings.ocr_shortcut,
-            ) {
-                if app
-                    .state::<NativeDesktop>()
-                    .configure(app.handle(), &settings.selection_shortcut, "")
-                    .is_err()
+            let native = app.state::<NativeDesktop>();
+            let mut available = ["", "", ""];
+            let mut failures = Vec::new();
+            for (index, shortcut) in [
+                settings.selection_shortcut.as_str(),
+                settings.ocr_shortcut.as_str(),
+                settings.input_shortcut.as_str(),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                available[index] = shortcut;
+                if let Err(error) =
+                    native.configure(app.handle(), available[0], available[1], available[2])
                 {
-                    let _ = app.state::<NativeDesktop>().configure(
-                        app.handle(),
-                        "",
-                        &settings.ocr_shortcut,
-                    );
+                    available[index] = "";
+                    failures.push(error.message);
                 }
-                app.state::<NativeDesktop>().remember_error(&error);
+            }
+            if !failures.is_empty() {
+                native.remember_error(&AppError::new("shortcut_unavailable", failures.join("\n")));
             }
             use tauri::{
                 menu::{Menu, MenuItem, PredefinedMenuItem},

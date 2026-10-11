@@ -150,6 +150,7 @@ export interface Settings {
   offlineMode: boolean;
   selectionShortcut: string;
   ocrShortcut: string;
+  inputShortcut: string;
   systemVoice: string;
   closeToTray: boolean;
   siteUrl: string;
@@ -179,6 +180,7 @@ export interface SystemVoice {
 export interface NativeStatus {
   selectionRegistered: boolean;
   ocrRegistered: boolean;
+  inputRegistered: boolean;
   error: string | null;
 }
 export interface ScreenSession {

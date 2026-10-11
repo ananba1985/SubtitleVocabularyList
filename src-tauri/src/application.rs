@@ -30,6 +30,7 @@ pub struct Settings {
     pub offline_mode: bool,
     pub selection_shortcut: String,
     pub ocr_shortcut: String,
+    pub input_shortcut: String,
     pub system_voice: String,
     pub close_to_tray: bool,
     pub site_url: String,
@@ -45,8 +46,9 @@ impl Default for Settings {
             model_concurrency: 1,
             model_batch_size: 8,
             offline_mode: false,
-            selection_shortcut: "Ctrl+Alt+Shift+W".into(),
-            ocr_shortcut: "Ctrl+Alt+Shift+S".into(),
+            selection_shortcut: "Alt+C".into(),
+            ocr_shortcut: "Alt+E".into(),
+            input_shortcut: "Alt+D".into(),
             system_voice: String::new(),
             close_to_tray: false,
             site_url: "https://english-copy-practice.hxwjb.chatgpt.site".into(),
@@ -298,9 +300,30 @@ impl Application {
                 |row| row.get(0),
             )
             .optional()?;
-        let mut settings: Settings = value
-            .map(|value| Ok(serde_json::from_str(&value)?))
+        let mut stored: Option<Value> = value
+            .map(|value| serde_json::from_str(&value))
+            .transpose()?;
+        let mut settings: Settings = stored
+            .as_ref()
+            .map(|value| Ok(serde_json::from_value(value.clone())?))
             .unwrap_or_else(|| Ok::<Settings, AppError>(self.defaults.clone()))?;
+        if let Some(stored) = stored.as_mut()
+            && stored.get("inputShortcut").is_none()
+        {
+            if settings.selection_shortcut == "Ctrl+Alt+Shift+W" {
+                settings.selection_shortcut = self.defaults.selection_shortcut.clone();
+                stored["selectionShortcut"] = json!(settings.selection_shortcut);
+            }
+            if settings.ocr_shortcut == "Ctrl+Alt+Shift+S" {
+                settings.ocr_shortcut = self.defaults.ocr_shortcut.clone();
+                stored["ocrShortcut"] = json!(settings.ocr_shortcut);
+            }
+            stored["inputShortcut"] = json!(settings.input_shortcut);
+            self.store.connection()?.execute(
+                "UPDATE settings SET value_json=? WHERE key='application'",
+                [serde_json::to_string(stored)?],
+            )?;
+        }
         settings.tools = self.defaults.tools.clone();
         Ok(settings)
     }
@@ -784,6 +807,35 @@ pub fn example_input_from_corpus(
 #[cfg(test)]
 mod runtime_settings_tests {
     use super::*;
+    #[test]
+    fn pot_style_shortcuts_upgrade_and_survive_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        store.connection().unwrap().execute(
+            "INSERT INTO settings(key,value_json) VALUES ('application',?)",
+            [json!({"selectionShortcut":"Ctrl+Alt+Shift+W", "ocrShortcut":"Ctrl+Alt+Shift+S"}).to_string()],
+        ).unwrap();
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let app = Application::new(Arc::clone(&store), tasks, Settings::default());
+        let settings = app.settings().unwrap();
+        assert_eq!(settings.selection_shortcut, "Alt+C");
+        assert_eq!(settings.ocr_shortcut, "Alt+E");
+        assert_eq!(settings.input_shortcut, "Alt+D");
+        app.save_settings(settings).unwrap();
+        drop(app);
+        drop(store);
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let tasks = TaskManager::new(Arc::clone(&store), Arc::new(|_| {}));
+        let app = Application::new(store, tasks, Settings::default());
+        let settings = app.settings().unwrap();
+        assert_eq!(settings.selection_shortcut, "Alt+C");
+        assert_eq!(settings.ocr_shortcut, "Alt+E");
+        assert_eq!(settings.input_shortcut, "Alt+D");
+        println!(
+            "Pot shortcut normal path: legacy defaults upgraded; Alt+C / Alt+E / Alt+D saved and loaded after reopen."
+        );
+    }
+
     #[test]
     fn online_is_default_and_saved_manual_offline_survives_restart() {
         let directory = tempfile::tempdir().unwrap();

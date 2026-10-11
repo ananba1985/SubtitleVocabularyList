@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.29 |
-| 更新日期 | 2026-10-10 |
+| 文档版本 | 0.30 |
+| 更新日期 | 2026-10-11 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-13、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
@@ -123,7 +123,9 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 
 当前原声和已生成的系统语音由 WebView2 audio 元素报告实际播放及错误，暂停直接作用于播放器；系统语音准备可通过 task_cancel 取消。speech_start 的成功表示文件已准备，不等于已经听到声音；CMD-13、CMD-14 的独立统一播放命令仍未实现。复习命令已按上表接入；查询与同步命令仍是后续设计。
 
-设置新增 selectionShortcut、ocrShortcut、systemVoice，旧 JSON 使用默认值读取，不改变数据库 schema。两个快捷键不得相同；更新先尝试注册新值，成功后释放旧值并保存，失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入；当前只保留一份待确认采集结果，连续采集队列仍需完善。
+设置包含 selectionShortcut、ocrShortcut、inputShortcut、systemVoice，不改变数据库 schema。三组启用的快捷键不得相同；更新先尝试注册新值，成功后释放旧值并保存，失败保留原设置。capture_completed 携带本次 CollectionSeed，包括文字、可取得语境和来源；capture_failed 携带本次 AppError。当前草稿未关闭时，新结果保留等待确认，不覆盖输入；当前只保留一份待确认采集结果，连续采集队列仍需完善。
+
+快捷键默认值为 selectionShortcut=Alt+C、ocrShortcut=Alt+E、inputShortcut=Alt+D；与本机 Pot 的已核实配置一致。旧 JSON 尚无 inputShortcut 时，settings_get 一次补写该字段，并仅将旧工厂值 Ctrl+Alt+Shift+W／Ctrl+Alt+Shift+S 分别升级为对应新默认值，保留其他自定义字段。native_status 增加 inputRegistered:boolean，区分输入键的注册状态。启动按键分别尝试注册并保留错误；显式保存仍按三键整体配置处理，失败不保存新值。输入键向 main 发出已有 tray_action 操作，tray_action_get 返回 collect；不执行模型调用、联网查询或词条保存。
 
 设置增加 `closeToTray:boolean`，缺省为 false；旧设置缺少该字段时采用默认完全退出，不改变 schema。`settings_update` 与其他偏好共同保存，主窗口 CloseRequested 读取已保存值：true 隐藏窗口，false 或设置读取失败调用共享退出流程。`app_quit` 和托盘“退出”始终取消未结束任务，最多等待 3 秒后请求应用退出；不关闭调用者已存在的终端窗口。
 
@@ -289,3 +291,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.27 | 2026-10-10 | 增加 FR-13 练习命令、二进制原声 IPC、位置数据与单次声音覆盖 |
 | 0.28 | 2026-10-10 | 增加 modelBatchSize 设置契约及运行期待执行分组调整 |
 | 0.29 | 2026-10-10 | 增加主窗口托盘操作通知和单次消费接口 |
+| 0.30 | 2026-10-11 | 增加 inputShortcut／inputRegistered，定义默认升级及三键注册契约 |

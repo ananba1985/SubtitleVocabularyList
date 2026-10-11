@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 #[derive(Default)]
 pub struct NativeDesktop {
-    binding: Mutex<[Option<Shortcut>; 2]>,
+    binding: Mutex<[Option<Shortcut>; 3]>,
     configuration: Mutex<()>,
     error: Mutex<Option<String>>,
     pub(crate) busy: Arc<AtomicBool>,
@@ -27,12 +27,14 @@ pub struct NativeDesktop {
 pub enum CaptureAction {
     Selection,
     Ocr,
+    Input,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeStatus {
     pub selection_registered: bool,
     pub ocr_registered: bool,
+    pub input_registered: bool,
     pub error: Option<String>,
 }
 impl NativeDesktop {
@@ -40,6 +42,7 @@ impl NativeDesktop {
         NativeStatus {
             selection_registered: self.binding.lock().is_ok_and(|value| value[0].is_some()),
             ocr_registered: self.binding.lock().is_ok_and(|value| value[1].is_some()),
+            input_registered: self.binding.lock().is_ok_and(|value| value[2].is_some()),
             error: self.error.lock().ok().and_then(|value| value.clone()),
         }
     }
@@ -48,21 +51,32 @@ impl NativeDesktop {
             *value = Some(error.message.clone());
         }
     }
-    pub fn configure(&self, app: &AppHandle, selection: &str, ocr: &str) -> Result<(), AppError> {
+    pub fn configure(
+        &self,
+        app: &AppHandle,
+        selection: &str,
+        ocr: &str,
+        input: &str,
+    ) -> Result<(), AppError> {
         let parse = |value: &str| -> Result<Option<Shortcut>, AppError> {
             if value.trim().is_empty() {
                 Ok(None)
             } else {
-                value.parse().map(Some).map_err(|_| {
-                    AppError::new("invalid_input", "快捷键格式无效，例如 Ctrl+Alt+Shift+W。")
-                })
+                value
+                    .parse()
+                    .map(Some)
+                    .map_err(|_| AppError::new("invalid_input", "快捷键格式无效，例如 Alt+C。"))
             }
         };
-        let proposed = [parse(selection)?, parse(ocr)?];
-        if proposed[0].is_some() && proposed[0] == proposed[1] {
+        let proposed = [parse(selection)?, parse(ocr)?, parse(input)?];
+        if proposed
+            .iter()
+            .enumerate()
+            .any(|(index, shortcut)| shortcut.is_some() && proposed[index + 1..].contains(shortcut))
+        {
             return Err(AppError::new(
                 "invalid_input",
-                "划词和截图需要使用不同快捷键。",
+                "划词、截图和输入翻译需要使用不同快捷键。",
             ));
         }
         let _configuration = self
@@ -82,7 +96,9 @@ impl NativeDesktop {
                     }
                     return Err(AppError::new(
                         "shortcut_unavailable",
-                        format!("快捷键未注册，可能已被其他应用占用：{error}"),
+                        format!(
+                            "快捷键 {next} 未注册，可能被 Pot 或其他应用占用，请退出占用程序后重试：{error}"
+                        ),
                     ));
                 }
                 added.push(*next);
@@ -122,6 +138,8 @@ impl NativeDesktop {
             Some(CaptureAction::Selection)
         } else if binding[1].as_ref() == Some(shortcut) {
             Some(CaptureAction::Ocr)
+        } else if binding[2].as_ref() == Some(shortcut) {
+            Some(CaptureAction::Input)
         } else {
             None
         }

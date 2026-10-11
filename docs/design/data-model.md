@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.17 |
-| 更新日期 | 2026-10-10 |
+| 文档版本 | 0.18 |
+| 更新日期 | 2026-10-11 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-04、ARC-05、ARC-07、ARC-08 |
@@ -160,7 +160,11 @@ SQLite `settings` 的 `practice` 键保存一个 `PracticeState`：完整阅读�
 
 媒体文件与 SQLite 不属于同一个事务。具体文件已完成、引用尚未提交的窗口通过[实际进程中断](../testing/recovery-results.md)检查：重开标记中断执行，同一操作重试可复用完整内容，旧词条、原声和作答保持。取消在业务事务之前生效；已经提交的保存结果仍返回成功，不能用取消标识删除已确认资料。
 
-## 9 修订记录
+## 9 Pot 风格快捷键偏好
+
+application JSON 增加 inputShortcut，缺省 Alt+D；selectionShortcut 与 ocrShortcut 的新默认分别为 Alt+C、Alt+E。若旧 JSON 没有 inputShortcut，读取时补写输入键，并只更新原工厂快捷键，其他自定义和禁用值保持。只修改 settings 的 application 值，不改写词条、解释、原声、学习历史或数据库 schema。注册状态属于 NativeDesktop 运行期数据。
+
+## 10 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -181,3 +185,4 @@ SQLite `settings` 的 `practice` 键保存一个 `PracticeState`：完整阅读�
 | 0.15 | 2026-10-10 | 定义同句共享译文的逐词保存及批量元数据，schema 6 保持 |
 | 0.16 | 2026-10-10 | 增加 FR-13 当前阅读、位置与课程完整音轨的本机保存和统一来源关系，schema 6 保持 |
 | 0.17 | 2026-10-10 | 在 application JSON 保存 modelBatchSize，保留解释身份及 schema 6 |
+| 0.18 | 2026-10-11 | 在 application JSON 保存 inputShortcut 并升级旧工厂快捷键，schema 保持 |

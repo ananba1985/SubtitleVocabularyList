@@ -1,4 +1,4 @@
-param([string]$DataDirectory = '.local\dev-data', [switch]$CheckOnly)
+param([string]$DataDirectory = 'D:\SubtitleVocabularyList\Data', [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
 . (Join-Path $PSScriptRoot 'scripts/development-cleanup.ps1')

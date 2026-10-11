@@ -1,4 +1,4 @@
-param([string]$DataDirectory = '.local\dev-data', [string]$OutputDirectory = '.local\build', [switch]$CheckOnly)
+param([string]$DataDirectory = 'D:\SubtitleVocabularyList\Data', [string]$OutputDirectory = '.local\build', [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
 $svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory $DataDirectory

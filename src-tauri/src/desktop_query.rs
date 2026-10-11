@@ -406,6 +406,7 @@ fn create_query(app: &AppHandle, focus: bool) -> Result<(), AppError> {
         "translator",
         WebviewUrl::App("index.html?translate=1".into()),
     )
+    .data_directory(crate::app_paths::webview_directory(app.state::<Arc<Application>>().store.root()))
     .title("查词 · SubtitleVocabularyList")
     .inner_size(420.0, 320.0)
     .min_inner_size(300.0, 220.0)

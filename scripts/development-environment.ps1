@@ -1,5 +1,5 @@
 function Get-SvlDevelopmentEnvironment {
-    param([string]$DataDirectory = '.local\dev-data')
+    param([string]$DataDirectory = 'D:\SubtitleVocabularyList\Data')
     $svlRoot = Split-Path $PSScriptRoot -Parent
     $svlData = if ([IO.Path]::IsPathRooted($DataDirectory)) { [IO.Path]::GetFullPath($DataDirectory) } else { [IO.Path]::GetFullPath((Join-Path $svlRoot $DataDirectory)) }
     $svlRuntime = Join-Path $svlRoot '.tools/runtime'

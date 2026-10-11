@@ -801,6 +801,10 @@ fn capture_ocr_submit(
 
 pub fn run() {
     let _startup = std::time::Instant::now();
+    let root = crate::app_paths::data_directory().expect("Cannot resolve the data directory");
+    crate::app_paths::prepare_process(&root).expect("Cannot prepare the data and cache directories");
+    let mut context = tauri::generate_context!();
+    let main_config = context.config_mut().app.windows.remove(0);
     let first_page = Arc::new(std::sync::atomic::AtomicBool::new(true));
     tauri::Builder::default()
         .on_page_load(move |webview, event| {
@@ -863,6 +867,11 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
+            // Use the builder's absolute path API; window-config dataDirectory
+            // is resolved relative to the system local-data directory by Tauri.
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?
+                .data_directory(crate::app_paths::webview_directory(&root))
+                .build()?;
             #[cfg(debug_assertions)]
             eprintln!(
                 "[startup] native setup begins: {} ms",
@@ -893,16 +902,6 @@ pub fn run() {
                 "[startup] window geometry ready: {} ms",
                 _startup.elapsed().as_millis()
             );
-            #[cfg(debug_assertions)]
-            let default_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .ok_or("Missing project directory")?
-                .join(".local/dev-data");
-            #[cfg(not(debug_assertions))]
-            let default_root = app.path().app_data_dir()?;
-            let root = std::env::var_os("SVL_DATA_DIR")
-                .map(PathBuf::from)
-                .unwrap_or(default_root);
             let store = Arc::new(Store::open(root)?);
             #[cfg(debug_assertions)]
             eprintln!(
@@ -1156,6 +1155,6 @@ pub fn run() {
             capture_ocr_cancel,
             capture_ocr_submit
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("Cannot start SubtitleVocabularyList");
 }

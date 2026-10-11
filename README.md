@@ -101,7 +101,7 @@
 
 - `pnpm build`：前端类型检查与构建。
 - `pnpm test:core`：不启动界面的 Rust 核心测试。
-- `pnpm desktop:dev`：先自动清理专用临时目录和启动测试缓存，再本机调试运行；词库、媒体和正常依赖缓存保留。前端热更新、Rust 变更重启，使用本地 PATH、`.tools/runtime` 和 `.local/dev-data`。
+- `pnpm desktop:dev`：先自动清理专用临时目录和启动测试缓存，再本机调试运行；词库、媒体和正常依赖缓存保留。前端热更新、Rust 变更重启，使用本地 PATH、`.tools/runtime` 和默认 `D:\SubtitleVocabularyList\Data`。
 - 开发启动仅扫描前端相关内容，排除原生构建、工具源码和运行资料；本机新依赖缓存/WebView 数据目录的首次界面约 1.3 秒，代码编译另计，见[启动性能记录](docs/testing/performance-results.md#6-开发启动扫描瓶颈与修复)。
 - 双击根目录 `本地调试运行.cmd`：使用相同开发环境启动，调试命令结束后不暂停专用控制台；从已有终端启动时返回该终端提示符。
 - `pnpm desktop:build`：手动生成本地调试 exe，输出 `.local/build/SubtitleVocabularyList.exe` 和 `run-local.ps1`；使用本机开发资源，不生成安装包，可在未提交代码上执行。
@@ -115,7 +115,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 本地打包运行.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 ```
 
-第三条仅在需要打包时手动执行，首次会准备离线发行资源；资源已有时加 `-SkipToolBuild`。三个入口均支持 `-CheckOnly` 查看环境和执行计划，不启动应用或构建安装包。调试与发布使用不同应用标识，调试数据默认留在工作区；调试脚本可用 `-DataDirectory` 显式指定词库。具体准备与验证范围见[开发环境说明](docs/development/windows-environment.md)。
+第三条仅在需要打包时手动执行，首次会准备离线发行资源；资源已有时加 `-SkipToolBuild`。三个入口均支持 `-CheckOnly` 查看环境和执行计划，不启动应用或构建安装包。0.6.1 调试和本地 exe 默认使用 `D:\SubtitleVocabularyList\Data`；安装版使用程序所在目录下的 Data，安装到 `D:\SubtitleVocabularyList` 时三者共用同一份资料，切换前完全退出。缓存位于 Data/cache，旧资料迁移与实际范围见[目录说明](docs/development/data-directory.md)。隔离测试仍可用 `-DataDirectory` 明确指定词库。
 
 媒体原型另需 FFmpeg、ffprobe 与英语 Tesseract。`scripts/setup-tools.ps1` 准备私有的 Whisper 程序和模型，并校验模型摘要；它用于开发资源准备，不是最终用户安装说明。
 

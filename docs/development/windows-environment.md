@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.10 |
+| 文档版本 | 0.11 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 项目开发中；手动入口与本机环境检查通过，未执行本轮发行打包 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
@@ -50,7 +50,7 @@ pnpm desktop:dev
 
 常用入口 `本地调试运行.ps1`、`本地打包运行.ps1`、`生成安装包.ps1` 均位于项目根目录；环境、清理、媒体构建和源码导出等内部脚本保留在 `scripts/`。既有 pnpm 命令调用根目录入口。
 
-`本地调试运行.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和 `.local/dev-data`，退出后恢复调用环境。开发配置使用独立应用标识，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
+`本地调试运行.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和默认 `D:\SubtitleVocabularyList\Data`，退出后恢复调用环境。开发配置采用与发行相同的应用标识以共用单实例机制，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
 
 每次启动在运行 Tauri 前调用 `development-cleanup.ps1`：清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。只枚举这些范围，不扫描整个工具源码目录。词库、原声、媒体工具、正常 `node_modules/.vite`、Cargo 产物和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后，提示原因后继续启动，下次启动再尝试。`-CheckOnly` 只显示环境与可清理目录，不删除、不启动。`pnpm desktop:dev`、双击 cmd 和直接调用 PowerShell 共用此流程，无需另记手动清理步骤。
 
@@ -72,7 +72,7 @@ Tauri CLI 在应用正常退出时[停止 beforeDevCommand 的子进程树](http
 pnpm desktop:build
 ```
 
-`本地打包运行.ps1` 使用 debug 和 no-bundle，不要求 Git 工作区干净；输出 `.local/build/SubtitleVocabularyList.exe` 与 `run-local.ps1`。优先执行生成的 launcher，它会补齐本机 PATH 和指定的数据目录。此 exe 仍依赖当前工作区、本机媒体工具和 WebView2，不用来代替独立发行目录。调试代码默认数据目录为当前编译工作区的 `.local/dev-data`，可通过脚本 `-DataDirectory` 或进程 `SVL_DATA_DIR` 显式覆盖；发行程序仍使用正式应用数据目录。
+`本地打包运行.ps1` 使用 debug 和 no-bundle，不要求 Git 工作区干净；输出 `.local/build/SubtitleVocabularyList.exe` 与 `run-local.ps1`。优先执行生成的 launcher，它会补齐本机 PATH 和指定的数据目录。此 exe 仍依赖当前工作区、本机媒体工具和 WebView2，不用来代替独立发行目录。调试代码和本地 exe 默认使用 `D:\SubtitleVocabularyList\Data`，可通过脚本 `-DataDirectory` 或进程 `SVL_DATA_DIR` 显式覆盖；发行程序默认使用可执行文件目录下的 Data。主窗、小窗缓存及进程临时目录位于资料目录内，迁移和实际验证见[目录说明](data-directory.md)。
 
 三个脚本均支持 `-CheckOnly`；开发运行、调试构建和发行打包的执行计划可在不启动应用、不构建安装包的情况下检查。此次在工作区父目录使用 Windows PowerShell 5.1 执行三个 CheckOnly 均通过，识别到本机 FFmpeg/ffprobe/Tesseract、Whisper 与模型；PowerShell 语法和 Rust 全目标检查通过；以模拟 pnpm/cargo 验证了本地构建的 debug/no-bundle 参数、exe 导出、生成 launcher 的语法、带空格路径及环境恢复，没有调用真实编译器或启动程序。未据这些检查声称本轮启动了调试程序或生成了新安装包。
 
@@ -122,3 +122,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.8 | 2026-10-08 | 接入限定范围的开发启动自动清理、词库/缓存保护、CheckOnly 和失败延后，记录实际脚本验证 |
 | 0.9 | 2026-10-11 | 将三个常用 PowerShell 入口和调试 CMD 入口移至根目录，更新辅助脚本定位及 pnpm／文档引用 |
 | 0.10 | 2026-10-11 | 按用户指定改为中文文件名，同步 CMD、pnpm、使用文档及源码材料说明 |
+| 0.11 | 2026-10-11 | 对齐 0.6.1 共享资料默认值、单实例标识、缓存位置及真实迁移与本地 exe 验证 |

@@ -39,7 +39,7 @@ if($LASTEXITCODE -ne 0){throw 'Installer build failed.'}
 foreach($svlItem in $svlManifest){
     if((Get-FileHash -LiteralPath (Join-Path $svlResources $svlItem.path)).Hash.ToLowerInvariant() -ne $svlItem.sha256){throw 'Offline resources changed during packaging; rebuild from the verified snapshot.'}
 }
-$svlInstallers=Get-ChildItem -LiteralPath (Join-Path $svlWorkspace 'src-tauri/target/release/bundle/nsis') -Filter '*-setup.exe'
+$svlInstallers=@(Get-ChildItem -LiteralPath (Join-Path $svlWorkspace 'src-tauri/target/release/bundle/nsis') -Filter ('SubtitleVocabularyList_'+$svlVersion+'_*-setup.exe'))
 if($svlInstallers.Count -ne 1){throw 'Expected one NSIS installer.'}
 New-Item -ItemType Directory -Path $svlDelivery -Force | Out-Null
 Copy-Item -LiteralPath $svlInstallers[0].FullName -Destination $svlDelivery
@@ -51,7 +51,7 @@ $svlStandaloneTools=Join-Path $svlStandalone 'tools'
 New-Item -ItemType Directory -Path $svlStandaloneTools -Force | Out-Null
 Get-ChildItem -LiteralPath $svlResources -Force | Copy-Item -Destination $svlStandaloneTools -Recurse -Force
 [IO.File]::WriteAllText((Join-Path $svlStandalone 'README.txt'),
-    "Run SubtitleVocabularyList.exe from this directory. Keep the tools directory beside it.`r`nUser data remains in the application's data directory; this folder is not a development environment.`r`n",
+    "Run SubtitleVocabularyList.exe from this directory. Keep the tools directory beside it.`r`nUser data and caches are stored in the Data subdirectory beside the executable. This standalone directory is separate from an installed application's Data directory.`r`n",
     [Text.UTF8Encoding]::new($false))
 
 & (Join-Path $svlScripts 'export-release-source.ps1') -OutputDirectory $svlDelivery

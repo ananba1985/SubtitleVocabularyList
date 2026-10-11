@@ -1,7 +1,7 @@
 param([string]$DataDirectory = '.local\dev-data', [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'development-environment.ps1')
-. (Join-Path $PSScriptRoot 'development-cleanup.ps1')
+. (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
+. (Join-Path $PSScriptRoot 'scripts/development-cleanup.ps1')
 $svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory $DataDirectory
 $svlPreviousPath = $env:Path
 $svlPreviousData = $env:SVL_DATA_DIR

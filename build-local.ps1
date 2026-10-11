@@ -1,6 +1,6 @@
 param([string]$DataDirectory = '.local\dev-data', [string]$OutputDirectory = '.local\build', [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'development-environment.ps1')
+. (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
 $svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory $DataDirectory
 $svlOutput = if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) } else { [IO.Path]::GetFullPath((Join-Path $svlEnvironment.Workspace $OutputDirectory)) }
 $svlPreviousPath = $env:Path
@@ -21,7 +21,7 @@ try {
     Copy-Item -LiteralPath $svlExecutable -Destination $svlOutput -Force
     $svlLauncher = @"
 `$ErrorActionPreference = 'Stop'
-. '$((Join-Path $PSScriptRoot 'development-environment.ps1').Replace("'", "''"))'
+. '$((Join-Path $PSScriptRoot 'scripts/development-environment.ps1').Replace("'", "''"))'
 `$svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory '$($svlEnvironment.DataDirectory.Replace("'", "''"))'
 `$env:Path = `$svlEnvironment.Path
 `$env:SVL_DATA_DIR = `$svlEnvironment.DataDirectory

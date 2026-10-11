@@ -95,22 +95,24 @@
 
 本机验证使用 Node.js 22、pnpm 10、Rust 1.95 和 Visual C++ 工具链。执行 `pnpm install` 后，可使用以下入口：
 
+常用的三个入口均放在项目根目录：[run-dev.ps1](run-dev.ps1) 用于本地调试运行，[build-local.ps1](build-local.ps1) 生成本地调试 exe，[package-release.ps1](package-release.ps1) 生成安装包和独立运行目录。内部辅助脚本仍放在 `scripts/`。
+
 新 Windows 机器的开发与媒体环境脚本见[开发环境说明](docs/development/windows-environment.md)，包含已实际验证的依赖版本、资源位置与权限要求。
 
 - `pnpm build`：前端类型检查与构建。
 - `pnpm test:core`：不启动界面的 Rust 核心测试。
 - `pnpm desktop:dev`：先自动清理专用临时目录和启动测试缓存，再本机调试运行；词库、媒体和正常依赖缓存保留。前端热更新、Rust 变更重启，使用本地 PATH、`.tools/runtime` 和 `.local/dev-data`。
 - 开发启动仅扫描前端相关内容，排除原生构建、工具源码和运行资料；本机新依赖缓存/WebView 数据目录的首次界面约 1.3 秒，代码编译另计，见[启动性能记录](docs/testing/performance-results.md#6-开发启动扫描瓶颈与修复)。
-- 双击 `scripts/run-dev.cmd`：使用相同开发环境启动，调试命令结束后不暂停专用控制台；从已有终端启动时返回该终端提示符。
+- 双击根目录 `run-dev.cmd`：使用相同开发环境启动，调试命令结束后不暂停专用控制台；从已有终端启动时返回该终端提示符。
 - `pnpm desktop:build`：手动生成本地调试 exe，输出 `.local/build/SubtitleVocabularyList.exe` 和 `run-local.ps1`；使用本机开发资源，不生成安装包，可在未提交代码上执行。
 - `pnpm desktop:package`：手动发布打包，复用已准备的离线发行资源；输出 `release/<版本>/` 下的安装包、`standalone/SubtitleVocabularyList.exe` 及其 `tools/`、对应源码材料和摘要。要求源码已提交且工作区干净，不自动安装。
 
 需要传入目录或首次构建发行工具时，可直接执行脚本：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-local.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File run-dev.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File package-release.ps1
 ```
 
 第三条仅在需要打包时手动执行，首次会准备离线发行资源；资源已有时加 `-SkipToolBuild`。三个入口均支持 `-CheckOnly` 查看环境和执行计划，不启动应用或构建安装包。调试与发布使用不同应用标识，调试数据默认留在工作区；调试脚本可用 `-DataDirectory` 显式指定词库。具体准备与验证范围见[开发环境说明](docs/development/windows-environment.md)。

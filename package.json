@@ -15,9 +15,9 @@
     "test:version": "node scripts/test-version.mjs",
     "test:sources": "node --experimental-strip-types scripts/test-source-groups.mjs",
     "tauri": "tauri",
-    "desktop:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev.ps1",
-    "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-local.ps1",
-    "desktop:package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1 -SkipToolBuild",
+    "desktop:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File run-dev.ps1",
+    "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File build-local.ps1",
+    "desktop:package": "powershell -NoProfile -ExecutionPolicy Bypass -File package-release.ps1 -SkipToolBuild",
     "test:core": "cargo test --manifest-path src-tauri/Cargo.toml --no-default-features"
   },
   "dependencies": {

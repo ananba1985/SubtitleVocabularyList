@@ -64,8 +64,20 @@ while($svlQueue.Count){
         New-Item -ItemType Directory -Path $svlDirectory -Force | Out-Null
         $svlFiles=@(Get-ChildItem -LiteralPath $svlCandidate.path -File | Where-Object {$_.Name -match '^(LICENSE|LICENCE|COPYING|NOTICE|UNLICENSE|Copyright)'})
         foreach($svlFile in $svlFiles){Copy-Item -LiteralPath $svlFile.FullName -Destination $svlDirectory}
-        if($svlFiles.Count -eq 0){$svlMissing+=$svlKey}
-        $svlManifest+=@{ecosystem='npm';name=$svlPackage.name;version=$svlPackage.version;license=$svlPackage.license;files=@($svlFiles.Name)}
+        # Some older npm packages include their full MIT notice in README only.
+        if($svlFiles.Count -eq 0 -and $svlPackage.license -eq 'MIT'){
+            foreach($svlReadme in Get-ChildItem -LiteralPath $svlCandidate.path -File | Where-Object {$_.Name -match '^README(?:\.|$)'}){
+                $svlNotice=[regex]::Match([IO.File]::ReadAllText($svlReadme.FullName),'(?ims)^#{1,6}\s+License\s*\r?\n(?<notice>.*?)(?=^#{1,6}\s|\z)')
+                if($svlNotice.Success -and $svlNotice.Groups['notice'].Value -match 'Copyright' -and $svlNotice.Groups['notice'].Value -match 'Permission is hereby granted' -and $svlNotice.Groups['notice'].Value -match 'THE SOFTWARE IS PROVIDED'){
+                    [IO.File]::WriteAllText((Join-Path $svlDirectory 'LICENSE-from-README.txt'),$svlNotice.Groups['notice'].Value.Trim(),[Text.UTF8Encoding]::new($false))
+                    [IO.File]::WriteAllText((Join-Path $svlDirectory 'LICENSE-from-README.source.txt'),($svlKey+':'+$svlReadme.Name+'#license'),[Text.UTF8Encoding]::new($false))
+                    break
+                }
+            }
+        }
+        $svlIncluded=@(Get-ChildItem -LiteralPath $svlDirectory -File | Where-Object {$_.Name -notlike '*.source.txt'})
+        if($svlIncluded.Count -eq 0){$svlMissing+=$svlKey}
+        $svlManifest+=@{ecosystem='npm';name=$svlPackage.name;version=$svlPackage.version;license=$svlPackage.license;files=@($svlIncluded.Name)}
         if($svlCandidate.dependencies){foreach($svlDependency in $svlCandidate.dependencies.PSObject.Properties){$svlQueue.Enqueue($svlDependency.Value)}}
 }
 [IO.File]::WriteAllText((Join-Path $svlLicenses 'dependencies.json'),($svlManifest|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))

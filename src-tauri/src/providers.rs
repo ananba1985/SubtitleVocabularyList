@@ -68,6 +68,16 @@ pub struct Provider {
     pub manifest: Option<PluginManifest>,
 }
 
+impl Provider {
+    pub fn supports_translation(&self) -> bool {
+        matches!(self.kind.as_str(), "qwen" | "translation")
+            || self
+                .manifest
+                .as_ref()
+                .is_some_and(|m| m.capabilities.iter().any(|c| c == "translation"))
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderUpdate {

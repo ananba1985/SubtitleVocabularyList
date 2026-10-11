@@ -151,6 +151,8 @@ export interface Settings {
   selectionShortcut: string;
   ocrShortcut: string;
   inputShortcut: string;
+  replacementShortcut: string;
+  replacementProviderId: string;
   systemVoice: string;
   closeToTray: boolean;
   siteUrl: string;
@@ -181,6 +183,7 @@ export interface NativeStatus {
   selectionRegistered: boolean;
   ocrRegistered: boolean;
   inputRegistered: boolean;
+  replacementRegistered: boolean;
   error: string | null;
 }
 export interface ScreenSession {

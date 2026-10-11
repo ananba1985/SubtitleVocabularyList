@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.33 |
+| 文档版本 | 0.34 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19、NFR-02 至 NFR-05 |
@@ -179,15 +179,15 @@ clipboard_listener_set 为 `{enabled,preferences:{debounceMs,persistResults}}`�
 
 辅助桌面命令 translation_open、translation_window_hide、translation_window_pin（pinned）、query_copy（text）及 translation_collect（sessionId、inputRevision、providerId）服务于小窗交互。collect 仅把当前完整结果送入原收录确认，hide 取消小窗订阅并停止本窗播放。新监听状态不随重启开启，复制本程序结果按序号排除。
 
-### 2.3 选区翻译并替换契约提案
+### 2.3 选区翻译并替换契约
 
-FR-19 当前仅设计，下列命令、设置字段和事件均未实现；完整流程见 [选区翻译并替换](selection-replacement.md)。
+FR-19 下列命令、设置和事件已在 0.6.0 接通；完整流程和原生边界见 [选区翻译并替换](selection-replacement.md)。
 
-| 编号 | 提案 | 输入／输出及边界 |
+| 编号 | 命令 | 输入／输出及边界 |
 | --- | --- | --- |
-| CMD-45 | replacement_status_get／replacement_cancel | get 无参数，返回可空的 `{operationId,state,originalText,translation,providerId,error}`；cancel 接收 `{operationId}`，只取消对应尚未提交的替换，不能承诺撤销已发生编辑 |
+| CMD-45 | replacement_status_get／replacement_cancel／replacement_result_open／replacement_clipboard_restore | get 无参数，返回 `{operationId,state,originalText,translation,providerId,error,clipboardPending}`，未操作时 id／state 为空；cancel 接收 `{operationId}`，忽略其他操作 id，不撤销已提交编辑；open 无参数，用户主动查看内存结果，不重新请求或写入；restore 无参数，用户核对未确认输入后恢复尚属本次操作的剪贴板 |
 
-拟在既有 settings_get／settings_save 增加 replacementShortcut（建议 Ctrl+Alt+R，可空禁用）和 replacementProviderId（默认 qwen）；native_status 增加 replacementRegistered 及注册错误。开始由原生快捷键读取即时前台选区，提交只在原生侧处理；不提供接受任意窗口句柄、选区或待写文字的前端回填接口。replacement_updated 只通知 operationId／state，详情通过 CMD-45 读取；状态定义见详细设计，不影响现有 query_updated 会话。
+settings_get／settings_update 增加 replacementShortcut（默认 Ctrl+Alt+R，可空禁用）和 replacementProviderId（默认 qwen）；旧配置读时补默认值，保存时写入，不改既有三键。native_status 增加 replacementRegistered，注册错误沿用 error。原生快捷键读取即时选区并提交，不提供网页传入任意 HWND、范围或待写文字的回填接口。replacement_updated 只通知 operationId／state，详情用 CMD-45 读取；不改变现有 query_updated 或小窗 current。设置改变替换键／服务时取消等待中的替换。
 
 ## 3 收录请求与提交结果
 
@@ -325,3 +325,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.31 | 2026-10-11 | 为 Pot 替代登记 CMD-38 至 CMD-44 提案，保持与现有接口分离 |
 | 0.32 | 2026-10-11 | 登记查询小窗、服务插件和监听的实际命令与 schema 7，保持后续兼容边界 |
 | 0.33 | 2026-10-11 | 预留 FR-19 的 CMD-45、独立快捷键及替换状态提案，不声明已实现 |
+| 0.34 | 2026-10-11 | 接通 CMD-45，补足上次结果、剪贴板待恢复、按操作取消及实际设置命令 |

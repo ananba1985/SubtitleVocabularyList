@@ -18,6 +18,7 @@ import { TasksView } from "./components/TasksView";
 import { KnownTargetsManager } from "./components/KnownTargetsManager";
 import { PracticeView, type PracticePanel } from "./components/PracticeView";
 import { collectionQueue } from "./collectionQueue";
+import { ReplacementSettings } from "./components/ReplacementSettings";
 
 type Tab =
   | "library"
@@ -470,6 +471,7 @@ export default function App() {
                 : "输入快捷键未启用"}
               。打开输入窗口后，可查询释义、朗读并按需收录；留空可禁用。
             </p>
+            <ReplacementSettings settings={settings} native={native} onChange={setSettings} />
             <button
               className="secondary"
               onClick={() =>

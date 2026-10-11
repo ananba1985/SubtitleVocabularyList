@@ -187,6 +187,11 @@ impl ClipboardWatcher {
                             {
                                 previous = text.to_owned();
                                 let _dispatch = dispatch.lock().unwrap();
+                                if sequence == ignore.load(Ordering::Relaxed)
+                                    || sequence != unsafe { GetClipboardSequenceNumber() }
+                                {
+                                    continue;
+                                }
                                 let app = handle.state::<Arc<Application>>().inner().clone();
                                 if !live.load(Ordering::Relaxed)
                                     || epochs.load(Ordering::Relaxed) != epoch
@@ -281,10 +286,17 @@ impl ClipboardWatcher {
         if text.chars().count() > 16000 {
             return Err(AppError::new("invalid_input", "复制文字过长。"));
         }
-        write_clipboard(text)?;
+        self.mutate(|| write_clipboard(text))
+    }
+    pub(crate) fn mutate<T>(
+        &self,
+        operation: impl FnOnce() -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
+        let _guard = self.dispatch.lock().unwrap();
+        let result = operation();
         self.ignore_sequence
             .store(unsafe { GetClipboardSequenceNumber() }, Ordering::Relaxed);
-        Ok(())
+        result
     }
 }
 

@@ -36,6 +36,10 @@ mod desktop_ocr;
 #[cfg(all(windows, feature = "desktop"))]
 mod desktop_query;
 #[cfg(all(windows, feature = "desktop"))]
+mod desktop_replacement;
+#[cfg(all(windows, feature = "desktop"))]
+mod replacement_target;
+#[cfg(all(windows, feature = "desktop"))]
 mod sync_http;
 #[cfg(all(windows, feature = "desktop"))]
 mod sync_transport;

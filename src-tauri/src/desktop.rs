@@ -691,15 +691,26 @@ async fn settings_update(
             &settings.selection_shortcut,
             &settings.ocr_shortcut,
             &settings.input_shortcut,
+            &settings.replacement_shortcut,
         )?;
         match app.save_settings(settings) {
-            Ok(settings) => Ok(settings),
+            Ok(settings) => {
+                if settings.replacement_shortcut != previous.replacement_shortcut
+                    || settings.replacement_provider_id != previous.replacement_provider_id
+                {
+                    handle
+                        .state::<crate::desktop_replacement::NativeReplacement>()
+                        .cancel();
+                }
+                Ok(settings)
+            }
             Err(error) => {
                 let _ = native.configure(
                     &handle,
                     &previous.selection_shortcut,
                     &previous.ocr_shortcut,
                     &previous.input_shortcut,
+                    &previous.replacement_shortcut,
                 );
                 Err(error)
             }
@@ -724,6 +735,33 @@ fn speech_start(
 #[tauri::command]
 fn native_status(handle: tauri::AppHandle) -> NativeStatus {
     handle.state::<NativeDesktop>().status()
+}
+#[tauri::command]
+fn replacement_status_get(
+    handle: tauri::AppHandle,
+) -> crate::desktop_replacement::ReplacementStatus {
+    handle
+        .state::<crate::desktop_replacement::NativeReplacement>()
+        .status()
+}
+#[tauri::command]
+fn replacement_cancel(handle: tauri::AppHandle, operation_id: String) {
+    let native = handle.state::<crate::desktop_replacement::NativeReplacement>();
+    if native.status().operation_id == operation_id {
+        native.cancel();
+    }
+}
+#[tauri::command]
+fn replacement_result_open(handle: tauri::AppHandle) -> Result<(), AppError> {
+    handle
+        .state::<crate::desktop_replacement::NativeReplacement>()
+        .open_result(&handle)
+}
+#[tauri::command]
+fn replacement_clipboard_restore(handle: tauri::AppHandle) -> Result<(), AppError> {
+    handle
+        .state::<crate::desktop_replacement::NativeReplacement>()
+        .restore_clipboard(&handle)
 }
 #[tauri::command]
 fn capture_selection(handle: tauri::AppHandle) -> Result<TaskSnapshot, AppError> {
@@ -793,6 +831,11 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
+                    if let Some(native) = app.try_state::<NativeDesktop>() && matches!(native.action(shortcut), Some(crate::desktop_capture::CaptureAction::Replacement)) {
+                        if event.state() == ShortcutState::Released { native.replacement_key_down.store(false, std::sync::atomic::Ordering::Release); }
+                        else if !native.replacement_key_down.swap(true, std::sync::atomic::Ordering::AcqRel) { app.state::<crate::desktop_replacement::NativeReplacement>().toggle(app); }
+                        return;
+                    }
                     if event.state() == ShortcutState::Pressed
                         && let Some(native) = app.try_state::<NativeDesktop>()
                     {
@@ -807,6 +850,7 @@ pub fn run() {
                                 if let Err(error)=crate::desktop_query::open_input(app){desktop_capture::capture_failed(app,&error);}
                                 None
                             }
+                            Some(crate::desktop_capture::CaptureAction::Replacement) => None,
                             None => None,
                         };
                         if let Some(Err(error)) = result
@@ -902,20 +946,22 @@ pub fn run() {
             app.manage(NativeDesktop::default());
             app.manage(TrayAction::default());
             app.manage(crate::desktop_query::QueryWindowState::default());
+            app.manage(crate::desktop_replacement::NativeReplacement::default());
             let native = app.state::<NativeDesktop>();
-            let mut available = ["", "", ""];
+            let mut available = ["", "", "", ""];
             let mut failures = Vec::new();
             for (index, shortcut) in [
                 settings.selection_shortcut.as_str(),
                 settings.ocr_shortcut.as_str(),
                 settings.input_shortcut.as_str(),
+                settings.replacement_shortcut.as_str(),
             ]
             .into_iter()
             .enumerate()
             {
                 available[index] = shortcut;
                 if let Err(error) =
-                    native.configure(app.handle(), available[0], available[1], available[2])
+                    native.configure(app.handle(), available[0], available[1], available[2], available[3])
                 {
                     available[index] = "";
                     failures.push(error.message);
@@ -931,6 +977,9 @@ pub fn run() {
             let show = MenuItem::with_id(app, "show", "打开单词本", true, None::<&str>)?;
             let collect = MenuItem::with_id(app, "collect", "收录词条", true, None::<&str>)?;
             let query = MenuItem::with_id(app,"query","输入翻译",true,None::<&str>)?;
+            let replacement = MenuItem::with_id(app,"replacement","翻译替换：尚无操作（查看）",true,None::<&str>)?;
+            let replacement_cancel_item = MenuItem::with_id(app,"replacement_cancel","取消翻译替换",true,None::<&str>)?;
+            app.manage(crate::desktop_replacement::ReplacementMenu(replacement.clone()));
             let clipboard = CheckMenuItem::with_id(app,"clipboard","监听剪贴板",true,false,None::<&str>)?;
             app.manage(crate::desktop_query::ClipboardMenu(clipboard.clone()));
             let ocr = MenuItem::with_id(app, "ocr", "截图收录", true, None::<&str>)?;
@@ -953,6 +1002,8 @@ pub fn run() {
                     &show,
                     &capture_separator,
                     &query,
+                    &replacement,
+                    &replacement_cancel_item,
                     &collect,
                     &ocr,
                     &import,
@@ -992,6 +1043,8 @@ pub fn run() {
                     }
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "replacement"=>{if let Err(error)=app.state::<crate::desktop_replacement::NativeReplacement>().open_result(app){desktop_capture::capture_failed(app,&error);}},
+                    "replacement_cancel"=>app.state::<crate::desktop_replacement::NativeReplacement>().cancel(),
                     "query"=>{if let Err(error)=crate::desktop_query::open_input(app){desktop_capture::capture_failed(app,&error);}},
                     "clipboard"=>{let watcher=app.state::<crate::desktop_query::ClipboardWatcher>();let status=watcher.status();let _=watcher.set(app,!status.enabled,crate::desktop_query::ClipboardPreferences{debounce_ms:status.debounce_ms,persist_results:status.persist_results});crate::desktop_query::refresh_clipboard_menu(app);},
                     "show" => tray_navigate(app, "library"),
@@ -1094,6 +1147,7 @@ pub fn run() {
             speech_voices,
             speech_start,
             native_status,
+            replacement_status_get,replacement_cancel,replacement_result_open,replacement_clipboard_restore,
             tray_action_get,
             capture_selection,
             app_quit,

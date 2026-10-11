@@ -17,7 +17,8 @@ use uuid::Uuid;
 
 #[derive(Default)]
 pub struct NativeDesktop {
-    binding: Mutex<[Option<Shortcut>; 3]>,
+    binding: Mutex<[Option<Shortcut>; 4]>,
+    pub(crate) replacement_key_down: AtomicBool,
     configuration: Mutex<()>,
     error: Mutex<Option<String>>,
     pub(crate) busy: Arc<AtomicBool>,
@@ -28,6 +29,7 @@ pub enum CaptureAction {
     Selection,
     Ocr,
     Input,
+    Replacement,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +37,7 @@ pub struct NativeStatus {
     pub selection_registered: bool,
     pub ocr_registered: bool,
     pub input_registered: bool,
+    pub replacement_registered: bool,
     pub error: Option<String>,
 }
 impl NativeDesktop {
@@ -43,6 +46,7 @@ impl NativeDesktop {
             selection_registered: self.binding.lock().is_ok_and(|value| value[0].is_some()),
             ocr_registered: self.binding.lock().is_ok_and(|value| value[1].is_some()),
             input_registered: self.binding.lock().is_ok_and(|value| value[2].is_some()),
+            replacement_registered: self.binding.lock().is_ok_and(|value| value[3].is_some()),
             error: self.error.lock().ok().and_then(|value| value.clone()),
         }
     }
@@ -57,6 +61,7 @@ impl NativeDesktop {
         selection: &str,
         ocr: &str,
         input: &str,
+        replacement: &str,
     ) -> Result<(), AppError> {
         let parse = |value: &str| -> Result<Option<Shortcut>, AppError> {
             if value.trim().is_empty() {
@@ -68,7 +73,12 @@ impl NativeDesktop {
                     .map_err(|_| AppError::new("invalid_input", "快捷键格式无效，例如 Alt+C。"))
             }
         };
-        let proposed = [parse(selection)?, parse(ocr)?, parse(input)?];
+        let proposed = [
+            parse(selection)?,
+            parse(ocr)?,
+            parse(input)?,
+            parse(replacement)?,
+        ];
         if proposed
             .iter()
             .enumerate()
@@ -76,7 +86,7 @@ impl NativeDesktop {
         {
             return Err(AppError::new(
                 "invalid_input",
-                "划词、截图和输入翻译需要使用不同快捷键。",
+                "划词、截图、输入翻译和翻译替换需要使用不同快捷键。",
             ));
         }
         let _configuration = self
@@ -126,6 +136,7 @@ impl NativeDesktop {
             .binding
             .lock()
             .map_err(|_| AppError::new("internal_error", "快捷键状态不可用。"))? = proposed;
+        self.replacement_key_down.store(false, Ordering::Release);
         *self
             .error
             .lock()
@@ -140,6 +151,8 @@ impl NativeDesktop {
             Some(CaptureAction::Ocr)
         } else if binding[2].as_ref() == Some(shortcut) {
             Some(CaptureAction::Input)
+        } else if binding[3].as_ref() == Some(shortcut) {
+            Some(CaptureAction::Replacement)
         } else {
             None
         }
@@ -226,6 +239,8 @@ pub fn capture_failed(app: &AppHandle, error: &AppError) {
     show_main(app);
 }
 pub fn quit(app: &AppHandle) {
+    app.state::<crate::desktop_replacement::NativeReplacement>()
+        .cancel();
     let session_id = app
         .state::<NativeDesktop>()
         .screen
@@ -251,12 +266,20 @@ pub fn quit(app: &AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
-        while started.elapsed() < std::time::Duration::from_secs(3) {
-            if tasks.active().is_ok_and(|tasks| tasks.is_empty()) {
+        while started.elapsed() < std::time::Duration::from_secs(5) {
+            if tasks.active().is_ok_and(|tasks| tasks.is_empty())
+                && !handle
+                    .state::<crate::desktop_replacement::NativeReplacement>()
+                    .busy
+                    .load(Ordering::Acquire)
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
+        let _ = handle
+            .state::<crate::desktop_replacement::NativeReplacement>()
+            .restore_clipboard(&handle);
         handle.exit(0);
     });
 }

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.18 |
+| 文档版本 | 0.19 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02 |
@@ -164,7 +164,11 @@ SQLite `settings` 的 `practice` 键保存一个 `PracticeState`：完整阅读�
 
 application JSON 增加 inputShortcut，缺省 Alt+D；selectionShortcut 与 ocrShortcut 的新默认分别为 Alt+C、Alt+E。若旧 JSON 没有 inputShortcut，读取时补写输入键，并只更新原工厂快捷键，其他自定义和禁用值保持。只修改 settings 的 application 值，不改写词条、解释、原声、学习历史或数据库 schema。注册状态属于 NativeDesktop 运行期数据。
 
-## 10 修订记录
+## 10 Pot 替代数据提案
+
+FR-14 至 FR-18 的 QuerySession、query_results、服务／插件偏好和凭据引用见 [Pot 替代数据设计](pot-replacement.md#5-数据设计与兼容)。会话与监听为运行期状态，成功查询缓存与词库区分，多服务身份不改写 explanations 的旧唯一键。新表在实施时提交迁移；本文不表示已新增表或改变当前 schema 6。
+
+## 11 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -186,3 +190,4 @@ application JSON 增加 inputShortcut，缺省 Alt+D；selectionShortcut 与 ocr
 | 0.16 | 2026-10-10 | 增加 FR-13 当前阅读、位置与课程完整音轨的本机保存和统一来源关系，schema 6 保持 |
 | 0.17 | 2026-10-10 | 在 application JSON 保存 modelBatchSize，保留解释身份及 schema 6 |
 | 0.18 | 2026-10-11 | 在 application JSON 保存 inputShortcut 并升级旧工厂快捷键，schema 保持 |
+| 0.19 | 2026-10-11 | 链接后续查询缓存、服务偏好及运行期监听数据提案，保持 schema 6 状态 |

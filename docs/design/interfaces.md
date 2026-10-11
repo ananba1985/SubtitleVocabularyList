@@ -3,11 +3,11 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.30 |
+| 文档版本 | 0.31 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
-| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-13、NFR-02 至 NFR-05 |
-| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08 |
+| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-18、NFR-02 至 NFR-05 |
+| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08、拟增 ARC-09 |
 | 关联设计 | [数据模型](data-model.md)、[应用流程](application-flows.md) |
 
 本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。下列目录保留完整 0.1 的逻辑契约；当前已实现参数另列，不把后续提案当作现有接口。站点认证与协议仍需按 OPEN-04、TECH-06 对齐。
@@ -159,6 +159,20 @@ schema 4 的 Entry.examples 对原句去重，每项增加 `contexts:[{scopeKey,
 
 只读完整资料包导出保留为 Rust 库/私有检查入口；桌面同步通过上述独立命令执行，HTTP 路由和字段唯一维护在[同步设计](synchronization.md)。新增 `sync_probe` 私有检查入口调用正式 HTTP 适配器，要求已获浏览器批准的 DPAPI 连接，不生成或伪造个人身份。
 
+### 2.2 Pot 替代后续命令提案
+
+下表仅登记编号和职责，均未实现，不属于“当前已实现参数”。字段、事件与取消契约的统一定义见 [Pot 替代设计](pot-replacement.md#6-命令与事件提案)。
+
+| 编号 | 命令提案 | 职责 | 需求 |
+| --- | --- | --- | --- |
+| CMD-38 | translation_session_open | 创建查询会话，保持查询与收录分离 | FR-14、FR-15 |
+| CMD-39 | translation_query_start | 对当前输入和允许的服务开始查询 | FR-14 至 FR-17 |
+| CMD-40 | translation_session_get | 读取当前版本的完整状态与有效结果 | FR-14 至 FR-17 |
+| CMD-41 | translation_query_cancel | 取消相应查询订阅，保留其他会话 | FR-14、FR-16 |
+| CMD-42 | clipboard_listener_set/get | 显式开关与真实运行状态 | FR-16 |
+| CMD-43 | providers_list/update | 非敏感服务配置、调用范围和凭据引用 | FR-17、FR-18 |
+| CMD-44 | plugin_install/remove | 版本与能力明确的包安装／卸载 | FR-18 |
+
 ## 3 收录请求与提交结果
 
 草稿包含类型、原文、用户确认释义、例句、来源位置、音频准备情况以及匹配建议。修改原文或类型后，需要重新核对匹配建议。
@@ -292,3 +306,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.28 | 2026-10-10 | 增加 modelBatchSize 设置契约及运行期待执行分组调整 |
 | 0.29 | 2026-10-10 | 增加主窗口托盘操作通知和单次消费接口 |
 | 0.30 | 2026-10-11 | 增加 inputShortcut／inputRegistered，定义默认升级及三键注册契约 |
+| 0.31 | 2026-10-11 | 为 Pot 替代登记 CMD-38 至 CMD-44 提案，保持与现有接口分离 |

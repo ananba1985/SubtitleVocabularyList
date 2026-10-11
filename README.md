@@ -18,6 +18,8 @@
 | [数据模型设计](docs/design/data-model.md) | 词条、例句、原声、收录、测验及同步数据的关系与一致性 |
 | [应用流程设计](docs/design/application-flows.md) | 预习、采集、确认、播放、测验、专项和异常状态 |
 | [接口契约设计](docs/design/interfaces.md) | 本地命令、任务、错误及外部适配与同步契约 |
+| [Pot 替代功能设计](docs/design/pot-replacement.md) | 后续独立小窗、自动查询、剪贴板监听、多服务与插件提案 |
+| [Pot 替代开发计划](docs/planning/pot-replacement-plan.md) | M-09 至 M-13 的顺序、工作包、依赖和最小正常验收 |
 | [测试与验收计划](docs/testing/test-plan.md) | 验证环境、计划场景、需求覆盖与执行证据规则 |
 | [首轮原型验证](docs/testing/prototype-results.md) | 实际核心与工具链测试，真实 PGS 剧集结果和覆盖边界 |
 | [桌面导入与收录验证](docs/testing/desktop-import-results.md) | 项目内剧集副本、实际界面、合并、重启与取消结果 |
@@ -31,7 +33,7 @@
 | [离线安装与升级验证](docs/testing/offline-release-results.md) | 随包工具、实际安装、原声播放、旧库迁移与发布余项 |
 | [保存中断与恢复验证](docs/testing/recovery-results.md) | 真实进程终止、旧资料保持、重试与取消提交边界 |
 | [本地工作流性能验证](docs/testing/performance-results.md) | 1000 条词库的后台读取、实际本机处理、资源采样与模型失败隔离 |
-| [当前验收覆盖审计](docs/testing/acceptance-status.md) | 全部需求、42 个场景的实际证据和未关闭条件 |
+| [当前验收覆盖审计](docs/testing/acceptance-status.md) | 0.1 基线需求、42 个历史场景的实际证据和未关闭条件 |
 | [媒体输入支持矩阵](docs/testing/media-support-matrix.md) | 六种视频后缀、已测编码、字幕与递归目录规则 |
 | [受限制网络验收](docs/testing/restricted-network-results.md) | 实际出站限制、冷启动、播放听辨、截图补测及服务失败隔离 |
 | [安装与使用说明](docs/release/installation.md) | 当前候选包、数据目录、系统资源和基本使用流程 |

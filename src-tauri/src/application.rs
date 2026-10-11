@@ -74,6 +74,7 @@ pub struct Application {
     network_unavailable: Arc<AtomicBool>,
     pub(crate) model_gate: Arc<ModelGate>,
     pub(crate) model_batch_size: AtomicUsize,
+    pub queries: Arc<crate::queries::QueryRuntime>,
     pub(crate) preparation_guard: Mutex<()>,
     pub(crate) preparation_requested: Arc<AtomicBool>,
     pub(crate) preparation_paused: AtomicBool,
@@ -228,6 +229,7 @@ impl Application {
             tasks,
             drafts: Mutex::new(HashMap::new()),
             model_batch_size: AtomicUsize::new(defaults.model_batch_size),
+            queries: Arc::new(crate::queries::QueryRuntime::default()),
             defaults,
             import_guard: Arc::new(Mutex::new(())),
             network_unavailable: Arc::new(AtomicBool::new(false)),
@@ -253,6 +255,10 @@ impl Application {
 
     pub fn network_unavailable(&self) -> bool {
         self.network_unavailable.load(Ordering::Relaxed)
+    }
+    pub(crate) fn record_query_network(&self, unavailable: bool) {
+        self.network_unavailable
+            .store(unavailable, Ordering::Relaxed);
     }
 
     pub(crate) fn start_network_task<F>(
@@ -363,7 +369,11 @@ impl Application {
         self.model_gate.set_limit(settings.model_concurrency);
         self.model_batch_size
             .store(settings.model_batch_size, Ordering::Relaxed);
+        if settings.offline_mode && !previous.offline_mode {
+            self.queries.cancel_external();
+        }
         if previous.model_url != settings.model_url || previous.model_name != settings.model_name {
+            self.queries.cancel_provider("qwen");
             self.preparation_paused.store(false, Ordering::Relaxed);
             self.preparation_requested.store(true, Ordering::Relaxed);
         }

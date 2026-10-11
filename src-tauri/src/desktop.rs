@@ -42,6 +42,156 @@ fn tray_navigate(app: &tauri::AppHandle, action: &str) {
     let _ = app.emit_to("main", "tray_action", ());
 }
 
+#[tauri::command]
+fn translation_session_open(
+    app: AppState<'_>,
+    input: crate::queries::QueryInput,
+    session_id: Option<String>,
+) -> Result<crate::queries::QuerySession, AppError> {
+    app.queries.open(input, session_id.as_deref())
+}
+#[tauri::command]
+fn translation_session_get(
+    app: AppState<'_>,
+    session_id: Option<String>,
+) -> Result<Option<crate::queries::QuerySession>, AppError> {
+    app.queries.get(session_id.as_deref())
+}
+#[tauri::command]
+fn translation_query_start(
+    app: AppState<'_>,
+    session_id: String,
+    expected_input_revision: u64,
+    provider_ids: Vec<String>,
+    automatic: bool,
+    persist: bool,
+) -> Result<crate::queries::QuerySession, AppError> {
+    app.inner().query_start(
+        session_id,
+        expected_input_revision,
+        provider_ids,
+        automatic,
+        persist,
+    )
+}
+#[tauri::command]
+fn translation_query_cancel(
+    app: AppState<'_>,
+    session_id: String,
+    query_id: Option<String>,
+) -> Result<(), AppError> {
+    app.queries.cancel(&session_id, query_id.as_deref())
+}
+#[tauri::command]
+fn translation_window_hide(handle: tauri::AppHandle) {
+    crate::desktop_query::hide_query(&handle);
+}
+#[tauri::command]
+fn translation_window_pin(handle: tauri::AppHandle, pinned: bool) -> Result<(), AppError> {
+    handle
+        .get_webview_window("translator")
+        .ok_or_else(|| AppError::new("not_found", "查询窗口未打开。"))?
+        .set_always_on_top(pinned)
+        .map_err(|_| AppError::new("internal_error", "无法固定查询窗口。"))
+}
+#[tauri::command]
+fn translation_open(handle: tauri::AppHandle) -> Result<(), AppError> {
+    crate::desktop_query::open_input(&handle)
+}
+#[tauri::command]
+fn translation_collect(
+    app: AppState<'_>,
+    handle: tauri::AppHandle,
+    session_id: String,
+    input_revision: u64,
+    provider_id: String,
+) -> Result<(), AppError> {
+    let seed = app.query_collection(&session_id, input_revision, &provider_id)?;
+    handle
+        .emit_to("main", "capture_completed", seed)
+        .map_err(|_| AppError::new("internal_error", "无法打开收录确认。"))?;
+    crate::desktop_query::hide_query(&handle);
+    desktop_capture::show_main(&handle);
+    Ok(())
+}
+#[tauri::command]
+fn query_copy(handle: tauri::AppHandle, text: String) -> Result<(), AppError> {
+    handle
+        .state::<crate::desktop_query::ClipboardWatcher>()
+        .copy(&text)
+}
+#[tauri::command]
+fn clipboard_listener_get(handle: tauri::AppHandle) -> crate::desktop_query::ClipboardStatus {
+    handle
+        .state::<crate::desktop_query::ClipboardWatcher>()
+        .status()
+}
+#[tauri::command]
+fn clipboard_listener_set(
+    handle: tauri::AppHandle,
+    enabled: bool,
+    preferences: crate::desktop_query::ClipboardPreferences,
+) -> Result<crate::desktop_query::ClipboardStatus, AppError> {
+    let status = handle
+        .state::<crate::desktop_query::ClipboardWatcher>()
+        .set(&handle, enabled, preferences)?;
+    crate::desktop_query::refresh_clipboard_menu(&handle);
+    Ok(status)
+}
+#[tauri::command]
+fn providers_list(app: AppState<'_>) -> Result<Vec<crate::providers::Provider>, AppError> {
+    app.store.providers()
+}
+#[tauri::command]
+async fn providers_update(
+    app: AppState<'_>,
+    update: crate::providers::ProviderUpdate,
+) -> Result<Vec<crate::providers::Provider>, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        let id = update.id.clone();
+        let providers = app.store.provider_update(update)?;
+        app.queries.cancel_provider(&id);
+        Ok(providers)
+    })
+    .await
+}
+#[tauri::command]
+async fn plugin_install(
+    app: AppState<'_>,
+    path: String,
+) -> Result<crate::providers::Provider, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        let metadata = std::fs::metadata(&path)?;
+        if !metadata.is_file() || metadata.len() > 512_000 {
+            return Err(AppError::new(
+                "invalid_input",
+                "请选择小于 512 KB 的插件 JSON 配置。",
+            ));
+        }
+        let manifest = serde_json::from_str(&std::fs::read_to_string(path)?)
+            .map_err(|_| AppError::new("invalid_data", "插件配置不是支持的 JSON 格式。"))?;
+        let provider = app.store.plugin_install_manifest(manifest)?;
+        app.queries.cancel_provider(&provider.id);
+        Ok(provider)
+    })
+    .await
+}
+#[tauri::command]
+async fn plugin_remove(
+    app: AppState<'_>,
+    plugin_id: String,
+) -> Result<Vec<crate::providers::Provider>, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        let providers = app.store.plugin_remove(&plugin_id)?;
+        app.queries.cancel_provider(&plugin_id);
+        Ok(providers)
+    })
+    .await
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppInfo {
@@ -616,6 +766,7 @@ pub fn run() {
     let first_page = Arc::new(std::sync::atomic::AtomicBool::new(true));
     tauri::Builder::default()
         .on_page_load(move |webview, event| {
+            if webview.label()=="translator" && event.event()==tauri::webview::PageLoadEvent::Finished {let _=webview.window().show();}
             if webview.label() == "main" {
                 #[cfg(debug_assertions)]
                 eprintln!(
@@ -653,7 +804,7 @@ pub fn run() {
                                 Some(native.ocr_start(app))
                             }
                             Some(crate::desktop_capture::CaptureAction::Input) => {
-                                tray_navigate(app, "collect");
+                                if let Err(error)=crate::desktop_query::open_input(app){desktop_capture::capture_failed(app,&error);}
                                 None
                             }
                             None => None,
@@ -744,9 +895,13 @@ pub fn run() {
             let application = Arc::new(Application::new(store, tasks, defaults));
             let settings = application.settings()?;
             application.start_preparation_scheduler();
+            let query_handle=app.handle().clone();
+            application.queries.observe(Arc::new(move|session|{let _=query_handle.emit_to("translator","query_updated",serde_json::json!({"sessionId":session.session_id,"inputRevision":session.input_revision,"queryId":session.query_id,"origin":session.input.origin.kind}));}));
+            let clipboard=crate::desktop_query::ClipboardWatcher::default();clipboard.initialize(&application)?;app.manage(clipboard);
             app.manage(application);
             app.manage(NativeDesktop::default());
             app.manage(TrayAction::default());
+            app.manage(crate::desktop_query::QueryWindowState::default());
             let native = app.state::<NativeDesktop>();
             let mut available = ["", "", ""];
             let mut failures = Vec::new();
@@ -770,11 +925,14 @@ pub fn run() {
                 native.remember_error(&AppError::new("shortcut_unavailable", failures.join("\n")));
             }
             use tauri::{
-                menu::{Menu, MenuItem, PredefinedMenuItem},
+                menu::{CheckMenuItem,Menu, MenuItem, PredefinedMenuItem},
                 tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
             };
             let show = MenuItem::with_id(app, "show", "打开单词本", true, None::<&str>)?;
             let collect = MenuItem::with_id(app, "collect", "收录词条", true, None::<&str>)?;
+            let query = MenuItem::with_id(app,"query","输入翻译",true,None::<&str>)?;
+            let clipboard = CheckMenuItem::with_id(app,"clipboard","监听剪贴板",true,false,None::<&str>)?;
+            app.manage(crate::desktop_query::ClipboardMenu(clipboard.clone()));
             let ocr = MenuItem::with_id(app, "ocr", "截图收录", true, None::<&str>)?;
             let import = MenuItem::with_id(app, "import", "导入剧集", true, None::<&str>)?;
             let episodes = MenuItem::with_id(app, "episodes", "观看前预习", true, None::<&str>)?;
@@ -794,6 +952,7 @@ pub fn run() {
                 &[
                     &show,
                     &capture_separator,
+                    &query,
                     &collect,
                     &ocr,
                     &import,
@@ -806,6 +965,7 @@ pub fn run() {
                     &sync,
                     &tasks,
                     &settings,
+                    &clipboard,
                     &exit_separator,
                     &exit,
                 ],
@@ -832,6 +992,8 @@ pub fn run() {
                     }
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "query"=>{if let Err(error)=crate::desktop_query::open_input(app){desktop_capture::capture_failed(app,&error);}},
+                    "clipboard"=>{let watcher=app.state::<crate::desktop_query::ClipboardWatcher>();let status=watcher.status();let _=watcher.set(app,!status.enabled,crate::desktop_query::ClipboardPreferences{debounce_ms:status.debounce_ms,persist_results:status.persist_results});crate::desktop_query::refresh_clipboard_menu(app);},
                     "show" => tray_navigate(app, "library"),
                     "collect" | "import" | "episodes" | "practice" | "reviews" | "leech"
                     | "sync" | "tasks" | "settings" => tray_navigate(app, event.id.as_ref()),
@@ -852,6 +1014,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label()=="translator" && let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();crate::desktop_query::hide_query(window.app_handle());}
             if let Some(id) = window.label().strip_prefix("capture-")
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })
             {
@@ -875,6 +1038,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            translation_open,translation_session_open,translation_session_get,translation_query_start,translation_query_cancel,
+            translation_window_hide,translation_window_pin,translation_collect,query_copy,
+            clipboard_listener_get,clipboard_listener_set,providers_list,providers_update,plugin_install,plugin_remove,
             sources_list,
             import_start,
             media_inspect,

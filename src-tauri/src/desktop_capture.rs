@@ -174,7 +174,7 @@ impl NativeDesktop {
                 let title=if origin.title.is_empty(){origin.application.clone()}else{format!("{} · {}",origin.application,origin.title)};
                 let source_id=store.add_source(&SourceInput{kind:"selection".into(),title:title.clone(),fingerprint,path_hint:None,duration_ms:None})?;
                 let kind=crate::ocr::infer_kind(&selected.text);
-                Ok(json!({"text":selected.text,"kind":kind,"context":selected.context,"sourceId":source_id,"sourceTitle":title,"locationKey":digest(selected.text.as_bytes())}))
+                Ok(json!({"captureKind":"selection","text":selected.text,"kind":kind,"context":selected.context,"sourceId":source_id,"sourceTitle":title,"locationKey":digest(selected.text.as_bytes())}))
             })();
             match &result {
                 Ok(value)=>{deliver_capture(&handle,value);},
@@ -206,13 +206,23 @@ pub fn deliver_capture(app: &AppHandle, value: &serde_json::Value) {
         .unwrap_or(false);
     let mut payload = value.clone();
     payload["alreadyKnown"] = serde_json::Value::Bool(known);
-    let _ = app.emit("capture_completed", payload);
-    if !known {
-        show_main(app);
+    if known {
+        let _ = app.emit_to("main", "capture_completed", payload);
+    } else if let Err(error) = crate::desktop_query::open_capture(app, &payload) {
+        capture_failed(app, &error);
     }
 }
 pub fn capture_failed(app: &AppHandle, error: &AppError) {
-    let _ = app.emit("capture_failed", error);
+    if app
+        .state::<Arc<Application>>()
+        .queries
+        .capture_error(error)
+        .is_ok()
+        && crate::desktop_query::show_query(app, true).is_ok()
+    {
+        return;
+    }
+    let _ = app.emit_to("main", "capture_failed", error);
     show_main(app);
 }
 pub fn quit(app: &AppHandle) {
@@ -226,6 +236,9 @@ pub fn quit(app: &AppHandle) {
         app.state::<NativeDesktop>().ocr_cancel(app, &id);
     }
     let application = app.state::<Arc<Application>>();
+    app.state::<crate::desktop_query::ClipboardWatcher>()
+        .stop(app);
+    application.queries.cancel_all();
     application.stop_preparation_scheduler();
     let tasks = Arc::clone(&application.tasks);
     if let Ok(snapshots) = tasks.active() {

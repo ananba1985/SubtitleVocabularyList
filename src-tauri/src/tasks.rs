@@ -46,11 +46,21 @@ pub struct TaskHistoryPage {
 }
 
 type Observer = Arc<dyn Fn(&TaskSnapshot) + Send + Sync>;
-const FOREGROUND_KINDS: &str = "'preview','speech','review_audio','explanation'";
+const FOREGROUND_KINDS: &str =
+    "'preview','speech','review_audio','explanation','selection','screen_capture','ocr'";
 const FOREGROUND_RECEIPTS: usize = 64;
 
 fn foreground(kind: &str) -> bool {
-    matches!(kind, "preview" | "speech" | "review_audio" | "explanation")
+    matches!(
+        kind,
+        "preview"
+            | "speech"
+            | "review_audio"
+            | "explanation"
+            | "selection"
+            | "screen_capture"
+            | "ocr"
+    )
 }
 
 fn trim_receipts(receipts: &mut HashMap<String, TaskSnapshot>, current: &str) {

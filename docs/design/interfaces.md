@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.31 |
+| 文档版本 | 0.32 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-18、NFR-02 至 NFR-05 |
@@ -159,11 +159,11 @@ schema 4 的 Entry.examples 对原句去重，每项增加 `contexts:[{scopeKey,
 
 只读完整资料包导出保留为 Rust 库/私有检查入口；桌面同步通过上述独立命令执行，HTTP 路由和字段唯一维护在[同步设计](synchronization.md)。新增 `sync_probe` 私有检查入口调用正式 HTTP 适配器，要求已获浏览器批准的 DPAPI 连接，不生成或伪造个人身份。
 
-### 2.2 Pot 替代后续命令提案
+### 2.2 Pot 替代查询命令
 
-下表仅登记编号和职责，均未实现，不属于“当前已实现参数”。字段、事件与取消契约的统一定义见 [Pot 替代设计](pot-replacement.md#6-命令与事件提案)。
+CMD-38 至 CMD-44 已在 0.5.0 接通，字段、事件与取消契约见 [Pot 替代设计](pot-replacement.md#6-命令与事件提案)。
 
-| 编号 | 命令提案 | 职责 | 需求 |
+| 编号 | 命令 | 职责 | 需求 |
 | --- | --- | --- | --- |
 | CMD-38 | translation_session_open | 创建查询会话，保持查询与收录分离 | FR-14、FR-15 |
 | CMD-39 | translation_query_start | 对当前输入和允许的服务开始查询 | FR-14 至 FR-17 |
@@ -171,7 +171,13 @@ schema 4 的 Entry.examples 对原句去重，每项增加 `contexts:[{scopeKey,
 | CMD-41 | translation_query_cancel | 取消相应查询订阅，保留其他会话 | FR-14、FR-16 |
 | CMD-42 | clipboard_listener_set/get | 显式开关与真实运行状态 | FR-16 |
 | CMD-43 | providers_list/update | 非敏感服务配置、调用范围和凭据引用 | FR-17、FR-18 |
-| CMD-44 | plugin_install/remove | 版本与能力明确的包安装／卸载 | FR-18 |
+| CMD-44 | plugin_install/remove | 版本与能力明确的 JSON 配置安装／卸载 | FR-18 |
+
+实际参数：translation_session_open 为 `{input:QueryInput,sessionId?:string}`；QueryInput 包含 target、context、mode（explain／translate）、sourceLanguage、targetLanguage 和 origin。get 的 sessionId 可空，空时返回当前会话。query_start 为 `{sessionId,expectedInputRevision,providerIds,automatic,persist}`；providerIds 空表示所有已启用服务，automatic 时还筛选 autoQuery。cancel 为 `{sessionId,queryId?:string}`。返回完整 QuerySession，含输入版本、查询标识和各服务独立状态／值／错误；query_updated 只通知标识，完整结果通过 get 读取。
+
+clipboard_listener_set 为 `{enabled,preferences:{debounceMs,persistResults}}`，间隔 100～2000 ms，返回运行期 enabled、error 和偏好；get 无参数。providers_update 为 `{update:{id,enabled,autoQuery,sendContext,order,maxConcurrency,values,secrets}}`；order 为 0～1000，外部并发为 1～16，本机模型沿用全局许可。返回配置不含 secrets，仅 credentialFields 表示已配置的凭据字段。插件为 `{path}` 安装单个小于 512 KB 的 JSON，或 `{pluginId}` 卸载；升级默认关闭，协议为 1，首版仅 translation／dictionary。
+
+辅助桌面命令 translation_open、translation_window_hide、translation_window_pin（pinned）、query_copy（text）及 translation_collect（sessionId、inputRevision、providerId）服务于小窗交互。collect 仅把当前完整结果送入原收录确认，hide 取消小窗订阅并停止本窗播放。新监听状态不随重启开启，复制本程序结果按序号排除。
 
 ## 3 收录请求与提交结果
 
@@ -307,3 +313,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.29 | 2026-10-10 | 增加主窗口托盘操作通知和单次消费接口 |
 | 0.30 | 2026-10-11 | 增加 inputShortcut／inputRegistered，定义默认升级及三键注册契约 |
 | 0.31 | 2026-10-11 | 为 Pot 替代登记 CMD-38 至 CMD-44 提案，保持与现有接口分离 |
+| 0.32 | 2026-10-11 | 登记查询小窗、服务插件和监听的实际命令与 schema 7，保持后续兼容边界 |

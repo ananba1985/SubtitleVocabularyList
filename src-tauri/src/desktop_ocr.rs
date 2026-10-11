@@ -92,54 +92,39 @@ impl NativeDesktop {
                         .lock()
                         .map_err(|_| AppError::new("internal_error", "截图状态不可用。"))? =
                         Some(session);
-                    let (send, receive) = std::sync::mpsc::channel();
-                    let window_app = handle.clone();
-                    let window_id = id.clone();
-                    handle
-                        .run_on_main_thread(move || {
-                            let result = (|| {
-                                let window = WebviewWindowBuilder::new(
-                                    &window_app,
-                                    format!("capture-{window_id}"),
-                                    WebviewUrl::App(
-                                        format!("index.html?capture={window_id}").into(),
-                                    ),
-                                )
-                                .title("选择截图区域")
-                                .decorations(false)
-                                .shadow(false)
-                                .resizable(false)
-                                .always_on_top(true)
-                                .skip_taskbar(true)
-                                .visible(false)
-                                .build()?;
-                                window.set_position(PhysicalPosition::new(bounds.x, bounds.y))?;
-                                window.set_size(PhysicalSize::new(bounds.width, bounds.height))?;
-                                window.show()?;
-                                windows_native::fit_capture_window(
-                                    window.hwnd()?.0 as isize,
-                                    &bounds,
-                                )?;
-                                window.set_focus()?;
-                                Ok::<_, Box<dyn std::error::Error>>(())
-                            })();
-                            let _ = send.send(result.map_err(|error| error.to_string()));
-                        })
-                        .map_err(|error| {
-                            AppError::new(
-                                "provider_unavailable",
-                                format!("无法打开截图选区：{error}"),
-                            )
-                        })?;
-                    receive
-                        .recv()
-                        .map_err(|_| AppError::new("interrupted", "截图窗口准备已中断。"))?
-                        .map_err(|error| {
-                            AppError::new(
-                                "provider_unavailable",
-                                format!("无法打开截图选区：{error}"),
-                            )
-                        })?;
+                    let window = WebviewWindowBuilder::new(
+                        &handle,
+                        format!("capture-{id}"),
+                        WebviewUrl::App(format!("index.html?capture={id}").into()),
+                    )
+                    .title("选择截图区域")
+                    .decorations(false)
+                    .shadow(false)
+                    .resizable(false)
+                    .always_on_top(true)
+                    .skip_taskbar(true)
+                    .visible(false)
+                    .build()
+                    .map_err(|_| AppError::new("provider_unavailable", "无法打开截图选区。"))?;
+                    window
+                        .set_position(PhysicalPosition::new(bounds.x, bounds.y))
+                        .map_err(|_| AppError::new("provider_unavailable", "无法定位截图选区。"))?;
+                    window
+                        .set_size(PhysicalSize::new(bounds.width, bounds.height))
+                        .map_err(|_| AppError::new("provider_unavailable", "无法设置截图选区。"))?;
+                    window
+                        .show()
+                        .map_err(|_| AppError::new("provider_unavailable", "无法显示截图选区。"))?;
+                    windows_native::fit_capture_window(
+                        window
+                            .hwnd()
+                            .map_err(|_| AppError::new("provider_unavailable", "截图窗口不可用。"))?
+                            .0 as isize,
+                        &bounds,
+                    )?;
+                    window
+                        .set_focus()
+                        .map_err(|_| AppError::new("provider_unavailable", "无法聚焦截图选区。"))?;
                     context.check_cancelled()?;
                     busy.release = false;
                     // The waiting session now owns the snapshot; it is removed on submit or cancel.
@@ -230,7 +215,7 @@ impl NativeDesktop {
                 let text=crate::ocr::recognize(&tools.tesseract,&crop_path,&context.cancelled)?;context.check_cancelled()?;
                 let fingerprint=crate::corpus::file_hash(&crop_path)?;
                 let source_id=store.add_source(&SourceInput{kind:"ocr".into(),title:"屏幕 OCR".into(),fingerprint:fingerprint.clone(),path_hint:None,duration_ms:None})?;
-                Ok(json!({"text":text,"kind":crate::ocr::infer_kind(&text),"context":text,"sourceId":source_id,"sourceTitle":"屏幕 OCR","locationKey":fingerprint}))
+                Ok(json!({"captureKind":"ocr","text":text,"kind":crate::ocr::infer_kind(&text),"context":text,"sourceId":source_id,"sourceTitle":"屏幕 OCR","locationKey":fingerprint}))
             })();
             match &result{Ok(value)=>{desktop_capture::deliver_capture(&handle,value);},Err(error)=>{if error.code!="cancelled"{desktop_capture::capture_failed(&handle,error);}}}result
         });

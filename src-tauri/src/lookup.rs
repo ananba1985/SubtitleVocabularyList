@@ -24,7 +24,7 @@ fn missing() -> AppError {
         "没有查到可用英语释义，请使用本地解释或在线中文翻译。",
     )
 }
-fn dictionary(query: &str, value: &Value) -> Result<LookupResult, AppError> {
+pub(crate) fn dictionary(query: &str, value: &Value) -> Result<LookupResult, AppError> {
     let html = value["parse"]["text"].as_str().ok_or_else(missing)?;
     let document = Html::parse_document(html);
     let mut english = false;

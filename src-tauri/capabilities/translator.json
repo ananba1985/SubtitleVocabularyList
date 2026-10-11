@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "translator-capability",
+  "description": "Local translation window",
+  "windows": ["translator"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}

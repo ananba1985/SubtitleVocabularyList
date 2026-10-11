@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.23 |
+| 文档版本 | 0.24 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -30,8 +30,9 @@
 | 同例句多语境增量 | [testing/example-context-results.md](testing/example-context-results.md) | 多释义关联、原声复用、升级、资料包及实际桌面结果 | 不把完整字段契约当成完整同步 |
 | 笔记本继续开发交接 | [development/laptop-handoff.md](development/laptop-handoff.md) | 当前代码、检查点、站点恢复、未完成项和停止状态 | 完整目标保留，按用户要求在其他环境继续 |
 | 导入选择与查询增量 | [testing/import-query-results.md](testing/import-query-results.md) | 多轨/外置/转写、有序采集、实际解释和手动网络请求 | 不以合成事件替代新跨进程采集或整体安装验收 |
-| Pot 替代功能设计 | [design/pot-replacement.md](design/pot-replacement.md) | 独立小窗、自动翻译、监听、服务与插件，会话／数据／接口提案及需求追溯 | 后续设计不表示新功能、迁移或插件兼容已实现 |
-| Pot 替代开发计划 | [planning/pot-replacement-plan.md](planning/pot-replacement-plan.md) | M-09 至 M-13 的优先级、依赖、交付、最小正常验证和当前状态 | 先文档、后续开发，不默认启动实施或执行额外测试 |
+| Pot 替代功能设计 | [design/pot-replacement.md](design/pot-replacement.md) | 独立小窗、自动翻译、监听、服务与插件，会话／数据／接口及需求追溯 | 实际实施范围以增量验证为准，不据设计声明全部 Pot 插件兼容 |
+| Pot 替代增量验证 | [testing/pot-replacement-results.md](testing/pot-replacement-results.md) | 查询／缓存／收录、双服务与插件生命周期、实际窗口及用户确认 | 核心合成服务不冒充真实外部服务，未确认场景保留状态 |
+| Pot 替代开发计划 | [planning/pot-replacement-plan.md](planning/pot-replacement-plan.md) | M-09 至 M-13 的优先级、依赖、交付、最小正常验证和当前状态 | 已按用户授权实施首版，额外测试仍需另行授权 |
 | 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
@@ -146,3 +147,4 @@
 | 0.21 | 2026-10-07 | 索引用户确认的版本规则与统一管理入口，区分代码版本递增和手动版本发布 |
 | 0.22 | 2026-10-10 | 登记网站听读功能本地整合的评估和增量验证记录 |
 | 0.23 | 2026-10-11 | 索引 Pot 替代功能设计和后续计划，区分规划与实际实现 |
+| 0.24 | 2026-10-11 | 索引 Pot 替代首轮核心与桌面验证记录 |

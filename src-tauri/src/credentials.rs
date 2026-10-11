@@ -36,7 +36,7 @@ fn credential_path(root: &Path, site: &str) -> PathBuf {
         .join(format!("site-{}.bin", digest(site.as_bytes())))
 }
 
-fn transform(bytes: &[u8], protect: bool) -> Result<Vec<u8>, AppError> {
+pub(crate) fn transform(bytes: &[u8], protect: bool) -> Result<Vec<u8>, AppError> {
     if bytes.is_empty() || bytes.len() > 65536 {
         return Err(AppError::new("invalid_input", "连接凭据大小无效。"));
     }

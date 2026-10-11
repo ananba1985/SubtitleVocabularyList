@@ -4,6 +4,7 @@
 
 | 组件 | 当前用途与版本依据 | 上游来源与许可 |
 | --- | --- | --- |
+| Tokio | 查询请求的异步取消与网络运行时，版本见 Cargo.lock | [tokio-rs/tokio](https://github.com/tokio-rs/tokio)，MIT |
 | Tauri | Windows 桌面宿主，Rust 2.12.1，CLI/API 版本见锁文件 | [tauri-apps/tauri](https://github.com/tauri-apps/tauri)，MIT 或 Apache-2.0 |
 | Tauri Dialog 与 Single Instance 插件 | 本机文件、目录选择和单实例激活，版本见锁文件 | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace)，MIT 或 Apache-2.0 |
 | Tauri Global Shortcut 插件 | 全局快捷键注册，Rust 2.4.0；底层 global-hotkey 0.8.0 | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace)、[tauri-apps/global-hotkey](https://github.com/tauri-apps/global-hotkey)，MIT 或 Apache-2.0 |

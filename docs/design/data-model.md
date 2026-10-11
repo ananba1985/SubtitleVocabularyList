@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.19 |
+| 文档版本 | 0.20 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02 |
@@ -166,7 +166,7 @@ application JSON 增加 inputShortcut，缺省 Alt+D；selectionShortcut 与 ocr
 
 ## 10 Pot 替代数据提案
 
-FR-14 至 FR-18 的 QuerySession、query_results、服务／插件偏好和凭据引用见 [Pot 替代数据设计](pot-replacement.md#5-数据设计与兼容)。会话与监听为运行期状态，成功查询缓存与词库区分，多服务身份不改写 explanations 的旧唯一键。新表在实施时提交迁移；本文不表示已新增表或改变当前 schema 6。
+FR-14 至 FR-18 的 QuerySession、query_results、服务／插件偏好和凭据引用已接入 0.5.0，见 [Pot 替代数据设计](pot-replacement.md#5-数据设计与兼容)。会话与监听为运行期状态，成功查询缓存与词库区分，多服务身份不改写 explanations 的旧唯一键。已提交 007_query_results.sql，当前 schema 为 7。query_results 保存 cache_key、provider_id、result_json、created_at；身份信息生成非敏感指纹，不覆盖旧 explanations。本地 explain 结果沿用精确目标／语境保存，监听 persistResults 为 false 时新结果仅在会话中驻留。服务 JSON 使用 query_providers_v1，监听偏好使用 query_clipboard；运行期 enabled 不保存。secret 字段加密写入 credentials/query-{id摘要}.bin，设置中仅保存字段是否已配置。
 
 ## 11 修订记录
 
@@ -191,3 +191,4 @@ FR-14 至 FR-18 的 QuerySession、query_results、服务／插件偏好和凭�
 | 0.17 | 2026-10-10 | 在 application JSON 保存 modelBatchSize，保留解释身份及 schema 6 |
 | 0.18 | 2026-10-11 | 在 application JSON 保存 inputShortcut 并升级旧工厂快捷键，schema 保持 |
 | 0.19 | 2026-10-11 | 链接后续查询缓存、服务偏好及运行期监听数据提案，保持 schema 6 状态 |
+| 0.20 | 2026-10-11 | 落实 query_results 与 schema 7、本地解释复用及服务偏好存储 |

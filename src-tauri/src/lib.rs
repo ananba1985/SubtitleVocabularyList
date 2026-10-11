@@ -11,6 +11,8 @@ mod model_gate;
 pub mod ocr;
 pub mod practice;
 pub mod preparation;
+pub mod providers;
+pub mod queries;
 pub mod review_policy;
 pub mod reviews;
 pub mod site_connection;
@@ -31,6 +33,8 @@ pub mod credentials;
 mod desktop_capture;
 #[cfg(all(windows, feature = "desktop"))]
 mod desktop_ocr;
+#[cfg(all(windows, feature = "desktop"))]
+mod desktop_query;
 #[cfg(all(windows, feature = "desktop"))]
 mod sync_http;
 #[cfg(all(windows, feature = "desktop"))]

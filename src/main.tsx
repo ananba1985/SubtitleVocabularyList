@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { CaptureOverlay } from "./components/CaptureOverlay";
+import { QueryView } from "./components/QueryView";
 import "./styles.css";
 
 class AppBoundary extends React.Component<
@@ -32,7 +33,9 @@ function ReadyView() {
   React.useEffect(() => {
     window.dispatchEvent(new Event("svl-app-ready"));
   }, []);
-  return new URLSearchParams(location.search).get("capture") ? (
+  return new URLSearchParams(location.search).get("translate") ? (
+    <QueryView />
+  ) : new URLSearchParams(location.search).get("capture") ? (
     <CaptureOverlay
       sessionId={new URLSearchParams(location.search).get("capture")!}
     />

@@ -16,7 +16,7 @@ import { ReviewView } from "./components/ReviewView";
 import { SyncView } from "./components/SyncView";
 import { TasksView } from "./components/TasksView";
 import { KnownTargetsManager } from "./components/KnownTargetsManager";
-import { PracticeView } from "./components/PracticeView";
+import { PracticeView, type PracticePanel } from "./components/PracticeView";
 import { collectionQueue } from "./collectionQueue";
 
 type Tab =
@@ -52,6 +52,7 @@ export default function App() {
     null,
   );
   const [episodePanel, setEpisodePanel] = useState<EpisodePanel>(null);
+  const [practicePanel, setPracticePanel] = useState<PracticePanel>(null);
   const refresh = useCallback(async () => {
     const [nextInfo, nextTasks] = await Promise.all([
       call<AppInfo>("app_info"),
@@ -182,6 +183,7 @@ export default function App() {
               onClick={() => {
                 setTab(key);
                 setEpisodePanel(null);
+                setPracticePanel(null);
                 setError("");
                 setNotice("");
               }}
@@ -209,10 +211,12 @@ export default function App() {
           <small>{info?.version ?? "开发中"}</small>
         </div>
       </aside>
-      <main className="workspace">
+      <main
+        className={`workspace${tab === "practice" ? " workspace-practice" : ""}`}
+      >
         <header className="workspace-header">
           <div>
-            {tab !== "episodes" && (
+            {tab !== "episodes" && tab !== "practice" && (
               <p className="eyebrow">英语学习，从真实语境开始</p>
             )}
             <h1>
@@ -230,8 +234,22 @@ export default function App() {
               }
             </h1>
           </div>
-          {(tab === "library" || tab === "episodes") && (
+          {(tab === "library" || tab === "episodes" || tab === "practice") && (
             <div className="actions">
+              {tab === "practice" && (
+                <button
+                  className="secondary"
+                  aria-expanded={practicePanel === "import"}
+                  aria-controls="practice-panel"
+                  onClick={() =>
+                    setPracticePanel((current) =>
+                      current === "import" ? null : "import",
+                    )
+                  }
+                >
+                  导入阅读或课程
+                </button>
+              )}
               {tab === "episodes" && (
                 <button
                   className="secondary"
@@ -351,6 +369,8 @@ export default function App() {
             dataDirectory={info.dataDirectory}
             collect={setSeed}
             review={() => setTab("library")}
+            panel={practicePanel}
+            onPanelChange={setPracticePanel}
           />
         )}
         {tab === "sync" && (

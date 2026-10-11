@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.24 |
+| 文档版本 | 0.25 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -33,6 +33,7 @@
 | Pot 替代功能设计 | [design/pot-replacement.md](design/pot-replacement.md) | 独立小窗、自动翻译、监听、服务与插件，会话／数据／接口及需求追溯 | 实际实施范围以增量验证为准，不据设计声明全部 Pot 插件兼容 |
 | Pot 替代增量验证 | [testing/pot-replacement-results.md](testing/pot-replacement-results.md) | 查询／缓存／收录、双服务与插件生命周期、实际窗口及用户确认 | 核心合成服务不冒充真实外部服务，未确认场景保留状态 |
 | Pot 替代开发计划 | [planning/pot-replacement-plan.md](planning/pot-replacement-plan.md) | M-09 至 M-13 的优先级、依赖、交付、最小正常验证和当前状态 | 已按用户授权实施首版，额外测试仍需另行授权 |
+| 选区翻译并替换设计 | [design/selection-replacement.md](design/selection-replacement.md) | FR-19 的写作选句、独立快捷键、中文原位替换、目标核对、接口与 M-14／TC-48 追溯 | 当前仅设计提案，原生回填、剪贴板恢复及应用兼容尚未实现或验证 |
 | 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
@@ -148,3 +149,4 @@
 | 0.22 | 2026-10-10 | 登记网站听读功能本地整合的评估和增量验证记录 |
 | 0.23 | 2026-10-11 | 索引 Pot 替代功能设计和后续计划，区分规划与实际实现 |
 | 0.24 | 2026-10-11 | 索引 Pot 替代首轮核心与桌面验证记录 |
+| 0.25 | 2026-10-11 | 索引 FR-19 选区翻译替换设计及对应接口、阶段与正常验收计划 |

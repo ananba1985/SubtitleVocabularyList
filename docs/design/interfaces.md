@@ -3,11 +3,11 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.32 |
+| 文档版本 | 0.33 |
 | 更新日期 | 2026-10-11 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
-| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-18、NFR-02 至 NFR-05 |
-| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-08、拟增 ARC-09 |
+| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19、NFR-02 至 NFR-05 |
+| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-09 |
 | 关联设计 | [数据模型](data-model.md)、[应用流程](application-flows.md) |
 
 本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。下列目录保留完整 0.1 的逻辑契约；当前已实现参数另列，不把后续提案当作现有接口。站点认证与协议仍需按 OPEN-04、TECH-06 对齐。
@@ -179,6 +179,16 @@ clipboard_listener_set 为 `{enabled,preferences:{debounceMs,persistResults}}`�
 
 辅助桌面命令 translation_open、translation_window_hide、translation_window_pin（pinned）、query_copy（text）及 translation_collect（sessionId、inputRevision、providerId）服务于小窗交互。collect 仅把当前完整结果送入原收录确认，hide 取消小窗订阅并停止本窗播放。新监听状态不随重启开启，复制本程序结果按序号排除。
 
+### 2.3 选区翻译并替换契约提案
+
+FR-19 当前仅设计，下列命令、设置字段和事件均未实现；完整流程见 [选区翻译并替换](selection-replacement.md)。
+
+| 编号 | 提案 | 输入／输出及边界 |
+| --- | --- | --- |
+| CMD-45 | replacement_status_get／replacement_cancel | get 无参数，返回可空的 `{operationId,state,originalText,translation,providerId,error}`；cancel 接收 `{operationId}`，只取消对应尚未提交的替换，不能承诺撤销已发生编辑 |
+
+拟在既有 settings_get／settings_save 增加 replacementShortcut（建议 Ctrl+Alt+R，可空禁用）和 replacementProviderId（默认 qwen）；native_status 增加 replacementRegistered 及注册错误。开始由原生快捷键读取即时前台选区，提交只在原生侧处理；不提供接受任意窗口句柄、选区或待写文字的前端回填接口。replacement_updated 只通知 operationId／state，详情通过 CMD-45 读取；状态定义见详细设计，不影响现有 query_updated 会话。
+
 ## 3 收录请求与提交结果
 
 草稿包含类型、原文、用户确认释义、例句、来源位置、音频准备情况以及匹配建议。修改原文或类型后，需要重新核对匹配建议。
@@ -314,3 +324,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.30 | 2026-10-11 | 增加 inputShortcut／inputRegistered，定义默认升级及三键注册契约 |
 | 0.31 | 2026-10-11 | 为 Pot 替代登记 CMD-38 至 CMD-44 提案，保持与现有接口分离 |
 | 0.32 | 2026-10-11 | 登记查询小窗、服务插件和监听的实际命令与 schema 7，保持后续兼容边界 |
+| 0.33 | 2026-10-11 | 预留 FR-19 的 CMD-45、独立快捷键及替换状态提案，不声明已实现 |

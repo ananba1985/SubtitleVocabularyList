@@ -11,7 +11,14 @@ try {
     $env:SVL_DATA_DIR = $svlEnvironment.DataDirectory
     Show-SvlDevelopmentEnvironment $svlEnvironment
     Write-Host "Local executable output: $svlOutput"
-    if ($CheckOnly) { Write-Host 'Plan: pnpm tauri build --debug --no-bundle --config src-tauri/tauri.development.conf.json'; return }
+    if ($CheckOnly) {
+        Write-Host 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
+        Write-Host 'Plan: pnpm tauri build --debug --no-bundle --config src-tauri/tauri.development.conf.json'
+        return
+    }
+    Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
+    & cargo clean --manifest-path (Join-Path $svlEnvironment.Workspace 'src-tauri/Cargo.toml')
+    if ($LASTEXITCODE -ne 0) { throw 'Cargo cleanup failed; local executable compilation was not started.' }
     & pnpm tauri build --debug --no-bundle --config $svlEnvironment.Config
     if ($LASTEXITCODE -ne 0) { throw "Local executable build failed ($LASTEXITCODE)." }
     $svlMetadata = (& cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 | ConvertFrom-Json)

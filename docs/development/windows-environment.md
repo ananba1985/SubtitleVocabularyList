@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.11 |
-| 更新日期 | 2026-10-11 |
+| 文档版本 | 0.12 |
+| 更新日期 | 2026-10-12 |
 | 状态 | 项目开发中；手动入口与本机环境检查通过，未执行本轮发行打包 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
@@ -52,7 +52,13 @@ pnpm desktop:dev
 
 `本地调试运行.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和默认 `D:\SubtitleVocabularyList\Data`，退出后恢复调用环境。开发配置采用与发行相同的应用标识以共用单实例机制，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
 
-每次启动在运行 Tauri 前调用 `development-cleanup.ps1`：清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。只枚举这些范围，不扫描整个工具源码目录。词库、原声、媒体工具、正常 `node_modules/.vite`、Cargo 产物和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后，提示原因后继续启动，下次启动再尝试。`-CheckOnly` 只显示环境与可清理目录，不删除、不启动。`pnpm desktop:dev`、双击 cmd 和直接调用 PowerShell 共用此流程，无需另记手动清理步骤。
+开发启动仍调用 `development-cleanup.ps1` 清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。这部分仅处理已定义的临时目录，媒体工具、正常 `node_modules/.vite` 和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后这部分清理。
+
+2026-10-12 起，根目录三个入口在各自编译命令前统一执行 `cargo clean --manifest-path src-tauri/Cargo.toml`，清理 Cargo 构建目录中的全部旧产物，包括 debug／release、增量缓存、依赖编译产物、探针和打包中间文件。随后按原流程开发运行、生成本地 debug exe 或生成安装包。清理失败即停止该入口，不继续编译；发行入口仍先检查工作区干净和资源目录。项目外的用户资料、Cargo 下载缓存、`.tools` 中的工具／模型及根目录 `release/<版本>` 交付物保持。
+
+三个入口的 `-CheckOnly` 会按执行顺序显示清理和编译计划，不执行清理、编译或启动。每次实际执行都会从清理后的 Cargo 构建目录重新编译，不能复用之前的编译产物，耗时将增加；同一次开发运行中的源码热更新和 Tauri 后续重编译保持原行为。`pnpm desktop:dev`、`pnpm desktop:build`、`pnpm desktop:package` 及调试 CMD 均继续调用这些根目录入口，无需另记手动清理步骤。
+
+本轮最小检查：三个入口语法检查通过，使用 Windows PowerShell 5.1 执行各自 `-CheckOnly` 均返回 0，显示先清理再编译的计划；实际 `cargo clean --manifest-path src-tauri/Cargo.toml --dry-run` 返回 0，预览 59,494 个文件、约 63.5 GiB 的文件大小合计，没有删除文件。未执行实际清理、编译或安装包构建。此项为构建脚本维护，应用版本保持 0.6.1。
 
 Windows PowerShell 5.1 的独立夹具实际验证了临时目录删除、CheckOnly 无副作用、普通/自定义数据目录和正常缓存保留、junction 目标保留、锁定文件不阻止启动及释放后重试；实际启动脚本在模拟 pnpm 下确认清理先发生、执行继续且环境恢复。结果见[验证记录](../testing/performance-results.md#7-开发启动自动清理临时目录)。本轮为开发脚本维护，不改变应用版本或生成安装包。
 
@@ -62,7 +68,7 @@ Windows PowerShell 5.1 的独立夹具实际验证了临时目录删除、CheckO
 
 `vite.config.ts` 排除 `src-tauri`、私有工具、运行数据及生成目录的前端监听；Rust 仍由 Tauri CLI 独立监听。依赖扫描只以 `index.html` 为入口，避免遍历工具源码里的 HTML。前端源文件和配置热更新保持；新依赖缓存和 WebView 用户目录的样本中，页面完成约 618 ms，完整首个 React 视图约 1.3 秒。测量启动慢时可临时为开发子进程设置 `DEBUG=vite:time,vite:deps`，记录 HTTP 请求和依赖扫描耗时，定位后撤销调试环境变量。不要只根据 Vite ready、Cargo finished 或窗口显示判定全部界面就绪。
 
-0.1.4 最终开发入口重复启动实测约 6.2 秒，包括 PowerShell、pnpm、Tauri CLI、Vite 准备及 0.57 秒 Cargo 增量检查；新版本第一次重新编译另需约 27.3 秒。Rust 或版本变化后需编译，前端日常修改使用热更新；已经编译的应用运行期约 1.3 秒。不要将一次编译所需时间当成每次运行必须等待，也不通过逐功能发行打包规避开发编译。
+0.1.4 最终开发入口重复启动实测约 6.2 秒，包括 PowerShell、pnpm、Tauri CLI、Vite 准备及 0.57 秒 Cargo 增量检查；新版本第一次重新编译另需约 27.3 秒。这些历史数据来自保留 Cargo 缓存的旧入口，不代表 2026-10-12 编译前完整清理后的启动等待。前端日常修改仍使用热更新；已经编译的应用运行期约 1.3 秒。编译准备与应用运行期继续分开记录。
 
 Tauri CLI 在应用正常退出时[停止 beforeDevCommand 的子进程树](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.1/crates/tauri-cli/src/dev.rs#L311-L336)。Windows 终止前端 pnpm 子进程可能打印 ELIFECYCLE；应检查主开发入口退出状态、应用和监听端口是否仍存在，而不能把子进程停止日志直接当成应用仍常驻。本轮开发入口返回 0，应用和 1420 监听均结束，WebView2 清理另打印 1412 诊断，未隐藏这些原始日志。
 
@@ -123,3 +129,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.9 | 2026-10-11 | 将三个常用 PowerShell 入口和调试 CMD 入口移至根目录，更新辅助脚本定位及 pnpm／文档引用 |
 | 0.10 | 2026-10-11 | 按用户指定改为中文文件名，同步 CMD、pnpm、使用文档及源码材料说明 |
 | 0.11 | 2026-10-11 | 对齐 0.6.1 共享资料默认值、单实例标识、缓存位置及真实迁移与本地 exe 验证 |
+| 0.12 | 2026-10-12 | 三个根目录入口编译前完整清理 Cargo 旧构建产物，CheckOnly 保留只读计划；明确重新编译成本和检查边界 |

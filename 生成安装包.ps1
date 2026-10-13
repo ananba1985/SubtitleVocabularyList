@@ -11,6 +11,7 @@ $svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.co
 $svlVersion=$svlConfig.version
 $svlDelivery=Join-Path $svlWorkspace ('release/'+$svlVersion)
 if($CheckOnly){
+    Write-Output 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
     Write-Output ('Plan: build NSIS installer and standalone executable into '+$svlDelivery)
     Write-Output ('Rebuild offline tools: '+(-not $SkipToolBuild))
     Write-Output 'Release packaging requires committed, clean source; no build or installation was performed.'
@@ -19,6 +20,9 @@ if($CheckOnly){
 if(& git status --porcelain){throw 'Commit intended changes before packaging a source-matched release.'}
 $svlResources=if([IO.Path]::IsPathRooted($ResourcesDirectory)){[IO.Path]::GetFullPath($ResourcesDirectory)}else{[IO.Path]::GetFullPath((Join-Path $svlWorkspace $ResourcesDirectory))}
 if($svlResources -ne [IO.Path]::GetFullPath((Join-Path $svlWorkspace '.tools/release-resources'))){throw 'The installer configuration maps .tools/release-resources; use that resource directory.'}
+Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
+& cargo clean --manifest-path (Join-Path $svlWorkspace 'src-tauri/Cargo.toml')
+if($LASTEXITCODE -ne 0){throw 'Cargo cleanup failed; installer compilation was not started.'}
 if(-not $SkipToolBuild){
     & (Join-Path $svlScripts 'build-offline-ocr.ps1') -ResourcesDirectory $ResourcesDirectory
     & (Join-Path $svlScripts 'build-offline-whisper.ps1') -ResourcesDirectory $ResourcesDirectory

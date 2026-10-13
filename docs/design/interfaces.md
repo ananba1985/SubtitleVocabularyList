@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.34 |
-| 更新日期 | 2026-10-11 |
+| 文档版本 | 0.35 |
+| 更新日期 | 2026-10-12 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19、NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-09 |
@@ -99,7 +99,7 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 | `collection_commit` | `{draftId,targetEntryId,expectedRevision,saveAudio}` → TaskSnapshot；创建时目标与版本为 null，操作标识来自准备好的 input |
 | `preview_start`、`media_path` | 前者 `{sourceId,exampleId,operationId}` → 片段准备任务；后者 `{assetId}` → 经位置、状态与摘要核对的路径 |
 | `explain_start` | `{text,context,operationId}` → 本地解释任务；优先返回对应数据库记录，缺失才请求模型；结果为 meaning、translation、notes 字符串，成功前提交解释资料；仅显式采用后进入收录内容 |
-| `explanation_get` | `{text,context}` → Explanation 或 null；按完整目标和语境读取 SQLite，不连接模型或产生任务 |
+| `explanation_get` | `{text,context}` → 展示资料或 null；优先语境义，其次规范化通用义，独立合并句子译文。附加 meaningScope 为 context／general／translation；只有译文就绪时 meaning 为空，不自动收录。不连接模型或产生任务 |
 | `explanation_import` | `{text,context,value:{meaning,translation,notes},modelUrl,modelName}` → 数据库 Explanation；兼容旧浏览器缓存，校验中文及长度，只追加缺失记录，重复导入返回原结果，不创建词条或学习记录 |
 | `settings_get`、`settings_update` | 后者 `{settings}`，本地模型限回环地址，保存离线开关、声音等偏好；返回当前工具位置供检查，忽略传入工具路径且不将路径写入用户设置 |
 | `capture_selection` | 无参数，先记录前台上下文，再返回取词 TaskSnapshot；成功发出 capture_completed，失败不返回旧内容 |
@@ -133,21 +133,21 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 
 `offlineMode:boolean` 默认 false，表示是否手动禁止外网；旧资料显式保存的 true 保留，无设置或缺字段采用新默认。`app_info` 增加 `networkUnavailable:boolean`，只返回当前进程最近完成的在线任务连接降级状态，不持久化、不触发联网。网络任务报 `network_unavailable` 时置 true；成功及可取得响应的 `network_error`/`auth_required`/`not_found`/`invalid_data` 置 false；取消和其他本地控制错误保持原状态。手动离线检查只依赖 offlineMode，自动降级不拒绝重试；离线偏好与降级状态本身不改变数据库 schema。
 
-预习只调用 explanation_get，并按需迁移旧缓存；缺失时轮询本地资料和 explanations_status，不因页面打开而发起 explain_start。explanations_prepare 的参数为 `{sourceId?:string}`，返回 `{task:TaskSnapshot|null}`；null 表示请求范围没有缺失资料，指定来源可提高队列优先级，已有聚合任务被复用。status 返回 `{state:"running"|"paused"|"failed"|"idle"}`。没有新增 HTTP 入口，schema 仍为 6。
+预习只调用 explanation_get，并按需迁移旧缓存；缺失时轮询本地资料和 explanations_status，不因页面打开而发起 explain_start。explanations_prepare 的参数为 `{sourceId?:string}`，返回 `{task:TaskSnapshot|null}`；null 表示请求范围没有缺失资料，指定来源可提高队列优先级，已有聚合任务被复用。status 返回 `{state:"running"|"paused"|"failed"|"idle"}`。没有新增 HTTP 入口，0.6.2 的本地缓存结构为 schema 8。
 
-explanation_batch 通过 task_get/list/history 查询统一进度与 result.preparation；语境级结果先写 explanations，再计入进度，生成不创建逐词成功任务。取消未结束批次还会保存暂停偏好，退出应用仅停止当前运行，下一次启动补齐未完成内容。后台输入按候选代表词形和完整原句配对，已有值不覆盖，已掌握过滤与预习一致。CollectionSeed 的可选 meaning 仍仅供草稿初值，确认后走原收录接口；准备语料不自动收录或同步。
+explanation_batch 通过 task_get/list/history 查询进度与 result.preparation；通用词义或句子译文先保存再计入进度，不创建逐项成功任务。取消保存暂停偏好，退出停止当前运行，重开补齐。输入分别按词键、完整原句去重，已有值不覆盖，已掌握过滤与预习一致。CollectionSeed.meaning 仅为草稿初值，确认后走原收录接口；准备语料不自动收录或同步。
 
-该批次 `current/total` 的单位为本次词语语境，不是去重候选数；`current` 包含新生成、缓存复用、已掌握跳过及非法输出未完成的处理次数。`result.preparation.sources[].current/total` 使用相同口径，`failures` 保留前 20 条目标、来源和错误原因。界面通过 `sourceId` 关联 `sources_list.candidateCount` 显示与资料选择器一致的候选统计；旧批次无需重写。候选数读取与任务轮询分开，在进入任务页、资料刷新或导入新增来源数量变化时读取一次，不因每项进度变化重复读取。此次不改变命令字段、SQLite schema 或解释的缓存身份。
+0.6.2 的 current/total 为通用词义与句子译文项之和，包含生成、复用、跳过和未完成；sources[].current/total 为处理归属，failures 保留前 20 条原因。新任务分别显示词／句数量，不用分集候选总和代替全局词数。旧批次仍按旧词语语境口径显示，不重写历史。候选统计与任务轮询分开读取。
 
 临时模型请求失败返回 `provider_unavailable` 且 `retryable:true`：连接、超时、请求/响应读取中断、HTTP 408/429/5xx；其他 HTTP 拒绝或客户端配置错误不自动无限重试。`explanation_batch` 内部在 2/4/8/16/32/60 秒等待后重试当前项目，后续间隔维持 60 秒，任务 `state` 保持 running；全部在途项目都等待时 `stage` 为 `retry_wait`，否则为 `translations`，`message` 含当前处理及等待信息，`error` 不写为终态错误，`current/total` 不因请求尝试而增长。输出 JSON 或中文校验的 `invalid_data` 仅补试一次；最终无效才计入未完成。等待不新增任务记录。
 
-存在等待批次时，显式 `explanations_prepare` 复用并唤醒同一 taskId；没有活跃批次时重新查询缺失资料启动新执行。`explanations_status` 在等待期间仍为 running，历史失败不当作实时健康检查。取消与退出检查适用于等待，并在下一次请求前复核已掌握偏好。重试唤醒标志是进程内状态；解释、暂停偏好和任务回执继续采用原持久化规则，schema 仍为 6。
+存在等待批次时，显式 `explanations_prepare` 复用并唤醒同一 taskId；没有活跃批次时重新查询缺失资料启动新执行。`explanations_status` 在等待期间仍为 running，历史失败不当作实时健康检查。取消与退出检查适用于等待，并在下一次请求前复核已掌握偏好。重试唤醒标志为进程内状态；暂停偏好和回执继续持久化，中文缓存结构见 schema 8 设计。
 
 Settings 增加 `modelConcurrency:number`，默认 1，接受 1～16 的整数；settings_get 返回已保存值，settings_update 校验并保存后更新共享请求许可。该上限覆盖 explain_start 及准备线程；已有请求不因降低上限被取消。`result.preparation` 增加 `concurrency`、`inFlight`、`waiting`，表示当前上限、已分配且未结束的项目和其中等待重试的项目，不等同于服务端实际计算数；历史结果缺少这些字段时继续显示原统计。工作线程只发内部状态/结果事件，由协调线程单独提交聚合快照。唤醒用运行期递增序号，使一次显式重试通知全部等待工作线程。
 
-后台多词请求使用同一 chat/completions 入口：输入为完整 context 和 targets:[{id,text}]，结构化输出为 translation 及 items:[{id,meaning,notes}]。一批最多 modelBatchSize 项，id 必须唯一且完整对应输入；共享译文组合成各词的原 Explanation 保存。只有一个缺失词时沿用原单项协议。result.preparation 的 inFlight/waiting 保持词语语境单位，新增 batchesInFlight/batchSize 明确 HTTP 合批量；并发上限仍是请求数，不按词数占用许可。
+0.6.2 通用词义使用 targets:[{id,text}] 和空 context，输出 translation 为空、items:[{id,meaning,notes}]；句子译文使用 sentences:[{id,text}]，输出 items:[{id,translation}]。两类各自合批，id 必须完整、唯一对应输入。result.preparation.unit 为 words_and_sentences，新增 wordsTotal/wordsCurrent、sentencesTotal/sentencesCurrent；current/total 是两类待处理项之和，旧任务仍保留其词语语境口径。inFlight/waiting 为在途项目数，batchesInFlight 为请求批次数；并发限制不按词数计量。
 
-Settings 增加 `modelBatchSize:number`，默认 8，接受 1～64 的整数，和 modelConcurrency 独立设置。settings_update 校验后保存到 application JSON，并更新运行期偏好；协调线程在下一次调度重组待执行队列，不重启任务或打断已分配的请求。settings_get 返回已保存值；旧 JSON 缺少字段时使用默认值。batchSize 表示当前新请求的词数上限，在途批次可能采用此前设置；实际请求只包含同一来源、同一句完整对白的缺失词，数量可以小于上限。
+Settings.modelBatchSize 默认 8，接受 1～64 的整数，和 modelConcurrency 独立。settings_update 保存并更新运行期偏好，下一次调度重组待执行队列，不打断已分配请求；旧 JSON 缺字段补默认值。batchSize 为词条或句子数上限，同一批不混合两类，数量可以小于上限。
 
 本机解释请求使用 response_format=json_schema，要求 meaning、translation、notes 三个必需字符串且不增加字段；提示明确词义用中文、缩写不只返回英文展开式、译句仅来自当前语境。本机 Qwen 服务实际支持该结构化输出；依据见 [llama.cpp 的结构化接口测试](https://github.com/ggml-org/llama.cpp/blob/master/scripts/server-test-structured.py)。不支持的服务仍以原有错误反馈处理，不将非 JSON 内容直接用于收录。
 
@@ -326,3 +326,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.32 | 2026-10-11 | 登记查询小窗、服务插件和监听的实际命令与 schema 7，保持后续兼容边界 |
 | 0.33 | 2026-10-11 | 预留 FR-19 的 CMD-45、独立快捷键及替换状态提案，不声明已实现 |
 | 0.34 | 2026-10-11 | 接通 CMD-45，补足上次结果、剪贴板待恢复、按操作取消及实际设置命令 |
+| 0.35 | 2026-10-12 | 登记 CMD-29 的通用／语境／译文展示、词／句分批协议及各自进度 |

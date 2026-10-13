@@ -553,7 +553,7 @@ export default function App() {
               16。保存后应用新上限，已开始的请求会继续完成；实际速度取决于模型服务的并行能力。
             </p>
             <label>
-              每次请求最多词数
+              每次请求最多词条或句子数
               <input
                 type="number"
                 min={1}

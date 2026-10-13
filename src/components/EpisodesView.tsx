@@ -770,8 +770,9 @@ export function EpisodesView({
                     aria-label="中文解释"
                     aria-live="polite"
                   >
-                    {explanation.value ? (
+                    {explanation.value?.meaning ? (
                       <>
+                        <small className="muted">{explanation.value.meaningScope === "general" ? "通用释义" : "当前语境释义"}</small>
                         <p className="context-meaning">
                           {explanation.value.meaning}
                         </p>
@@ -821,7 +822,7 @@ export function EpisodesView({
                   <article className="example-card">
                     <p className="quote">{example.text}</p>
                     <p className="sentence-translation">
-                      {explanation.value?.translation ??
+                      {explanation.value?.translation ||
                         (explanation.state === "error"
                           ? "暂未获得原句翻译"
                           : "等待后台准备原句翻译…")}

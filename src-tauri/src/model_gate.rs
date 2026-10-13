@@ -86,7 +86,16 @@ impl ModelGate {
     ) -> Result<ModelPermit<'_>, AppError> {
         let keys = texts
             .iter()
-            .map(|text| (text.trim().to_owned(), context_text.to_owned()))
+            .map(|text| {
+                (
+                    if context_text.trim().is_empty() {
+                        crate::vocabulary::normalize(text)
+                    } else {
+                        text.trim().to_owned()
+                    },
+                    context_text.to_owned(),
+                )
+            })
             .collect::<HashSet<_>>();
         let mut active = self
             .active

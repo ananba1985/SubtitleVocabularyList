@@ -123,7 +123,7 @@ async function preparationState() {
   return runtime.statusPromise;
 }
 async function read(entry: Entry) {
-  if (entry.reading || entry.snapshot.state === "ready") return;
+  if (entry.reading || (entry.snapshot.state === "ready" && (!entry.context.trim() || entry.snapshot.value?.translation))) return;
   entry.reading = true;
   if (entry.snapshot.state === "idle") publish(entry, { state: "loading" });
   try {
@@ -132,7 +132,7 @@ async function read(entry: Entry) {
       context: entry.context,
     });
     const record = legacy.get(entry.key);
-    if (!value && record)
+    if (!value?.meaning && record)
       value = await call<Explanation>("explanation_import", {
         text: entry.text,
         context: entry.context,
@@ -142,7 +142,7 @@ async function read(entry: Entry) {
       });
     if (value) {
       if (record) migrated(entry, record);
-      publish(entry, { state: "ready", value });
+      publish(entry, { state: value.meaning ? "ready" : "waiting", value });
       return;
     }
     const status = await preparationState();
@@ -183,7 +183,7 @@ export function useLocalExplanation(
   context: string,
   _model: string,
   active = true,
-  _priority = false,
+  includeTranslation = true,
 ) {
   loadLegacy();
   const key = JSON.stringify([text.trim(), context]);
@@ -211,10 +211,11 @@ export function useLocalExplanation(
     () => current.snapshot,
   );
   useEffect(() => {
-    if (!active || !current.text || snapshot.state === "ready") return;
+    const complete = snapshot.state === "ready" && (!includeTranslation || !current.context.trim() || !!snapshot.value?.translation);
+    if (!active || !current.text || complete) return;
     void read(current);
     const timer = setInterval(() => void read(current), 1500);
     return () => clearInterval(timer);
-  }, [current, active, snapshot.state === "ready"]);
+  }, [current, active, includeTranslation, snapshot.state, !!snapshot.value?.translation]);
   return { ...snapshot, retry: () => void retry(current) };
 }

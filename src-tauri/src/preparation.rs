@@ -26,9 +26,13 @@ struct PreparationBatch {
 
 fn group_batches(inputs: Vec<PreparationInput>, batch_size: usize) -> VecDeque<PreparationBatch> {
     let mut batches = Vec::<PreparationBatch>::new();
-    let mut indexes = HashMap::<(String, String), usize>::new();
+    let mut indexes = HashMap::<(bool, String, String), usize>::new();
     for input in inputs {
-        let key = (input.source_id.clone(), input.context.clone());
+        let key = (
+            input.kind == "sentence",
+            input.source_id.clone(),
+            input.context.clone(),
+        );
         let index = match indexes.get(&key).copied() {
             Some(index) if batches[index].inputs.len() < batch_size => index,
             _ => {
@@ -80,6 +84,11 @@ struct SourceProgress {
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PreparationProgress {
+    unit: &'static str,
+    words_total: usize,
+    words_current: usize,
+    sentences_total: usize,
+    sentences_current: usize,
     generated: usize,
     reused: usize,
     skipped: usize,
@@ -138,18 +147,23 @@ impl Store {
         }
         let connection = self.connection()?;
         let mut query = connection.prepare(
-            "WITH candidates AS (
-                SELECT source_id,candidate_key,kind,MIN(raw_text) target FROM occurrences
-                WHERE (? IS NULL OR source_id=?) GROUP BY source_id,candidate_key,kind
-             )
-             SELECT DISTINCT c.source_id,s.title,c.kind,c.target,e.text
-             FROM candidates c JOIN sources s ON s.id=c.source_id
-             JOIN occurrences o ON o.source_id=c.source_id AND o.candidate_key=c.candidate_key AND o.kind=c.kind
-             JOIN examples e ON e.id=o.example_id
-             LEFT JOIN settings k ON k.key=? || c.kind || ':' || c.candidate_key
-             WHERE s.corpus_path IS NOT NULL AND e.archived=0 AND k.key IS NULL
-               AND NOT EXISTS(SELECT 1 FROM explanations x WHERE x.target=c.target AND x.context=e.text)
-             ORDER BY s.imported_at DESC,c.source_id,length(c.target) DESC,c.target,e.start_ms")?;
+            "WITH material AS (
+                SELECT DISTINCT o.source_id,s.title,s.imported_at,o.kind,o.candidate_key,trim(e.text) sentence
+                FROM occurrences o JOIN sources s ON s.id=o.source_id JOIN examples e ON e.id=o.example_id
+                LEFT JOIN settings k ON k.key=?3 || o.kind || ':' || o.candidate_key
+                WHERE (?1 IS NULL OR o.source_id=?2) AND s.corpus_path IS NOT NULL AND e.archived=0 AND k.key IS NULL
+             ), words AS (
+                SELECT *,ROW_NUMBER() OVER(PARTITION BY kind,candidate_key ORDER BY imported_at DESC,source_id) rank FROM material
+             ), sentences AS (
+                SELECT *,ROW_NUMBER() OVER(PARTITION BY sentence ORDER BY imported_at DESC,source_id) rank FROM material
+             ), work AS (
+                SELECT source_id,title,kind,candidate_key target,'' context,imported_at,0 phase FROM words
+                WHERE rank=1 AND NOT EXISTS(SELECT 1 FROM explanations x WHERE x.target=words.candidate_key AND x.context='')
+                UNION ALL
+                SELECT source_id,title,'sentence',sentence,'',imported_at,1 FROM sentences
+                WHERE rank=1 AND sentence<>'' AND NOT EXISTS(SELECT 1 FROM sentence_translations x WHERE x.sentence=sentences.sentence)
+             ) SELECT source_id,title,kind,target,context FROM work
+             ORDER BY imported_at DESC,source_id,phase,length(target) DESC,target")?;
         Ok(query
             .query_map(
                 params![source_id, source_id, crate::known_targets::PREFIX],
@@ -340,12 +354,23 @@ impl Application {
             if self.preparation_shutdown.load(Ordering::Relaxed) {
                 return Err(AppError::new("cancelled", "应用正在退出。"));
             }
-            if self.store.is_known_target(&input.kind, &input.text)? {
+            if input.kind != "sentence" && self.store.is_known_target(&input.kind, &input.text)? {
                 return Ok(None);
             }
             report("translations", format!("{} · {}", input.title, input.text));
-            let error = match self.explain_value(&input.text, &input.context, context) {
-                Ok((_, created)) => return Ok(Some(created)),
+            let result = if input.kind == "sentence" {
+                self.translate_many(&[input.text.clone()], context)
+                    .and_then(|mut values| {
+                        values
+                            .remove(&input.text)
+                            .ok_or_else(|| AppError::new("invalid_data", "句子译文缺失。"))?
+                    })
+            } else {
+                self.explain_value(&input.text, &input.context, context)
+                    .map(|(_, created)| created)
+            };
+            let error = match result {
+                Ok(created) => return Ok(Some(created)),
                 Err(error) => error,
             };
             let (delay, message) = if error.code == "provider_unavailable" && error.retryable {
@@ -411,7 +436,9 @@ impl Application {
                 if let Err(error) = crate::explanations::validate_input(&input.text, &input.context)
                 {
                     outcomes[index] = Some(Err(error));
-                } else if self.store.is_known_target(&input.kind, &input.text)? {
+                } else if input.kind != "sentence"
+                    && self.store.is_known_target(&input.kind, &input.text)?
+                {
                     outcomes[index] = Some(Ok(None));
                 } else if unique.insert(input.text.trim().to_owned()) {
                     texts.push(input.text.trim().to_owned());
@@ -422,28 +449,46 @@ impl Application {
             }
             report(
                 "translations",
-                format!("{} · 同句准备 {} 个词", first.title, texts.len()),
+                format!(
+                    "{} · 准备 {} 个{}",
+                    first.title,
+                    texts.len(),
+                    if first.kind == "sentence" {
+                        "句子译文"
+                    } else {
+                        "通用词义"
+                    }
+                ),
             );
             let mut retry_error = None;
-            match self.explain_many(&texts, &first.context, context) {
+            let result = if first.kind == "sentence" {
+                self.translate_many(&texts, context)
+            } else {
+                self.explain_many(&texts, &first.context, context)
+            };
+            match result {
                 Ok(mut values) => {
                     for (index, input) in batch.inputs.iter().enumerate() {
                         if outcomes[index].is_some() {
                             continue;
                         }
                         let result = values.remove(input.text.trim()).unwrap_or_else(|| {
-                            self.store
-                                .explanation(&input.text, &input.context)
-                                .and_then(|value| {
-                                    if value.is_some() {
-                                        Ok(false)
-                                    } else {
-                                        Err(AppError::new(
-                                            "invalid_data",
-                                            "批量结果缺少当前词语解释。",
-                                        ))
-                                    }
-                                })
+                            let cached = if input.kind == "sentence" {
+                                self.store
+                                    .sentence_translation(&input.text)
+                                    .map(|v| v.is_some())
+                            } else {
+                                self.store
+                                    .explanation(&input.text, &input.context)
+                                    .map(|v| v.is_some())
+                            };
+                            cached.and_then(|available| {
+                                if available {
+                                    Ok(false)
+                                } else {
+                                    Err(AppError::new("invalid_data", "批量结果缺少当前词语解释。"))
+                                }
+                            })
                         });
                         match result {
                             Err(error)
@@ -467,7 +512,7 @@ impl Application {
                 (
                     delay,
                     format!(
-                        "{} · {} 秒后自动重试同句缺失资料（第 {} 次）。{}",
+                        "{} · {} 秒后自动重试缺失资料（第 {} 次）。{}",
                         first.title,
                         delay.as_secs(),
                         connection_retries,
@@ -480,7 +525,7 @@ impl Application {
                 (
                     Duration::from_secs(1),
                     format!(
-                        "{} · 1 秒后补试本句未完成的词语。{}",
+                        "{} · 1 秒后补试未完成的资料。{}",
                         first.title, error.message
                     ),
                 )
@@ -542,6 +587,7 @@ impl Application {
     ) -> Result<serde_json::Value, AppError> {
         let mut total = inputs.len();
         let mut progress = PreparationProgress {
+            unit: "words_and_sentences",
             batch_size: self.model_batch_size.load(Ordering::Relaxed).clamp(1, 64),
             ..Default::default()
         };
@@ -557,12 +603,16 @@ impl Application {
                 index
             });
             progress.sources[index].total += 1;
+            if input.kind == "sentence" {
+                progress.sentences_total += 1;
+            } else {
+                progress.words_total += 1;
+            }
         }
         let mut seen = inputs
             .iter()
             .map(|input| {
                 (
-                    input.source_id.clone(),
                     input.kind.clone(),
                     input.text.clone(),
                     input.context.clone(),
@@ -570,6 +620,7 @@ impl Application {
             })
             .collect::<HashSet<_>>();
         let mut queue = group_batches(inputs, progress.batch_size);
+        let mut priority_keys: Option<(String, HashSet<(String, String, String)>)> = None;
         let mut active = HashMap::<usize, ActivePreparation>::new();
         let (mut current, mut next_id, mut workers) = (0, 0, 0);
         let (work_sender, work_receiver) = mpsc::channel::<(usize, PreparationBatch)>();
@@ -609,10 +660,10 @@ impl Application {
                         );
                     }
                     if self.preparation_requested.swap(false, Ordering::Relaxed) {
+                        priority_keys = None;
                         let mut added = Vec::new();
                         for input in self.store.explanation_work(None)? {
                             let key = (
-                                input.source_id.clone(),
                                 input.kind.clone(),
                                 input.text.clone(),
                                 input.context.clone(),
@@ -629,6 +680,11 @@ impl Application {
                                         index
                                     });
                                 progress.sources[index].total += 1;
+                                if input.kind == "sentence" {
+                                    progress.sentences_total += 1;
+                                } else {
+                                    progress.words_total += 1;
+                                }
                                 total += 1;
                                 added.push(input);
                             }
@@ -679,11 +735,32 @@ impl Application {
                             let mut priority = self.preparation_priority.lock().map_err(|_| {
                                 AppError::new("internal_error", "剧集优先级不可用。")
                             })?;
-                            let index = priority.as_ref().and_then(|id| {
-                                queue
-                                    .iter()
-                                    .position(|batch| &batch.inputs[0].source_id == id)
-                            });
+                            if let Some(id) = priority.as_ref() {
+                                if priority_keys.as_ref().map(|v| &v.0) != Some(id) {
+                                    let keys = self
+                                        .store
+                                        .explanation_work(Some(id))?
+                                        .into_iter()
+                                        .map(|v| (v.kind, v.text, v.context))
+                                        .collect();
+                                    priority_keys = Some((id.clone(), keys));
+                                }
+                            }
+                            // Shared words can be credited to a different episode.
+                            let index = priority
+                                .as_ref()
+                                .and_then(|_| priority_keys.as_ref())
+                                .and_then(|(_, keys)| {
+                                    queue.iter().position(|batch| {
+                                        batch.inputs.iter().any(|input| {
+                                            keys.contains(&(
+                                                input.kind.clone(),
+                                                input.text.clone(),
+                                                input.context.clone(),
+                                            ))
+                                        })
+                                    })
+                                });
                             if index.is_none() {
                                 *priority = None;
                             }
@@ -766,6 +843,11 @@ impl Application {
                                     }
                                 }
                                 current += 1;
+                                if input.kind == "sentence" {
+                                    progress.sentences_current += 1;
+                                } else {
+                                    progress.words_current += 1;
+                                }
                                 progress.sources[indexes[&input.source_id]].current += 1;
                             }
                             let source = &progress.sources[indexes[&job.batch.inputs[0].source_id]];
@@ -808,6 +890,29 @@ mod tests {
         time::Instant,
     };
 
+    // These existing retry/concurrency fixtures exercise word preparation only.
+    // The integration test covers the complete word + sentence pipeline.
+    trait PreparedTestRead {
+        fn prepared_value(
+            &self,
+            text: &str,
+            context: &str,
+        ) -> Result<Option<Explanation>, AppError>;
+    }
+    impl PreparedTestRead for Store {
+        fn prepared_value(
+            &self,
+            text: &str,
+            context: &str,
+        ) -> Result<Option<Explanation>, AppError> {
+            self.prepared_explanation(text, context).map(|value| {
+                value
+                    .map(|value| value.value)
+                    .filter(|value| !value.meaning.is_empty())
+            })
+        }
+    }
+
     fn seed(store: &Store, id: &str, words: &[(&str, &str)]) {
         let connection = store.connection().unwrap();
         connection.execute("INSERT INTO sources(id,kind,title,fingerprint,duration_ms,corpus_path,audio_path,text_source,imported_at,created_at) VALUES (?,'video',?,?,1000,'fixture.json','fixture.wav','embedded_text',1,1)", params![id,format!("Synthetic Drama S01E01 {id}"),id]).unwrap();
@@ -815,6 +920,12 @@ mod tests {
             let example = format!("{id}-example-{index}");
             connection.execute("INSERT INTO examples(id,source_id,location_key,identity_key,text,start_ms,end_ms,created_at) VALUES (?,?,?,?,?,0,1000,1)", params![example,id,example,example,context]).unwrap();
             connection.execute("INSERT INTO occurrences(id,source_id,example_id,candidate_key,raw_text,token_start,token_end,kind) VALUES (?,?,?,?,?,0,1,'word')", params![format!("{id}-occurrence-{index}"),id,example,crate::vocabulary::normalize(text),text]).unwrap();
+        }
+        drop(connection);
+        for (_, sentence) in words {
+            store
+                .save_sentence_translation(sentence, &value().translation, "fixture", "fixture")
+                .unwrap();
         }
     }
     fn value() -> Explanation {
@@ -877,6 +988,7 @@ mod tests {
             TaskManager::new(store, Arc::new(|_| {})),
             Settings {
                 model_url: url,
+                model_batch_size: 1,
                 offline_mode: true,
                 ..Default::default()
             },
@@ -922,6 +1034,9 @@ mod tests {
         store
             .save_explanation("initially", sentence, &cached, "cached", "cached")
             .unwrap();
+        store
+            .save_explanation("initially", "", &cached, "cached", "cached")
+            .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let real_model = std::env::var("SVL_VALIDATE_BATCH_MODEL_URL").ok();
@@ -954,7 +1069,7 @@ mod tests {
                 serde_json::from_slice(&data[body_start..body_start + body_length]).unwrap();
             let input: serde_json::Value =
                 serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
-            assert_eq!(input["context"], sentence);
+            assert_eq!(input["context"], "");
             assert_eq!(input["targets"].as_array().unwrap().len(), 7);
             let body = if let Some(model_url) = real_model {
                 reqwest::blocking::Client::builder()
@@ -985,6 +1100,9 @@ mod tests {
             stream.write_all(&body).unwrap();
         });
         let app = application(Arc::clone(&store), url);
+        let mut settings = app.settings().unwrap();
+        settings.model_batch_size = 8;
+        app.save_settings(settings).unwrap();
         let task = app.prepare_explanations(None, true).unwrap().task.unwrap();
         let started = Instant::now();
         let ended = loop {
@@ -1003,14 +1121,17 @@ mod tests {
         assert_eq!(ended.total, 7);
         assert_eq!(ended.result.unwrap()["preparation"]["generated"], 7);
         assert_eq!(
-            store.explanation("initially", sentence).unwrap().unwrap(),
+            store
+                .prepared_value("initially", sentence)
+                .unwrap()
+                .unwrap(),
             cached
         );
         let translations = words[1..]
             .iter()
             .map(|word| {
                 store
-                    .explanation(word, sentence)
+                    .prepared_value(word, sentence)
                     .unwrap()
                     .unwrap()
                     .translation
@@ -1051,6 +1172,9 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let app = application(Arc::clone(&store), url.clone());
+        let mut defaults = app.settings().unwrap();
+        defaults.model_batch_size = 8;
+        app.save_settings(defaults).unwrap();
         assert_eq!(app.settings().unwrap().model_batch_size, 8);
         let mut settings = app.settings().unwrap();
         settings.model_batch_size = 3;
@@ -1279,7 +1403,7 @@ mod tests {
         boundary.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(
             store
-                .explanation("reluctant", "She is reluctant.")
+                .prepared_value("reluctant", "She is reluctant.")
                 .unwrap()
                 .is_some()
         );
@@ -1314,7 +1438,7 @@ mod tests {
         app.start_preparation_scheduler();
         wait_until(|| {
             store
-                .explanation("reluctant", "She is reluctant.")
+                .prepared_value("reluctant", "She is reluctant.")
                 .unwrap()
                 .is_some()
         });
@@ -1322,7 +1446,7 @@ mod tests {
         app.preparation_requested.store(true, Ordering::Relaxed);
         wait_until(|| {
             store
-                .explanation("fresh", "A fresh start.")
+                .prepared_value("fresh", "A fresh start.")
                 .unwrap()
                 .is_some()
         });
@@ -1389,6 +1513,9 @@ mod tests {
         );
         store
             .save_explanation("patient", "Stay patient.", &value(), "old", "old")
+            .unwrap();
+        store
+            .save_explanation("patient", "", &value(), "old", "old")
             .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());

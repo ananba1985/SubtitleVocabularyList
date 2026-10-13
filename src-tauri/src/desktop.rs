@@ -542,9 +542,9 @@ async fn explanation_get(
     app: AppState<'_>,
     text: String,
     context: String,
-) -> Result<Option<crate::explanations::Explanation>, AppError> {
+) -> Result<Option<crate::explanations::PreparedExplanation>, AppError> {
     let app = app.inner().clone();
-    background(move || app.store.explanation(&text, &context)).await
+    background(move || app.store.prepared_explanation(&text, &context)).await
 }
 #[tauri::command]
 async fn explanation_import(

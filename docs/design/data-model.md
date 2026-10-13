@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.20 |
-| 更新日期 | 2026-10-11 |
+| 文档版本 | 0.21 |
+| 更新日期 | 2026-10-12 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-04、ARC-05、ARC-07、ARC-08 |
@@ -152,7 +152,7 @@ SQLite `settings` 的 `practice` 键保存一个 `PracticeState`：完整阅读�
 
 模型验证应覆盖重复提交、新来源追加、无来源收录、多词共用对白、图片或音频失败、判分修正以及同步重放，执行依据见 [测试计划](../testing/test-plan.md)。
 
-迁移已保存于 `src-tauri/migrations`，当前 schema 为 6。002 增加导入语料、缓存、候选类型和例句归档等约束；003 增加题目与复习投影；004 保存同句多语境关联；005 增加词条软归档和账号同步实体；006 增加持久化解释资料，不修改既有业务实体。schema 1、2、4 升级检查已有证据，台式机 schema 3 的真实历史升级证据保留；新增 schema 5 升级检查包含人工释义、语境、原声文件关联、作答与修正原文以及同步状态保持。拒绝较新数据库降级打开。
+迁移已保存于 `src-tauri/migrations`，当前 schema 为 8。002 增加导入语料、缓存、候选类型和例句归档等约束；003 增加题目与复习投影；004 保存同句多语境关联；005 增加词条软归档和账号同步实体；006 增加持久化解释资料，不修改既有业务实体。schema 1、2、4 升级检查已有证据，台式机 schema 3 的真实历史升级证据保留；新增 schema 5 升级检查包含人工释义、语境、原声文件关联、作答与修正原文以及同步状态保持。拒绝较新数据库降级打开。
 
 解释记录只在必要中文字段校验成功后保存，提交完成才返回给界面；读取不要求模型可用，按原文与完整语境精确匹配以避免错配。改句后原解释仍保留，新语境独立补充。0.1.5 浏览器缓存仅按当前查看的目标与语境迁入，重复导入复用原记录。自动生成解释不创建主动收录或学习单位，也不覆盖 meanings/entry_examples；用户确认采用时，既有收录规则保存最终人工确认内容。未收录语料解释属于本地资料，不扩展既有词条同步载荷。
 
@@ -167,6 +167,12 @@ application JSON 增加 inputShortcut，缺省 Alt+D；selectionShortcut 与 ocr
 ## 10 Pot 替代数据提案
 
 FR-14 至 FR-18 的 QuerySession、query_results、服务／插件偏好和凭据引用已接入 0.5.0，见 [Pot 替代数据设计](pot-replacement.md#5-数据设计与兼容)。会话与监听为运行期状态，成功查询缓存与词库区分，多服务身份不改写 explanations 的旧唯一键。已提交 007_query_results.sql，当前 schema 为 7。query_results 保存 cache_key、provider_id、result_json、created_at；身份信息生成非敏感指纹，不覆盖旧 explanations。本地 explain 结果沿用精确目标／语境保存，监听 persistResults 为 false 时新结果仅在会话中驻留。服务 JSON 使用 query_providers_v1，监听偏好使用 query_clipboard；运行期 enabled 不保存。secret 字段加密写入 credentials/query-{id摘要}.bin，设置中仅保存字段是否已配置。
+
+### 10.1 schema 8：独立整句译文
+
+0.6.2 的 008_sentence_translations.sql 增加 sentence_translations：sentence 主键、translation、model_url、model_name、created_at。迁移按原句复用 explanations 已存中文译文，保留全部旧语境释义。通用词义沿用 explanations，target 为规范化词键，context 为空；词义不因出现的新对白而重复准备。已明确取得的特殊语境解释仍使用目标与完整 context 的原键，不与通用义互相覆盖。
+
+只读展示优先已有语境解释，否则取通用义，并独立读取句子译文；meanings／人工学习资料和同步协议不变，这两类自动准备缓存不进入词库同步。当前实际数据结构为 8，拒绝旧程序降级打开。其他段落中的 schema 6／7 描述对应其历史增量。
 
 ## 11 修订记录
 
@@ -192,3 +198,4 @@ FR-14 至 FR-18 的 QuerySession、query_results、服务／插件偏好和凭�
 | 0.18 | 2026-10-11 | 在 application JSON 保存 inputShortcut 并升级旧工厂快捷键，schema 保持 |
 | 0.19 | 2026-10-11 | 链接后续查询缓存、服务偏好及运行期监听数据提案，保持 schema 6 状态 |
 | 0.20 | 2026-10-11 | 落实 query_results 与 schema 7、本地解释复用及服务偏好存储 |
+| 0.21 | 2026-10-12 | 增加 schema 8 的独立句子译文，保留旧语境解释并定义空 context 通用义 |

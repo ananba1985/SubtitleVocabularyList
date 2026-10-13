@@ -48,6 +48,11 @@ type Result = {
   pulled?: number;
   conflicts?: number;
   preparation?: {
+    unit?: string;
+    wordsTotal: number;
+    wordsCurrent: number;
+    sentencesTotal: number;
+    sentencesCurrent: number;
     generated: number;
     reused: number;
     skipped: number;
@@ -351,7 +356,7 @@ function TaskCard({
                 max={task.total}
               />
               <span>
-                {task.kind === "explanation_batch" ? "已处理词语语境 " : ""}
+                {task.kind === "explanation_batch" ? (value.preparation?.unit === "words_and_sentences" ? "已处理资料项 " : "已处理词语语境 ") : ""}
                 {task.current.toLocaleString("zh-CN")} /{" "}
                 {task.total.toLocaleString("zh-CN")}
               </span>
@@ -437,20 +442,23 @@ function TaskCard({
         <div className="task-result">
           <p>
             涉及 {value.preparation.sources.length} 集
-            {preparationCandidates !== null &&
+            {value.preparation.unit !== "words_and_sentences" && preparationCandidates !== null &&
               ` · ${preparationCandidates.toLocaleString("zh-CN")} 个候选词和短语`}
           </p>
           <p className="muted">
-            同一候选在不同对白中分别解释。进度按本次待补充的词语语境计数，已保存资料直接复用。
+            {value.preparation.unit === "words_and_sentences"
+              ? "通用词义按词去重、跨集复用；句子译文按整句单独准备。"
+              : "旧版任务按词语语境计数，已保存的资料继续保留。"}
           </p>
+          {value.preparation.unit === "words_and_sentences" && <p>通用词义 {value.preparation.wordsCurrent.toLocaleString("zh-CN")} / {value.preparation.wordsTotal.toLocaleString("zh-CN")} · 句子译文 {value.preparation.sentencesCurrent.toLocaleString("zh-CN")} / {value.preparation.sentencesTotal.toLocaleString("zh-CN")}</p>}
           {ended && task.total > 0 && (
             <p>
-              已处理词语语境 {task.current.toLocaleString("zh-CN")} /{" "}
+              {value.preparation.unit === "words_and_sentences" ? "已处理资料项 " : "已处理词语语境 "}{task.current.toLocaleString("zh-CN")} /{" "}
               {task.total.toLocaleString("zh-CN")}
             </p>
           )}
           <p>
-            新生成 {value.preparation.generated} 条语境解释 · 复用{" "}
+            新生成 {value.preparation.generated} {value.preparation.unit === "words_and_sentences" ? "项中文资料" : "条语境解释"} · 复用{" "}
             {value.preparation.reused} 条 · 跳过已掌握{" "}
             {value.preparation.skipped} 条 · 未完成 {value.preparation.failed}{" "}
             条

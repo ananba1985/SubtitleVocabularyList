@@ -138,6 +138,7 @@ export interface PreparedCollection {
   input: CollectionInput;
 }
 export interface Explanation {
+  meaningScope?: "general" | "context" | "translation";
   meaning: string;
   translation: string;
   notes: string;

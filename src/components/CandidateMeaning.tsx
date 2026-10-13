@@ -61,15 +61,16 @@ export function CandidateMeaning({
       : "",
     model,
     active && context?.candidate === candidate && context.sourceId === sourceId,
+    false,
   );
-  const value = meaning ?? result.value?.meaning;
+  const value = meaning || result.value?.meaning;
   return (
     <span
       ref={element}
       className={`definition candidate-meaning${value ? "" : " muted"}`}
       title={value}
     >
-      {value ??
+      {value ||
         (result.state === "error" ? "暂无中文释义" : "等待后台准备中文释义…")}
     </span>
   );

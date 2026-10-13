@@ -3,6 +3,14 @@ use chrono::Utc;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedExplanation {
+    #[serde(flatten)]
+    pub value: Explanation,
+    pub meaning_scope: &'static str,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Explanation {
     pub meaning: String,
@@ -49,7 +57,14 @@ impl Store {
             .connection()?
             .query_row(
                 "SELECT meaning,translation,notes FROM explanations WHERE target=? AND context=?",
-                params![text.trim(), context],
+                params![
+                    if context.trim().is_empty() {
+                        crate::vocabulary::normalize(text)
+                    } else {
+                        text.trim().to_owned()
+                    },
+                    context
+                ],
                 |row| {
                     Ok(Explanation {
                         meaning: row.get(0)?,
@@ -59,6 +74,70 @@ impl Store {
                 },
             )
             .optional()?)
+    }
+
+    pub fn prepared_explanation(
+        &self,
+        text: &str,
+        context: &str,
+    ) -> Result<Option<PreparedExplanation>, AppError> {
+        if let Some(value) = self.explanation(text, context)? {
+            return Ok(Some(PreparedExplanation {
+                value,
+                meaning_scope: if context.trim().is_empty() {
+                    "general"
+                } else {
+                    "context"
+                },
+            }));
+        }
+        let Some(mut value) = self.explanation(text, "")? else {
+            return Ok(self.sentence_translation(context)?.map(|translation| {
+                PreparedExplanation {
+                    value: Explanation {
+                        meaning: String::new(),
+                        translation,
+                        notes: String::new(),
+                    },
+                    meaning_scope: "translation",
+                }
+            }));
+        };
+        value.translation = self.sentence_translation(context)?.unwrap_or_default();
+        Ok(Some(PreparedExplanation {
+            value,
+            meaning_scope: "general",
+        }))
+    }
+
+    pub fn sentence_translation(&self, sentence: &str) -> Result<Option<String>, AppError> {
+        Ok(self
+            .connection()?
+            .query_row(
+                "SELECT translation FROM sentence_translations WHERE sentence=?",
+                [sentence.trim()],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    pub fn save_sentence_translation(
+        &self,
+        sentence: &str,
+        translation: &str,
+        model_url: &str,
+        model_name: &str,
+    ) -> Result<(), AppError> {
+        validate_input(sentence, "")?;
+        if !translation
+            .chars()
+            .any(|c| ('\u{3400}'..='\u{9fff}').contains(&c))
+            || translation.chars().count() > 16000
+        {
+            return Err(AppError::new("invalid_data", "未获得有效中文句子译文。"));
+        }
+        self.connection()?.execute("INSERT INTO sentence_translations(sentence,translation,model_url,model_name,created_at) VALUES (?,?,?,?,?) ON CONFLICT(sentence) DO NOTHING", params![sentence.trim(),translation,model_url,model_name,Utc::now().timestamp_millis()])?;
+        Ok(())
     }
 
     // Keep the first durable result when requests or legacy imports race.
@@ -73,6 +152,11 @@ impl Store {
     ) -> Result<Explanation, AppError> {
         validate_input(text, context)?;
         value.validate(context)?;
+        let text = if context.trim().is_empty() {
+            crate::vocabulary::normalize(text)
+        } else {
+            text.trim().to_owned()
+        };
         if model_url.len() > 4000 || model_name.len() > 1000 {
             return Err(AppError::new("invalid_input", "模型来源标识过长。"));
         }
@@ -94,6 +178,9 @@ impl Store {
                 })
             },
         )?;
+        if !context.trim().is_empty() {
+            transaction.execute("INSERT INTO sentence_translations(sentence,translation,model_url,model_name,created_at) VALUES (?,?,?,?,?) ON CONFLICT(sentence) DO NOTHING", params![context.trim(),value.translation,model_url,model_name,Utc::now().timestamp_millis()])?;
+        }
         transaction.commit()?;
         Ok(saved)
     }

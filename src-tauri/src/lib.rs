@@ -1,4 +1,5 @@
 pub mod application;
+mod base_dictionary;
 mod batch_explanations;
 pub mod corpus;
 pub mod desktop_layout;

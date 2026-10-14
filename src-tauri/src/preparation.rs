@@ -164,7 +164,7 @@ impl Store {
                 WHERE rank=1 AND sentence<>'' AND NOT EXISTS(SELECT 1 FROM sentence_translations x WHERE x.sentence=sentences.sentence)
              ) SELECT source_id,title,kind,target,context FROM work
              ORDER BY imported_at DESC,source_id,phase,length(target) DESC,target")?;
-        Ok(query
+        let inputs = query
             .query_map(
                 params![source_id, source_id, crate::known_targets::PREFIX],
                 |row| {
@@ -177,7 +177,10 @@ impl Store {
                     })
                 },
             )?
-            .collect::<Result<Vec<_>, _>>()?)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(inputs.into_iter().filter(|input| {
+            input.kind == "sentence" || self.dictionary.explanation(&input.text).is_none()
+        }).collect())
     }
 }
 

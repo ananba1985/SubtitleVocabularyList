@@ -576,12 +576,12 @@ fn generate_explanation(
 ) -> Result<(Explanation, bool), AppError> {
     explanations::validate_input(text, context_text)?;
     context.check_cancelled()?;
-    if let Some(value) = store.explanation(text, context_text)? {
-        return Ok((value, false));
+    if let Some(value) = store.available_word_explanation(text, context_text)? {
+        return Ok((value.value, false));
     }
     let _permit = model_gate.acquire(text, context_text, context)?;
-    if let Some(value) = store.explanation(text, context_text)? {
-        return Ok((value, false));
+    if let Some(value) = store.available_word_explanation(text, context_text)? {
+        return Ok((value.value, false));
     }
     let schema = json!({"type":"object","properties":{"meaning":{"type":"string"},"translation":{"type":"string"},"notes":{"type":"string"}},"required":["meaning","translation","notes"],"additionalProperties":false});
     let stripped = model_content(

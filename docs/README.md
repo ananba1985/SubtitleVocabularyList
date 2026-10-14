@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.29 |
-| 更新日期 | 2026-10-12 |
+| 文档版本 | 0.30 |
+| 更新日期 | 2026-10-14 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
 
@@ -49,6 +49,7 @@
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
 | 资料目录与迁移 | [development/data-directory.md](development/data-directory.md)、[testing/data-directory-results.md](testing/data-directory-results.md) | 安装目录内 Data、本机测试默认、缓存、迁移与保留证据 | 本地迁移和 exe 验证不代替发行包实装 |
 | 后台词义去重修复 | [testing/preparation-dedup-results.md](testing/preparation-dedup-results.md) | 通用词义跨集缓存、句子译文独立保存、旧解释保持及正常验证 | 项数与 HTTP 数量区分，不宣称全量生成或性能验收 |
+| 离线基础词库 | [design/base-dictionary.md](design/base-dictionary.md)、[testing/base-dictionary-results.md](testing/base-dictionary-results.md) | 已翻译词表、明确词形映射、底库命中不调用模型及真实候选覆盖 | 底库与个人词库分离，词语覆盖与句子翻译分开，不捆绑未经核对的第三方数据 |
 | 台式机交接与验证 | [本地任务目标](development/desktop-agent-goal.md)、[台式机记录](testing/desktop-machine-results.md) | 已有环境、当前证据、剩余范围与持续目标完成条件 | 机器切换不自动关闭未完成能力或未通过场景 |
 | 交付与使用 | 可运行版本形成后按需放入 `release/` 或更新根 README | 版本、安装运行方法、依赖资源、变更与已知限制 | 只描述已交付行为，不提前编造安装命令和功能状态 |
 
@@ -158,3 +159,4 @@
 | 0.27 | 2026-10-11 | 索引 0.6.1 资料目录规则与本机迁移验证 |
 | 0.28 | 2026-10-11 | 索引 0.6.1 实际安装测试包和打包修正记录 |
 | 0.29 | 2026-10-12 | 索引 0.6.2 后台词／句去重的真实验证与兼容边界 |
+| 0.30 | 2026-10-14 | 索引离线基础词库、候选词覆盖与最小正常验证 |

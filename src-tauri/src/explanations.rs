@@ -91,7 +91,11 @@ impl Store {
                 },
             }));
         }
-        let Some(mut value) = self.explanation(text, "")? else {
+        let (mut value, meaning_scope) = if let Some(value) = self.explanation(text, "")? {
+            (value, "general")
+        } else if let Some(value) = self.dictionary.explanation(text) {
+            (value, "dictionary")
+        } else {
             return Ok(self.sentence_translation(context)?.map(|translation| {
                 PreparedExplanation {
                     value: Explanation {
@@ -106,8 +110,17 @@ impl Store {
         value.translation = self.sentence_translation(context)?.unwrap_or_default();
         Ok(Some(PreparedExplanation {
             value,
-            meaning_scope: "general",
+            meaning_scope,
         }))
+    }
+
+    // A cached sentence alone must not masquerade as a word definition.
+    pub fn available_word_explanation(
+        &self,
+        text: &str,
+        context: &str,
+    ) -> Result<Option<PreparedExplanation>, AppError> {
+        Ok(self.prepared_explanation(text, context)?.filter(|value| !value.value.meaning.is_empty()))
     }
 
     pub fn sentence_translation(&self, sentence: &str) -> Result<Option<String>, AppError> {

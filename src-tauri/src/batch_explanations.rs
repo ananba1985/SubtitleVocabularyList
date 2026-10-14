@@ -42,7 +42,7 @@ impl Application {
         let mut missing = Vec::new();
         for text in texts {
             explanations::validate_input(text, sentence)?;
-            if self.store.explanation(text, sentence)?.is_some() {
+            if self.store.available_word_explanation(text, sentence)?.is_some() {
                 results.insert(text.clone(), Ok(false));
             } else {
                 missing.push(text.clone());
@@ -63,7 +63,7 @@ impl Application {
         let _permit = self.model_gate.acquire_many(&missing, sentence, context)?;
         let mut pending = Vec::new();
         for text in missing {
-            if self.store.explanation(&text, sentence)?.is_some() {
+            if self.store.available_word_explanation(&text, sentence)?.is_some() {
                 results.insert(text, Ok(false));
             } else {
                 pending.push(text);

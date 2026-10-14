@@ -9,6 +9,7 @@ use std::{
 pub struct Store {
     root: PathBuf,
     connection: Mutex<Connection>,
+    pub(crate) dictionary: crate::base_dictionary::BaseDictionary,
 }
 
 impl Store {
@@ -76,6 +77,7 @@ impl Store {
             transaction.commit()?;
         }
         Ok(Self {
+            dictionary: crate::base_dictionary::BaseDictionary::load(&root)?,
             root,
             connection: Mutex::new(connection),
         })

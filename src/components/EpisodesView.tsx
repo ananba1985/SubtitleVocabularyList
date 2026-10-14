@@ -772,7 +772,7 @@ export function EpisodesView({
                   >
                     {explanation.value?.meaning ? (
                       <>
-                        <small className="muted">{explanation.value.meaningScope === "general" ? "通用释义" : "当前语境释义"}</small>
+                        <small className="muted">{explanation.value.meaningScope === "dictionary" ? "基础词库释义" : explanation.value.meaningScope === "general" ? "通用释义" : "当前语境释义"}</small>
                         <p className="context-meaning">
                           {explanation.value.meaning}
                         </p>

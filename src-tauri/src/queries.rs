@@ -621,13 +621,16 @@ impl Application {
                     }
                     if provider.kind == "qwen"
                         && input.mode == "explain"
-                        && let Some(value) = app.store.explanation(&input.target, &input.context)?
+                        && input.source_language.starts_with("en")
+                        && input.target_language.starts_with("zh")
+                        && let Some(prepared) = app.store.available_word_explanation(&input.target, &input.context)?
                     {
-                        let mut value: QueryValue = value.into();
+                        let source = if prepared.meaning_scope == "dictionary" { "dictionary" } else { "stored" };
+                        let mut value: QueryValue = prepared.value.into();
                         if input.context.trim().is_empty() {
                             value.translation.clear();
                         }
-                        return Ok((value, "stored".into()));
+                        return Ok((value, source.into()));
                     }
                     let mut active = app.queries.provider_active.lock().unwrap();
                     while active.get(&provider.id).copied().unwrap_or(0)
@@ -679,14 +682,17 @@ impl Application {
                     check(&cancel)?;
                     if provider.kind == "qwen"
                         && input.mode == "explain"
-                        && let Some(existing) =
-                            app.store.explanation(&input.target, &input.context)?
+                        && input.source_language.starts_with("en")
+                        && input.target_language.starts_with("zh")
+                        && let Some(prepared) =
+                            app.store.available_word_explanation(&input.target, &input.context)?
                     {
-                        let mut value: QueryValue = existing.into();
+                        let source = if prepared.meaning_scope == "dictionary" { "dictionary" } else { "stored" };
+                        let mut value: QueryValue = prepared.value.into();
                         if input.context.trim().is_empty() {
                             value.translation.clear();
                         }
-                        return Ok((value, "stored".into()));
+                        return Ok((value, source.into()));
                     }
                     app.queries.update_job(&key, &id, None);
                     let runtime = tokio::runtime::Builder::new_current_thread()

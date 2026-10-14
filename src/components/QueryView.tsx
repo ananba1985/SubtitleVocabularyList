@@ -414,9 +414,11 @@ export function QueryView() {
               className="query-result"
             >
               <summary>
-                {result.name}
+                {result.cacheSource === "dictionary" ? "本地基础词库" : result.name}
                 <small>
-                  {result.cacheSource === "stored"
+                  {result.cacheSource === "dictionary"
+                    ? "已匹配"
+                    : result.cacheSource === "stored"
                     ? "已有本地解释"
                     : result.cacheSource === "cache"
                       ? "已保存结果"

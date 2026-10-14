@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+SUPPLEMENTS = json.loads((Path(__file__).resolve().parents[1] /
+                         "src-tauri/resources/dictionary-supplements.json").read_text(encoding="utf-8"))
 
 SOURCES = [
     ("google-frequency", "chenny/english-word-10000", "a3bfa2903a2cbbbeb8cd3df5a3f6003578b08f8b", "english-word-10000.md", "7af875be3cd4907bb42b2d860be7658470f03058152ae3a003707b80554f276e"),
@@ -37,7 +39,8 @@ GROUP BY o.source_id,s.title,o.kind,o.candidate_key"""
 
 
 def normalize(text):
-    return " ".join(unicodedata.normalize("NFKC", text).split()).lower()
+    return " ".join(unicodedata.normalize("NFKC", text).split()).lower().translate(
+        str.maketrans({"’": "'", "‘": "'", "ʼ": "'"}))
 
 
 def download(root):
@@ -159,18 +162,34 @@ CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);""")
     return target
 
 
-def match(key, entries, aliases, ecdict_entries, ecdict_aliases):
+def lookup(key, entries, aliases, ecdict_entries, ecdict_aliases):
     if key in entries:
         return "googleDirect", key, entries[key][1], "google-frequency"
     if key in aliases:
         word = aliases[key]
         return "googleLemma", word, entries[word][1], "google-frequency"
+    if key in SUPPLEMENTS["definitions"]:
+        return "localSupplement", key, SUPPLEMENTS["definitions"][key]["meaning"], "local-supplement"
     if key in ecdict_entries:
         return "ecdictDirect", key, ecdict_entries[key][1], "ecdict"
     if key in ecdict_aliases:
         word = ecdict_aliases[key]
         return "ecdictLemma", word, ecdict_entries[word][1], "ecdict"
     return "unmatched", "", "", ""
+
+
+def match(key, entries, aliases, ecdict_entries, ecdict_aliases):
+    canonical = normalize(key)
+    value = lookup(canonical, entries, aliases, ecdict_entries, ecdict_aliases)
+    if value[0] != "unmatched":
+        method = "supplement" if value[0] == "localSupplement" else "apostrophe" if canonical != key else "original"
+        return (*value, method)
+    variant = SUPPLEMENTS["variants"].get(canonical)
+    if variant:
+        value = lookup(variant["target"], entries, aliases, ecdict_entries, ecdict_aliases)
+        if value[0] != "unmatched":
+            return (*value, variant["kind"])
+    return (*value, "unmatched")
 
 
 def analyze(data_dir, output, entries, aliases, profile, ecdict_entries=None, ecdict_aliases=None):
@@ -184,28 +203,32 @@ def analyze(data_dir, output, entries, aliases, profile, ecdict_entries=None, ec
     grouped, episodes = {}, defaultdict(Counter)
     for source_id, title, kind, key, known, cached in rows:
         grouped[(kind, key)] = (known, cached)
-        category, _, _, _ = match(key, entries, aliases, ecdict_entries, ecdict_aliases)
+        category, _, _, _, _ = match(key, entries, aliases, ecdict_entries, ecdict_aliases)
         episodes[(source_id, title)][category] += 1
-    counts = Counter(dict.fromkeys(["googleDirect", "googleLemma", "ecdictDirect", "ecdictLemma", "unmatched"], 0))
+    counts = Counter(dict.fromkeys(["googleDirect", "googleLemma", "ecdictDirect", "ecdictLemma", "localSupplement", "unmatched"], 0))
+    methods = Counter()
     by_kind, details = defaultdict(Counter), []
     ai_pending = unmatched_cached = unmatched_known = 0
     for (kind, key), (known, cached) in sorted(grouped.items()):
-        category, matched, meaning, dictionary_source = match(key, entries, aliases, ecdict_entries, ecdict_aliases)
+        category, matched, meaning, dictionary_source, method = match(key, entries, aliases, ecdict_entries, ecdict_aliases)
         counts[category] += 1
+        methods[method] += 1
         by_kind[kind][category] += 1
         if category == "unmatched":
             unmatched_known += bool(known)
             unmatched_cached += bool(cached and not known)
             ai_pending += not (known or cached)
         details.append({"kind": kind, "candidate": key, "category": category,
-                        "source": dictionary_source, "matchedWord": matched, "meaning": meaning,
+                        "source": dictionary_source, "matchedWord": matched, "meaning": meaning, "method": method,
                         "known": bool(known), "cached": bool(cached)})
     assert sum(counts.values()) == len(grouped)
     summary = {"analyzedAt": datetime.now(timezone.utc).isoformat(), "sourceDatabase": str(data_dir / "vocabulary.sqlite3"),
                "dictionary": profile, "episodeCount": len(episodes), "uniqueCandidates": len(grouped),
                "sourceCandidateSum": len(rows), "sourceCoverage": dict(counts),
+               "methodCoverage": dict(methods),
                "coverage": {"direct": counts["googleDirect"] + counts["ecdictDirect"],
                             "lemma": counts["googleLemma"] + counts["ecdictLemma"],
+                            "supplement": counts["localSupplement"],
                             "unmatched": counts["unmatched"]},
                "byKind": {kind: dict(values) for kind, values in by_kind.items()},
                "unmatchedAlreadyKnown": unmatched_known, "unmatchedAlreadyCached": unmatched_cached,
@@ -226,7 +249,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=Path(r"D:\SubtitleVocabularyList\Data"))
     parser.add_argument("--analyze", action="store_true")
-    parser.add_argument("--output", type=Path, default=Path(".local/dictionary-coverage/combined"))
+    parser.add_argument("--output", type=Path, default=Path(".local/dictionary-coverage/optimized"))
     options = parser.parse_args()
     root = options.data_dir / "dictionaries"
     root.mkdir(parents=True, exist_ok=True)

@@ -3,24 +3,27 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-DICTIONARY-001 |
-| 文档版本 | 0.1 |
+| 文档版本 | 0.2 |
 | 更新日期 | 2026-10-14 |
-| 状态 | 下载、一次只读覆盖分析与最小核心正常流程完成；未打包 |
-| 对应版本 | 0.7.0；业务 schema 8，独立底库 schema 1 |
+| 状态 | 双词库下载、重新统计与最小核心正常流程完成；未打包 |
+| 对应版本 | 0.7.1；业务 schema 8，两个独立底库均为 schema 1 |
 | 对应需求 | FR-02、FR-08、FR-14；TC-51 |
 
 ## 1 资料与范围
 
-按用户后续确认优先使用[已翻译 Google 高频词表](https://github.com/chenny/english-word-10000)，锁定提交 `a3bfa2903a2cbbbeb8cd3df5a3f6003578b08f8b`，仅下载 Markdown 数据与说明。词形映射来自 [ECDICT](https://github.com/skywind3000/ECDICT) 的 `lemma.en.txt`，提交 `bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b`；未下载 ECDICT 全量释义，也未通过 AI 补译基础表。
+优先使用[已翻译 Google 高频词表](https://github.com/chenny/english-word-10000)，锁定提交 `a3bfa2903a2cbbbeb8cd3df5a3f6003578b08f8b`，下载 Markdown 数据与说明。词形映射来自 [ECDICT](https://github.com/skywind3000/ECDICT) 的 `lemma.en.txt`，提交 `bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b`。按用户追加授权，现已下载同一 ECDICT 提交的完整基础 CSV（65,933,428 字节）及 README，作为第二级词典；没有通过 AI 补译基础表。
 
-高频表 9,972 行，9,306 个不同词头含有效中文，另 666 行不含中文，不能据此跳过模型。词形表只保留不歧义且指向有效词头的映射，输出 7,287 个别名。原始资料、说明与来源许可证保存在 `D:\SubtitleVocabularyList\Data\dictionaries\sources`，清单记录 URL、提交、大小和 SHA-256；底库为 `dictionaries/base.sqlite3`，966,656 字节。第三方原文不提交公开仓库或捆绑本轮交付包。
+高频表 9,972 行，9,306 个不同词头含有效中文，另 666 行不含中文，不能据此跳过模型；保留 7,287 个不歧义词形映射。ECDICT 基础 CSV 有 770,611 行，其中 767,533 个不同词头含有效中文，3,078 行无有效中文，生成 32,843 个明确且不歧义的后备词形映射。两库存在重叠，不把两份词头数相加当作全局去重词数。
+
+原始资料、说明与来源许可证保存在 `D:\SubtitleVocabularyList\Data\dictionaries\sources`，清单记录 URL、提交、大小和 SHA-256。Google 保存在 `dictionaries/base.sqlite3`；ECDICT 保存在 `dictionaries/ecdict.sqlite3`，按需通过 SQLite 索引只读查询，启动时不全量加载大词典。第三方原文不提交公开仓库或捆绑本轮交付包。
 
 | 文件 | SHA-256 |
 | --- | --- |
 | english-word-10000.md | `7af875be3cd4907bb42b2d860be7658470f03058152ae3a003707b80554f276e` |
 | lemma.en.txt | `e255b097404e3e0052060e2ddf6e15a1414f577071d63d51d2ca0ce9dacee0fc` |
+| ecdict.csv | `1a6947e04785db63613a92e14903cdae7954f7e84860b10e68e5c7cbb3f9c3cf` |
 
-## 2 一次只读覆盖分析
+## 2 首次 Google 底库分析基线
 
 2026-10-14 14:01:54 UTC 的本机数据库快照：24 集、分集候选合计 21,273 项，跨集按 `(kind,candidate_key)` 去重后为 6,140 项，其中单词 6,107、短语 33。只读连接通过 SQLite backup 取得内存快照，包含已提交 WAL；未运行 Store 迁移、未写业务库。采用项目的 NFKC、空白合并与小写规范化，直接词头优先，只有未直接命中的词语才尝试明确词形映射，不做后缀猜测或任意模糊匹配。
 
@@ -35,26 +38,46 @@
 
 覆盖仅表示能找到有效中文字段，未逐条人工校对翻译质量，词形映射也不证明其适用于每个对白语义。词表保留原有词义，不擅自改写；未来可增补底库。各集覆盖与全部候选分类保存在本机 `.local/dictionary-coverage/coverage.json`、`candidates.csv`，可重跑入口保存在同目录 `coverage.ipynb`；该 notebook 未单独执行，原始分析由已执行脚本产生。不公开个人语料明细。
 
-## 3 实现和最小验证
+## 3 增加 ECDICT 后的重新统计
+
+2026-10-14 14:19:10 UTC 对相同本机词库再次取得只读快照：仍为 24 集、21,273 个分集候选、6,140 个跨集去重词语。按 Google 直接、Google 词形、ECDICT 直接、ECDICT 词形的顺序进行互斥分类。
+
+| 互斥类别 | 去重数量 | 占全部候选 |
+| --- | ---: | ---: |
+| Google 直接命中 | 3,293 | 53.63% |
+| Google 词形还原命中 | 394 | 6.42% |
+| ECDICT 直接补充 | 1,966 | 32.02% |
+| ECDICT 词形还原补充 | 0 | 0% |
+| 双库均未命中 | 487 | 7.93% |
+| 合计 | 6,140 | 100% |
+
+合计覆盖 **5,653 项，92.07%**，相较单一 Google 底库新增 1,966 项，覆盖率增加约 32.02 个百分点。ECDICT 本次补充包含 1,933 个单词和全部 33 个短语；其明确词形映射已经可用，但本次真实候选没有额外命中项，不把合成验证样本计入实际覆盖。
+
+双库未命中 487 个单词，其中 2 项已掌握、其余已有 478 项通用词义缓存，当前实际缺失通用词义为 **7 项**。`2 + 478 + 7 = 487`，三个数量互斥；整句译文和 HTTP 请求次数仍单独计算。
+
+实际脚本 `python -X utf8 scripts/prepare-base-dictionary.py --analyze` 完成一次下载校验、双库转换和只读重新分析。最新各集覆盖、逐词来源与匹配类别保存到 `.local/dictionary-coverage/combined/coverage.json`、`candidates.csv`；同目录 `coverage.ipynb` 为未单独执行的可重跑入口。保留上一节首次 Google 分析文件作基线。统计表示可取得有效中文，不代表逐条人工校对或模型耗时实测。业务库、人工词义及学习记录没有改写。
+
+## 4 实现和最小验证
 
 | 检查 | 实际结果 |
 | --- | --- |
-| 下载、转换与分析正常流程 | `python -X utf8 scripts/prepare-base-dictionary.py --analyze` 成功；来源 SHA-256 与固定版本一致；三类互斥且合计 6,140 |
-| 核心正常流程 | `cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --test base_dictionary_normal -- --nocapture`：1 passed。精确 patient、词形 apples → apple、原语境解释和已有句子译文可读；手动解释及小窗直接返回底库，后台只为未命中 reluctant 发出一次合成模型请求；未新增生词，重开底库可读 |
-| 前端类型 | `pnpm exec tsc --noEmit` 通过；预习展示“基础词库释义”，小窗展示“本地基础词库／已匹配” |
+| 下载、转换与分析正常流程 | `python -X utf8 scripts/prepare-base-dictionary.py --analyze` 成功；来源 SHA-256 与固定版本一致；五类互斥且合计 6,140 |
+| 核心正常流程 | `cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --test base_dictionary_normal -- --nocapture`：1 passed。同一正常路径中 Google patient 与词形 apples 优先于 ECDICT；ECDICT 独有 harvest 与词形 murmured 可读，小窗直接返回 ECDICT；后台只为双库均缺失的 reluctant 发出一次合成模型请求。原语境解释与已有句子译文保持，未新增生词，重开底库可读 |
+| 前端范围 | 本次没有前端修改；0.7.0 的类型检查记录保留。预习及小窗继续使用 dictionary 来源，notes 明确实际命中的 Google／ECDICT |
 
 原有 `explanations`、词条、人工资料、原声和学习记录不重写；底库命中词语不加入后台模型队列，已进入执行的请求在执行入口也检查本地资料。整句翻译与选区翻译替换流程保持独立。
 
 没有启动真实客户端、运行用户语料的全量模型任务、构建安装包，或扩大到故障、负载及兼容性矩阵测试。上述窗口文案只完成类型检查和原生查询结果验证，不冒充实际 GUI 验收。
 
-## 4 本机使用
+## 5 本机使用
 
-当前底库已位于共享 Data，0.7.0 源码在下一次本地调试启动时自动只读加载。已安装的旧版本不因下载数据而自动获得新逻辑；本轮不重新生成 exe 或安装包。
+两个底库已位于共享 Data，0.7.1 源码在下一次本地调试启动时自动读取。已安装的旧版本不因下载数据而自动获得 ECDICT 后备逻辑；本轮不重新生成 exe 或安装包。
 
 开发机重新准备底库使用 `python -X utf8 scripts/prepare-base-dictionary.py --analyze`；其他资料目录通过 `--data-dir` 指定。该工具下载固定版本、转换底库并按需执行只读统计，不把底库当作用户词条导入。公开捆绑分发需另行核对词表与词形数据的授权。
 
-## 5 修订记录
+## 6 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
 | 0.1 | 2026-10-14 | 记录用户确认后的基础词库优先、实际下载覆盖和最小正常验证 |
+| 0.2 | 2026-10-14 | 保留 Google 基线，记录完整 ECDICT 基础 CSV、严格后备优先级、92.07% 覆盖及最小正常验证 |

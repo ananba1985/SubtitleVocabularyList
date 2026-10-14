@@ -178,9 +178,13 @@ impl Store {
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(inputs.into_iter().filter(|input| {
-            input.kind == "sentence" || self.dictionary.explanation(&input.text).is_none()
-        }).collect())
+        let mut pending = Vec::new();
+        for input in inputs {
+            if input.kind == "sentence" || self.dictionary.explanation(&input.text)?.is_none() {
+                pending.push(input);
+            }
+        }
+        Ok(pending)
     }
 }
 

@@ -8,7 +8,7 @@
 
 产品名称、公开仓库名称和本地工作目录名称统一为 **SubtitleVocabularyList**。
 
-0.7.0 增加[离线基础词库](docs/design/base-dictionary.md)：已有中文释义优先复用，精确及词形命中后不调用本地模型。已翻译高频词资料与个人生词本分开，准备命令及 24 集真实覆盖见[结果记录](docs/testing/base-dictionary-results.md)。
+0.7 系列增加[离线基础词库](docs/design/base-dictionary.md)：已有中文释义优先复用，再按 Google 高频词表、ECDICT 的顺序查询，精确及词形命中后不调用本地模型。词典资料与个人生词本分开，准备命令及 24 集真实覆盖见[结果记录](docs/testing/base-dictionary-results.md)。
 
 ## 文档入口
 

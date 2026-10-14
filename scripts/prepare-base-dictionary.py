@@ -1,7 +1,7 @@
-"""Prepare the downloaded Chinese Google frequency dictionary and audit coverage.
+"""Prepare Google Chinese frequency entries plus ECDICT and audit coverage.
 
 Run: python -X utf8 scripts/prepare-base-dictionary.py --analyze
-Only base.sqlite3 and analysis outputs are written; the vocabulary DB is read-only.
+Writes dictionary files and analysis outputs; the vocabulary DB is read-only.
 """
 
 import argparse
@@ -22,6 +22,8 @@ SOURCES = [
     ("google-frequency", "chenny/english-word-10000", "a3bfa2903a2cbbbeb8cd3df5a3f6003578b08f8b", "README.md", "5ddc099564428d3bbcd914b025693c318880aafd425ebb40fa1dcbaf651705d3"),
     ("ecdict-lemma", "skywind3000/ECDICT", "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b", "lemma.en.txt", "e255b097404e3e0052060e2ddf6e15a1414f577071d63d51d2ca0ce9dacee0fc"),
     ("ecdict-lemma", "skywind3000/ECDICT", "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b", "LICENSE", "f8552dd246f61a4e064569eae6194a01c6b3d63b03bf27c6ca863593c549ed0f"),
+    ("ecdict", "skywind3000/ECDICT", "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b", "ecdict.csv", "1a6947e04785db63613a92e14903cdae7954f7e84860b10e68e5c7cbb3f9c3cf"),
+    ("ecdict", "skywind3000/ECDICT", "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b", "README.md", "0c3f95fc7e15f7eccf65feedb58ba3ebace1fe7b7cbdd1af60c9ace4cef9094b"),
 ]
 CANDIDATES_SQL = """SELECT o.source_id,s.title,o.kind,o.candidate_key,
        MAX(CASE WHEN k.key IS NULL THEN 0 ELSE 1 END) known,
@@ -57,6 +59,27 @@ def download(root):
                    ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def lemma_candidates(root):
+    candidates = defaultdict(set)
+    text = (root / "sources/ecdict-lemma/lemma.en.txt").read_text(encoding="utf-8-sig")
+    for line in text.splitlines():
+        if line.startswith(";") or " -> " not in line:
+            continue
+        head, forms = line.split(" -> ", 1)
+        lemma = normalize(head.rsplit("/", 1)[0])
+        for form in forms.split(","):
+            form = normalize(form)
+            if form and form != lemma:
+                candidates[form].add(lemma)
+    return candidates
+
+
+def unique_aliases(entries, candidates):
+    # Resolve ambiguity before restricting to valid dictionary entries.
+    return {form: next(iter(lemmas)) for form, lemmas in candidates.items()
+            if len(lemmas) == 1 and next(iter(lemmas)) in entries and form not in entries}
+
+
 def parse_sources(root):
     entries, raw_rows, missing_chinese = {}, 0, 0
     text = (root / "sources/google-frequency/english-word-10000.md").read_text(encoding="utf-8-sig")
@@ -71,29 +94,50 @@ def parse_sources(root):
             continue
         key = normalize(word)
         entries.setdefault(key, (key, meaning, uk, us, pos, int(rank)))
-    lemma_candidates = defaultdict(set)
-    text = (root / "sources/ecdict-lemma/lemma.en.txt").read_text(encoding="utf-8-sig")
-    for line in text.splitlines():
-        if line.startswith(";") or " -> " not in line:
-            continue
-        head, forms = line.split(" -> ", 1)
-        lemma = normalize(head.rsplit("/", 1)[0])
-        # Count ambiguity before restricting to our wordlist, to avoid false matches.
-        for form in forms.split(","):
-            form = normalize(form)
-            if form and form != lemma:
-                lemma_candidates[form].add(lemma)
-    aliases = {form: next(iter(lemmas)) for form, lemmas in lemma_candidates.items()
-               if len(lemmas) == 1 and next(iter(lemmas)) in entries and form not in entries}
+    aliases = unique_aliases(entries, lemma_candidates(root))
     return entries, aliases, {"sourceRows": raw_rows, "validChineseEntries": len(entries),
                               "rowsWithoutChinese": missing_chinese,
                               "duplicateValidWords": raw_rows - missing_chinese - len(entries),
                               "unambiguousAliases": len(aliases)}
 
 
-def build(root, entries, aliases, profile):
-    target = root / "base.sqlite3"
-    temporary = root / "base.build.sqlite3"
+def parse_ecdict(root):
+    entries, raw_rows, missing_chinese = {}, 0, 0
+    candidates = lemma_candidates(root)
+    with (root / "sources/ecdict/ecdict.csv").open(encoding="utf-8-sig", newline="") as stream:
+        for row in csv.DictReader(stream):
+            raw_rows += 1
+            word = normalize(row["word"])
+            # exchange is a structured wordform mapping, not a suffix guess.
+            for exchange in row.get("exchange", "").split("/"):
+                if ":" not in exchange:
+                    continue
+                kind, form = exchange.split(":", 1)
+                form = normalize(form)
+                if form and form != word:
+                    if kind in {"p", "d", "i", "3", "r", "t", "s"}:
+                        candidates[form].add(word)
+                    elif kind == "0":
+                        candidates[word].add(form)
+            meaning = row["translation"].strip().replace("\\n", "\n")
+            if not word or not re.search(r"[\u3400-\u9fff]", meaning):
+                missing_chinese += 1
+                continue
+            rank = row.get("frq", "")
+            entries.setdefault(word, (word, meaning, row.get("phonetic", ""),
+                                     row.get("phonetic", ""), row.get("pos", ""),
+                                     int(rank) if rank.isdigit() else 0))
+    aliases = unique_aliases(entries, candidates)
+    return entries, aliases, {"sourceRows": raw_rows, "validChineseEntries": len(entries),
+                              "rowsWithoutChinese": missing_chinese,
+                              "duplicateValidWords": raw_rows - missing_chinese - len(entries),
+                              "unambiguousAliases": len(aliases)}
+
+
+def build(root, entries, aliases, profile, *, ecdict=False):
+    filename = "ecdict" if ecdict else "base"
+    target = root / f"{filename}.sqlite3"
+    temporary = root / f"{filename}.build.sqlite3"
     temporary.unlink(missing_ok=True)
     with sqlite3.connect(temporary) as connection:
         connection.executescript("""PRAGMA user_version=1;
@@ -104,9 +148,9 @@ CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);""")
         connection.executemany("INSERT INTO dictionary_entries VALUES (?,?,?,?,?,?)", entries.values())
         connection.executemany("INSERT INTO dictionary_aliases VALUES (?,?)", sorted(aliases.items()))
         connection.executemany("INSERT INTO metadata VALUES (?,?)", [
-            ("source", "Google 高频词中文表"),
-            ("source_url", "https://github.com/chenny/english-word-10000"),
-            ("source_commit", SOURCES[0][2]),
+            ("source", "ECDICT" if ecdict else "Google 高频词中文表"),
+            ("source_url", "https://github.com/skywind3000/ECDICT" if ecdict else "https://github.com/chenny/english-word-10000"),
+            ("source_commit", SOURCES[2][2] if ecdict else SOURCES[0][2]),
             ("lemma_commit", SOURCES[2][2]),
             ("profile", json.dumps(profile, ensure_ascii=False)),
         ])
@@ -115,7 +159,22 @@ CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);""")
     return target
 
 
-def analyze(data_dir, output, entries, aliases, profile):
+def match(key, entries, aliases, ecdict_entries, ecdict_aliases):
+    if key in entries:
+        return "googleDirect", key, entries[key][1], "google-frequency"
+    if key in aliases:
+        word = aliases[key]
+        return "googleLemma", word, entries[word][1], "google-frequency"
+    if key in ecdict_entries:
+        return "ecdictDirect", key, ecdict_entries[key][1], "ecdict"
+    if key in ecdict_aliases:
+        word = ecdict_aliases[key]
+        return "ecdictLemma", word, ecdict_entries[word][1], "ecdict"
+    return "unmatched", "", "", ""
+
+
+def analyze(data_dir, output, entries, aliases, profile, ecdict_entries=None, ecdict_aliases=None):
+    ecdict_entries, ecdict_aliases = ecdict_entries or {}, ecdict_aliases or {}
     # Snapshot includes committed WAL rows without upgrading or writing the source.
     source = sqlite3.connect((data_dir / "vocabulary.sqlite3").resolve().as_uri() + "?mode=ro", uri=True)
     snapshot = sqlite3.connect(":memory:")
@@ -125,27 +184,29 @@ def analyze(data_dir, output, entries, aliases, profile):
     grouped, episodes = {}, defaultdict(Counter)
     for source_id, title, kind, key, known, cached in rows:
         grouped[(kind, key)] = (known, cached)
-        category = "direct" if key in entries else "lemma" if key in aliases else "unmatched"
+        category, _, _, _ = match(key, entries, aliases, ecdict_entries, ecdict_aliases)
         episodes[(source_id, title)][category] += 1
-    counts, by_kind, details = Counter(), defaultdict(Counter), []
+    counts = Counter(dict.fromkeys(["googleDirect", "googleLemma", "ecdictDirect", "ecdictLemma", "unmatched"], 0))
+    by_kind, details = defaultdict(Counter), []
     ai_pending = unmatched_cached = unmatched_known = 0
     for (kind, key), (known, cached) in sorted(grouped.items()):
-        category = "direct" if key in entries else "lemma" if key in aliases else "unmatched"
+        category, matched, meaning, dictionary_source = match(key, entries, aliases, ecdict_entries, ecdict_aliases)
         counts[category] += 1
         by_kind[kind][category] += 1
-        matched = key if category == "direct" else aliases.get(key, "")
-        meaning = entries[matched][1] if matched else ""
         if category == "unmatched":
             unmatched_known += bool(known)
             unmatched_cached += bool(cached and not known)
             ai_pending += not (known or cached)
         details.append({"kind": kind, "candidate": key, "category": category,
-                        "matchedWord": matched, "meaning": meaning,
+                        "source": dictionary_source, "matchedWord": matched, "meaning": meaning,
                         "known": bool(known), "cached": bool(cached)})
     assert sum(counts.values()) == len(grouped)
     summary = {"analyzedAt": datetime.now(timezone.utc).isoformat(), "sourceDatabase": str(data_dir / "vocabulary.sqlite3"),
                "dictionary": profile, "episodeCount": len(episodes), "uniqueCandidates": len(grouped),
-               "sourceCandidateSum": len(rows), "coverage": dict(counts),
+               "sourceCandidateSum": len(rows), "sourceCoverage": dict(counts),
+               "coverage": {"direct": counts["googleDirect"] + counts["ecdictDirect"],
+                            "lemma": counts["googleLemma"] + counts["ecdictLemma"],
+                            "unmatched": counts["unmatched"]},
                "byKind": {kind: dict(values) for kind, values in by_kind.items()},
                "unmatchedAlreadyKnown": unmatched_known, "unmatchedAlreadyCached": unmatched_cached,
                "pendingAiWordMeanings": ai_pending,
@@ -165,15 +226,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=Path(r"D:\SubtitleVocabularyList\Data"))
     parser.add_argument("--analyze", action="store_true")
-    parser.add_argument("--output", type=Path, default=Path(".local/dictionary-coverage"))
+    parser.add_argument("--output", type=Path, default=Path(".local/dictionary-coverage/combined"))
     options = parser.parse_args()
     root = options.data_dir / "dictionaries"
     root.mkdir(parents=True, exist_ok=True)
     download(root)
-    entries, aliases, profile = parse_sources(root)
-    target = build(root, entries, aliases, profile)
-    summary = analyze(options.data_dir, options.output, entries, aliases, profile) if options.analyze else profile
-    print(json.dumps({"baseDictionary": str(target), "result": summary}, ensure_ascii=False, indent=2))
+    entries, aliases, google_profile = parse_sources(root)
+    ecdict_entries, ecdict_aliases, ecdict_profile = parse_ecdict(root)
+    target = build(root, entries, aliases, google_profile)
+    ecdict_target = build(root, ecdict_entries, ecdict_aliases, ecdict_profile, ecdict=True)
+    profile = {"google": google_profile, "ecdict": ecdict_profile}
+    summary = analyze(options.data_dir, options.output, entries, aliases, profile,
+                      ecdict_entries, ecdict_aliases) if options.analyze else profile
+    print(json.dumps({"baseDictionary": str(target), "ecdictDictionary": str(ecdict_target),
+                      "result": summary}, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

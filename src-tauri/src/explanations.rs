@@ -93,7 +93,7 @@ impl Store {
         }
         let (mut value, meaning_scope) = if let Some(value) = self.explanation(text, "")? {
             (value, "general")
-        } else if let Some(value) = self.dictionary.explanation(text) {
+        } else if let Some(value) = self.dictionary.explanation(text)? {
             (value, "dictionary")
         } else {
             return Ok(self.sentence_translation(context)?.map(|translation| {

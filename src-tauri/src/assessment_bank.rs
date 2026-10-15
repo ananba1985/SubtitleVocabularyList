@@ -1007,9 +1007,23 @@ impl Application {
                     ));
                 }
                 let mut batch = BTreeMap::new();
-                for g in parsed.items {
+                for mut g in parsed.items {
                     let t = &targets[g.id];
                     let value = (|| {
+                        // Some models echo the whole sentence in cloze. A single exact,
+                        // whole-word occurrence can be masked without guessing the meaning.
+                        if normalize(&g.cloze) == normalize(&g.sentence) {
+                            let target = regex::RegexBuilder::new(&format!(
+                                r"\b{}\b",
+                                regex::escape(&t.text)
+                            ))
+                            .case_insensitive(true)
+                            .build()
+                            .map_err(|_| AppError::new("invalid_data", "题目目标无法定位。"))?;
+                            if target.find_iter(&g.sentence).count() == 1 {
+                                g.cloze = target.replace(&g.sentence, "___").into_owned();
+                            }
+                        }
                         if !g.sentence.to_lowercase().contains(&t.text.to_lowercase())
                             || g.cloze.matches("___").count() != 1
                             || normalize(&g.cloze.replace("___", &t.text)) != normalize(&g.sentence)

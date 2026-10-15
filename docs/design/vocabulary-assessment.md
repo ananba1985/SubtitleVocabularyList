@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-ASSESSMENT-001 |
-| 文档版本 | 0.6 |
+| 文档版本 | 0.7 |
 | 更新日期 | 2026-10-15 |
 | 状态 | M-15 至 M-19 代码已接入，TC-58 真实完整往返通过；真人听感、体验和题库质量验收仍待确认 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-20 至 FR-24、BR-09 至 BR-11、FR-12、NFR-01 至 NFR-06 |
@@ -110,24 +110,24 @@ M-16 实际采用增广匹配完成全部配额，同类词元在所有题型间
 
 历史使用固定排序和分页（建议每页 20），报告默认折叠逐题详情。比较键包括目录版本/排名单位、内容及 N、频段边界、题型构成与评分策略；相同键时也显示实际样本和重复情况，只说可比配置下的表现变化。键不同只作并列展示，显示差异，不宣称同尺度提升。复测复用原配置进入预览，仍重新抽样，来源或题量变化先确认。
 
-## 6 数据模型与事务提案
+## 6 数据模型与事务
 
-个人数据仍在当前安装目录的 `Data/vocabulary.sqlite3`。009_assessments.sql 已新增 schema 9 的基础表，不复用 review_attempts/review_states 保存水平测试。M-15 已使用题库、题目、准备检查点与操作回执；会话／题目快照／作答／修正已接入 M-16 核心，报告／收录关联已由 M-18 接入；同步表仍是 M-19 实现基础。原词条、解释、媒体、原复习及同步记录保持。
+个人数据仍在当前安装目录的 `Data/vocabulary.sqlite3`。009_assessments.sql 已新增 schema 9 的基础表，不复用 review_attempts/review_states 保存水平测试。M-15 已使用题库、题目、准备检查点与操作回执；会话／题目快照／作答／修正已接入 M-16 核心，报告／收录关联已由 M-18 接入；同步表已由 M-19 的完整会话交换接入。原词条、解释、媒体、原复习及同步记录保持。
 
 | 表 | 关键字段／约束 |
 | --- | --- |
-| assessment_banks | id、version、catalog_refs_json、builder/policy 版本、draft/published 状态、准备范围；发布版本不可变 |
+| assessment_banks | id、state、revision、sources_json、policy_version、created_at、published_at；发布版本不可变 |
 | assessment_preparation_targets | bank／目录／词元检查点与失败原因，重新准备复用已保存候选题 |
 | assessment_operations | operationId、请求摘要及原始回执；设置、审核、发布及准备定位的幂等事实 |
 | assessment_items | id、bank_id、目标/词元/排名、内容类别、题型/维度、义项、公开题干、私有答案及解释、音频描述、核对记录；发布后修订进入新版本 |
-| assessment_sessions | UUID、start_operation_id、request_hash、config_json、bank/目录/策略版本、seed、状态、revision、来源设备和时间 |
-| assessment_session_items | session_id、ordinal、item_id、词元、频段/维度、完整私有快照、选项顺序、重复标记、位置状态；unique(session_id,ordinal) 与会话词元唯一 |
-| assessment_answers | UUID、session_item_id、operation_id、request_hash、原回答、结果、uncertain/hinted/audioStatus、评分版本和时间；位置只有一个原始提交 |
-| assessment_corrections | UUID、answer_id、operation_id、expected_revision、结果/有效性/理由、修订时间；追加历史不覆盖原作答 |
+| assessment_sessions | id、state、revision、config_json、sampling_json、position、created_at、updated_at；sampling_json 冻结 seed、配额、来源及策略；操作回执另在 assessment_operations |
+| assessment_session_items | id、session_id、position、snapshot_json、interaction_json；完整私有快照含目录、bank/item 来源及冻结选项，unique(session_id,position)，词元唯一在抽样时保证 |
+| assessment_answers | id、session_id、session_item_id、answer_json、revision、created_at；原回答及判分保存在 answer_json；位置只有一个原始提交，操作幂等在 assessment_operations |
+| assessment_corrections | id、answer_id、correction_json、created_at；修正保存理由及答案修订，追加历史不覆盖原作答 |
 | assessment_report_versions | session_id、report_revision、来源事实修订、report_json、created_at；缓存投影可重建但旧报告修订保留 |
 | assessment_collection_links | session_item_id、collection_operation_id、entry_id、报告修订/来源；只在用户确认收录后建立 |
-| assessment_sync_accounts | account_scope、assessment_cursor、能力及最近状态；与已有词条游标分离 |
-| assessment_sync_state | account_scope/session_id、本地修订、远端基准、冻结请求/摘要/changeId、回执、完整冲突副本；未回执请求不被新本地修改覆盖 |
+| assessment_sync_accounts | account_key、cursor、capability、updated_at；与已有词条游标分离 |
+| assessment_sync_state | account_key/session_id、base_json、pending_json、pending_change_id、pending_digest、conflict_json、acknowledged_digest；未回执请求不被新本地修改覆盖 |
 
 配置偏好放入既有 settings 的独立 assessment 命名空间，不改现有模型/语音/复习配置。生成音频复用媒体服务，路径位于 Data/media 下，题目只存相对描述/摘要；临时模型输出进入 Data/jobs，不写 AppData。
 
@@ -135,7 +135,7 @@ M-16 实际采用增广匹配完成全部配额，同类词元在所有题型间
 
 开始会话、提交作答、追加修正及报告修订分别使用短事务，不把模型、音频生成或网络等待放进 SQLite 事务。完成收录时扩展既有收录事务接受可信的 assessment 来源，在同一事务写收录回执与 association；不另写一套词条合并。多目标逐项保存并返回明细，不承诺整批原子成功；每目标操作标识稳定，部分成功后重试只处理未完成项。
 
-## 7 本地命令提案
+## 7 本地命令
 
 CMD-46 至 CMD-55、CMD-57 已注册，另有 assessment_bank_items 分页读取候选题、assessment_session_list 读取待继续会话；CMD-56、CMD-58 至 CMD-60 已由 M-18 注册。请求/响应 camelCase，分页和 AppError 沿用现行契约；字段类型实施时进入 Rust 和 TypeScript，不由浏览器保存事实。所有变更命令使用 operationId，编辑已有事实另带 expectedRevision。
 
@@ -220,6 +220,10 @@ CMD-59 使用 operationId 保存可信批次草稿和候选收录操作 UUID；�
 
 辅助命令：assessment_audio_prepare(sessionId,itemId,operationId) 返回语音准备任务；assessment_sync_status 返回能力／待发送／冲突／待关联／游标；assessment_sync_conflicts 返回摘要及双方预期修订；assessment_sync_keep_both(input) 使用 operationId、sessionId、expectedLocalRevision、expectedRemoteRevision 同事务保存决定。报告比较另核对实际题库版本集合，不只看配置键。
 
+### 未挖空响应的确定性处理
+
+实际 Qwen 对 of／and 三次返回原句作为 cloze，整体未保存。对 cloze 与 sentence 规范化后相同、且目标原文在句中只完整出现一次的响应，由本机替换该处为 ___，再执行原有全句、目标、答案和结构校验；不猜测其他位置、不删改例句、不放宽答案或语义审核。候选仍为 needs_review。
+
 ## 11 修订记录
 
 | 版本 | 日期 | 内容 |
@@ -230,3 +234,5 @@ CMD-59 使用 operationId 保存可信批次草稿和候选收录操作 UUID；�
 | 0.4 | 2026-10-15 | 记录 M-17 桌面入口、题库审核、三题型和语音一致性，保留人工验收待办 |
 | 0.5 | 2026-10-15 | 记录 M-18 报告投影、历史比较、可信确认收录及分页界面 |
 | 0.6 | 2026-10-15 | 落实 assessment-1、真实站点和系统语音缓存重建，区分已验证往返与延期人工验收 |
+
+| 0.7 | 2026-10-15 | 对齐实际 schema 字段，明确未挖空原句的单一目标替换及独立语义核对 |

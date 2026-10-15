@@ -3,10 +3,10 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-DICTIONARY-001 |
-| 文档版本 | 0.3 |
+| 文档版本 | 0.4 |
 | 更新日期 | 2026-10-14 |
 | 状态 | 双词库及匹配优化实现、只读统计与最小正常流程通过；未打包 |
-| 对应版本 | 0.7.2；业务 schema 8，两个独立底库均为 schema 1 |
+| 对应版本 | 0.7.3；业务 schema 8，两个独立底库均为 schema 1 |
 | 需求依据 | FR-02、FR-08、FR-14；用户确认优先采用已有中文 Google 高频词表，底库命中不调用本地 AI |
 
 ## 1 范围与查询顺序
@@ -19,7 +19,7 @@
 
 中文释义优先采用 `chenny/english-word-10000` 的 `english-word-10000.md`，锁定提交 `a3bfa2903a2cbbbeb8cd3df5a3f6003578b08f8b`。按用户追加授权，后备采用 ECDICT 同一固定提交 `bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b` 的 `ecdict.csv` 基础版全部有效中文词条，并复用 `lemma.en.txt` 和 CSV 的明确 exchange 词形。不通过模型翻译词表。
 
-原始文件、下载 URL、提交和 SHA-256 保存在 `Data/dictionaries/sources/`。本地转换输出 Google 的 `Data/dictionaries/base.sqlite3` 和 ECDICT 的 `Data/dictionaries/ecdict.sqlite3`，与业务库 `vocabulary.sqlite3` 分离。导入工具只解析 Markdown、CSV 和词形文本，不执行第三方 SQL。第三方数据不提交公开仓库，本轮用户授权用于本机资料；公开捆绑仍需独立核对数据再分发许可。
+本机准备时，原始文件、下载 URL、提交和 SHA-256 保存在 `Data/dictionaries/sources/`。本地转换输出 Google 的 `Data/dictionaries/base.sqlite3` 和 ECDICT 的 `Data/dictionaries/ecdict.sqlite3`，与业务库 `vocabulary.sqlite3` 分离。导入工具只解析 Markdown、CSV 和词形文本，不执行第三方 SQL。用户后续授权本机安装包携带两份底库，发行暂存与个人 Data 隔离；第三方数据不提交公开源码仓库，不把该授权表述为已取得第三方数据的通用再分发许可。
 
 ## 3 数据与运行方式
 
@@ -32,6 +32,16 @@ Store 打开时只读加载 Google 小词表为内存索引；ECDICT 保留只�
 词典专用规范化折叠弯／直撇号，业务库的原文、候选键、收录、掌握和同步标识保持原样。`src-tauri/resources/dictionary-supplements.json` 保存少量经核对的缺撇号、口语省音、明确词形映射，以及自拟中文的标准缩略解释；Rust 编译读取与 Python 统计使用同一文件，不调用模型建立补充资料。补充说明参考 [Cambridge 缩略形式](https://dictionary.cambridge.org/grammar/british-grammar/contractions)。Google 有效结果仍优先，已核对的基础缩写补充作为 ECDICT 的缺项／错项校订层；注明来源，不改写原始下载文件或已有解释。
 
 没有精确／明确词形结果时才尝试列明的书写变体，并要求目标存在有效中文，不使用编辑距离或无界后缀猜测。不统一去掉 `’s`，不擅自选择 `’d` 的展开，不自动纠正疑似 OCR，不根据姓名或语言猜测改写原句。`chillin → chilling`、`kiddin → kid`、`remotes → remote` 等当前词库释义不合适的映射不加入补充名单。一个已确认错误的 `they'd` 词义通过基本缩写解释校订，保留 had／would 两种可能。
+
+### 3.2 安装与升级资源
+
+根目录 `生成安装包.ps1` 在构建前调用 `prepare-base-dictionary.py --release-dir .tools/release-dictionaries`，独立使用 `.tools/release-cache/dictionaries/sources` 中经 SHA-256 核对的固定来源；没有缓存时在打包机下载，安装／运行时不下载。即使使用 `-SkipToolBuild` 也重新准备底库，失败时不继续编译。release 模式不读取个人业务库或本机 Data。
+
+发行暂存只生成两份 SQLite、带来源提交／摘要／词条统计的 manifest，以及 Google README、ECDICT README 和原 LICENSE。Tauri 配置逐文件映射六份输出到 `<安装目录>/Data/dictionaries`，不把整个 Data 或原始 CSV 纳入资源；打包脚本同时核对构建前后的资源摘要。底库作为普通 NSIS 安装资源在首次安装时落盘、覆盖安装时替换，安装路径由用户选择，无需额外启动脚本。
+
+standalone 输出使用 `scripts/copy-release-dictionaries.ps1` 读取同一显式映射，更新列明的文件，不递归删除 Data。个人 `vocabulary.sqlite3`、词条例句、人工／缓存解释、学习历史、同步资料和原声均不进入打包输入，也不由底库更新覆盖。调试入口继续复用本机 Data，不通过本轮修改迁移或重建个人资料。
+
+资源映射采用 [Tauri bundled resources](https://v2.tauri.app/develop/resources/)；NSIS 安装前检查运行进程、按资源文件安装／删除，目录仅在空时移除，未添加删除 Data 的脚本。卸载和真实覆盖安装不在本轮执行，后续生成版本包时核对。来源说明保留上游原文；Google 表 README 声明中文释义与发音的来源，未标注独立开源许可证，不冒称其采用本项目 GPL 或 ECDICT 的 MIT。当前按用户要求准备本机使用流程，公开分发许可仍需单独核对。
 
 ## 4 统计与最小验证
 
@@ -48,3 +58,4 @@ Store 打开时只读加载 Google 小词表为内存索引；ECDICT 保留只�
 | 0.1 | 2026-10-14 | 按用户后续确认设计已翻译高频词底库优先和只读匹配 |
 | 0.2 | 2026-10-14 | 按追加授权增加 ECDICT 后备，明确跨词典优先级和大词典按需只读查询 |
 | 0.3 | 2026-10-14 | 复核未命中形态和对白，明确字形规范化、列明变体、基本缩写校订及不误改语义的边界 |
+| 0.4 | 2026-10-14 | 按授权加入独立发行暂存、显式安装映射和保留个人资料的底库升级流程 |

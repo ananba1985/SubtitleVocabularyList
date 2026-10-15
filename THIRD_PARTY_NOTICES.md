@@ -27,9 +27,13 @@
 | FFmpeg 与 ffprobe | 发行资源从 n9.0.2 固定源码构建，未开启 GPL、nonfree、网络或外部编解码库，使用静态 zlib；历史开发环境的 Gyan 构建不进入安装包 | [FFmpeg](https://github.com/FFmpeg/FFmpeg)、[许可说明](https://ffmpeg.org/legal.html)，本次构建 LGPL-2.1-or-later；原始源码、适配脚本与配置随源码资料交付 |
 | selectors 等传递依赖 | selectors 0.38.0 用于 HTML 解析；完整版本见生成的依赖清单 | [servo/stylo](https://github.com/servo/stylo)，MPL-2.0；保留源码许可声明，并附[正式条款](https://www.mozilla.org/media/MPL/2.0/index.txt) |
 | Windows 系统语音与 WebView2 | 使用系统能力及运行时 | Microsoft 系统组件按其许可使用，不纳入本项目代码许可 |
+| Google 高频词中文表 | 固定提交 a3bfa2903a2cbbbeb8cd3df5a3f6003578b08f8b 转换为 base.sqlite3；按用户要求准备本机安装资源 | [chenny/english-word-10000](https://github.com/chenny/english-word-10000)；随包保留 README 的词频、中文释义与发音来源声明，未见独立 LICENSE，不标为本项目 GPL 或 ECDICT 的 MIT。公开再分发授权需另行核对 |
+| ECDICT 与明确词形 | 固定提交 bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b 的基础 CSV、lemma.en.txt 转换为离线底库与词形索引 | [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，保留该提交原始 MIT LICENSE、版权声明及 README，不使用许可不同的其他扩展版本 |
 
 Rust 与前端的确切依赖版本分别保存在 `src-tauri/Cargo.lock` 与 `pnpm-lock.yaml`。后续新增依赖更新本说明；最终分发核对包含实际用到的传递依赖。当前未复制 Pot 项目源码。
 
 `scripts/prepare-release-licenses.ps1` 根据 Windows Rust 依赖图和前端运行依赖收集条款，写入 `tools/licenses/dependencies.json`。未随 crate 发布的许可从该 crate 记录的固定上游提交补取；缺少条款会中止打包。`scripts/export-release-source.ps1` 从干净的已提交源码导出应用、八份媒体/OCR/ASR 源码、校验过的 Cargo 原始包及前端运行依赖。模型文件的固定地址、摘要和许可证在构建脚本及随包资源中保留。微软运行时与系统组件继续按微软许可使用。
 
 用户剧集、原声片段、截图、个人词库与模型大文件不提交到公开源码仓库。它们的存在不改变源代码许可证，也不意味着本项目授予第三方素材的再分发权。
+
+底库数据同样不提交公开源码仓库。发行脚本从固定地址及摘要重新生成独立参考库，把两份 SQLite、manifest 与三份上游说明映射到安装目录 `Data/dictionaries`；它们与个人词库分离，不从用户 Data 导出。manifest 记录来源和转换统计；说明文件原样保留，不以本项目许可证覆盖第三方数据条款。

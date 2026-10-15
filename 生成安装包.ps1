@@ -14,12 +14,19 @@ if($CheckOnly){
     Write-Output 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
     Write-Output ('Plan: build NSIS installer and standalone executable into '+$svlDelivery)
     Write-Output ('Rebuild offline tools: '+(-not $SkipToolBuild))
+    Write-Output 'Plan: prepare Google/ECDICT from pinned sources into .tools/release-dictionaries (no personal data).'
+    Write-Output 'Plan: install/update explicit dictionary files in <installation directory>/Data/dictionaries; keep personal Data files.'
     Write-Output 'Release packaging requires committed, clean source; no build or installation was performed.'
     return
 }
 if(& git status --porcelain){throw 'Commit intended changes before packaging a source-matched release.'}
 $svlResources=if([IO.Path]::IsPathRooted($ResourcesDirectory)){[IO.Path]::GetFullPath($ResourcesDirectory)}else{[IO.Path]::GetFullPath((Join-Path $svlWorkspace $ResourcesDirectory))}
 if($svlResources -ne [IO.Path]::GetFullPath((Join-Path $svlWorkspace '.tools/release-resources'))){throw 'The installer configuration maps .tools/release-resources; use that resource directory.'}
+$svlDictionaries=Join-Path $svlWorkspace '.tools/release-dictionaries'
+& python -X utf8 (Join-Path $svlScripts 'prepare-base-dictionary.py') --release-dir $svlDictionaries
+if($LASTEXITCODE -ne 0){throw 'Reference dictionary preparation failed; installer compilation was not started.'}
+$svlDictionaryManifest=Get-Content -LiteralPath (Join-Path $svlDictionaries 'manifest.json') -Raw | ConvertFrom-Json
+$svlDictionaryFiles=@($svlDictionaryManifest.files)+@(@{path='manifest.json';sha256=(Get-FileHash -LiteralPath (Join-Path $svlDictionaries 'manifest.json')).Hash.ToLowerInvariant()})
 Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
 & cargo clean --manifest-path (Join-Path $svlWorkspace 'src-tauri/Cargo.toml')
 if($LASTEXITCODE -ne 0){throw 'Cargo cleanup failed; installer compilation was not started.'}
@@ -43,6 +50,9 @@ if($LASTEXITCODE -ne 0){throw 'Installer build failed.'}
 foreach($svlItem in $svlManifest){
     if((Get-FileHash -LiteralPath (Join-Path $svlResources $svlItem.path)).Hash.ToLowerInvariant() -ne $svlItem.sha256){throw 'Offline resources changed during packaging; rebuild from the verified snapshot.'}
 }
+foreach($svlItem in $svlDictionaryFiles){
+    if((Get-FileHash -LiteralPath (Join-Path $svlDictionaries $svlItem.path)).Hash.ToLowerInvariant() -ne $svlItem.sha256){throw 'Reference dictionaries changed during packaging; prepare them again.'}
+}
 $svlInstallers=@(Get-ChildItem -LiteralPath (Join-Path $svlWorkspace 'src-tauri/target/release/bundle/nsis') -Filter ('SubtitleVocabularyList_'+$svlVersion+'_*-setup.exe'))
 if($svlInstallers.Count -ne 1){throw 'Expected one NSIS installer.'}
 New-Item -ItemType Directory -Path $svlDelivery -Force | Out-Null
@@ -54,8 +64,9 @@ Copy-Item -LiteralPath (Join-Path $svlWorkspace 'src-tauri/target/release/Subtit
 $svlStandaloneTools=Join-Path $svlStandalone 'tools'
 New-Item -ItemType Directory -Path $svlStandaloneTools -Force | Out-Null
 Get-ChildItem -LiteralPath $svlResources -Force | Copy-Item -Destination $svlStandaloneTools -Recurse -Force
+& (Join-Path $svlScripts 'copy-release-dictionaries.ps1') -InstallDirectory $svlStandalone
 [IO.File]::WriteAllText((Join-Path $svlStandalone 'README.txt'),
-    "Run SubtitleVocabularyList.exe from this directory. Keep the tools directory beside it.`r`nUser data and caches are stored in the Data subdirectory beside the executable. This standalone directory is separate from an installed application's Data directory.`r`n",
+    "Run SubtitleVocabularyList.exe from this directory. Keep the tools and Data/dictionaries directories beside it.`r`nUser data and caches are stored in the Data subdirectory beside the executable. Reference dictionary updates replace only the packaged dictionary files, not vocabulary.sqlite3 or learning records. This standalone directory is separate from an installed application's Data directory.`r`n",
     [Text.UTF8Encoding]::new($false))
 
 & (Join-Path $svlScripts 'export-release-source.ps1') -OutputDirectory $svlDelivery

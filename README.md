@@ -10,6 +10,8 @@
 
 0.7 系列增加[离线基础词库](docs/design/base-dictionary.md)：已有中文释义优先复用，再按 Google 高频词表、ECDICT 的顺序查询，精确及词形命中后不调用本地模型。支持明确书写变体和基础缩写补充，原文与个人生词本保持；准备命令及 24 集真实覆盖见[基线记录](docs/testing/base-dictionary-results.md)和[未命中复核结果](docs/testing/unmatched-vocabulary-results.md)。
 
+0.7.3 的手动打包流程已加入双底库：首次安装写入所选目录的 `Data/dictionaries`，升级只更新底库资源，保留个人词库及学习记录。打包不读取个人数据库；本轮仅完成[资源流程验证](docs/testing/dictionary-packaging-results.md)，未生成新安装包。
+
 ## 文档入口
 
 | 文档 | 职责 |

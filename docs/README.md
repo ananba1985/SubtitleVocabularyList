@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.32 |
+| 文档版本 | 0.33 |
 | 更新日期 | 2026-10-14 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -51,6 +51,7 @@
 | 后台词义去重修复 | [testing/preparation-dedup-results.md](testing/preparation-dedup-results.md) | 通用词义跨集缓存、句子译文独立保存、旧解释保持及正常验证 | 项数与 HTTP 数量区分，不宣称全量生成或性能验收 |
 | 离线基础词库 | [design/base-dictionary.md](design/base-dictionary.md)、[testing/base-dictionary-results.md](testing/base-dictionary-results.md) | 已翻译词表、明确词形映射、底库命中不调用模型及真实候选覆盖 | 底库与个人词库分离，词语覆盖与句子翻译分开，不捆绑未经核对的第三方数据 |
 | 未命中词复核与匹配优化 | [testing/unmatched-vocabulary-results.md](testing/unmatched-vocabulary-results.md) | 487 项原因初分、明确变体与缩写补充、覆盖增量和最小正常验证 | 疑似 OCR／专名不作为确定结论，不猜义、删词或改写对白 |
+| 基础词库安装资源 | [testing/dictionary-packaging-results.md](testing/dictionary-packaging-results.md) | 独立生成、首次落盘与更新、显式映射及个人库保持 | 本地资源流程不代替 NSIS 包生成和真实覆盖安装，第三方数据不提交源码仓库 |
 | 台式机交接与验证 | [本地任务目标](development/desktop-agent-goal.md)、[台式机记录](testing/desktop-machine-results.md) | 已有环境、当前证据、剩余范围与持续目标完成条件 | 机器切换不自动关闭未完成能力或未通过场景 |
 | 交付与使用 | 可运行版本形成后按需放入 `release/` 或更新根 README | 版本、安装运行方法、依赖资源、变更与已知限制 | 只描述已交付行为，不提前编造安装命令和功能状态 |
 
@@ -163,3 +164,4 @@
 | 0.30 | 2026-10-14 | 索引离线基础词库、候选词覆盖与最小正常验证 |
 | 0.31 | 2026-10-14 | 登记 Google 优先和 ECDICT 后备的底库补充及重新统计 |
 | 0.32 | 2026-10-14 | 索引 487 项未命中复核、可靠匹配优化和 0.7.2 验证 |
+| 0.33 | 2026-10-14 | 索引 0.7.3 双底库随包与更新流程，区分资源检查和实际打包 |

@@ -9,6 +9,7 @@ import csv
 import hashlib
 import json
 import re
+import shutil
 import sqlite3
 import unicodedata
 from collections import Counter, defaultdict
@@ -162,6 +163,30 @@ CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);""")
     return target
 
 
+def release_manifest(sources, output, profile):
+    """Only generated reference dictionaries and upstream notices enter a release."""
+    notices = {
+        "google-frequency/README.md": "notices/Google-README.md",
+        "ecdict/README.md": "notices/ECDICT-README.md",
+        "ecdict-lemma/LICENSE": "notices/ECDICT-LICENSE.txt",
+    }
+    for origin, destination in notices.items():
+        target = output / destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(sources / "sources" / origin, target)
+    files = ["base.sqlite3", "ecdict.sqlite3", *notices.values()]
+    manifest = {
+        "schemaVersion": 1,
+        "appVersion": json.loads((Path(__file__).resolve().parents[1] / "package.json").read_text(encoding="utf-8"))["version"],
+        "profile": profile,
+        "sources": [{"file": f"{folder}/{name}", "url": f"https://raw.githubusercontent.com/{repo}/{commit}/{name}",
+                     "commit": commit, "sha256": expected} for folder, repo, commit, name, expected in SOURCES],
+        "files": [{"path": name, "sha256": hashlib.sha256((output / name).read_bytes()).hexdigest(),
+                   "size": (output / name).stat().st_size} for name in files],
+    }
+    (output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def lookup(key, entries, aliases, ecdict_entries, ecdict_aliases):
     if key in entries:
         return "googleDirect", key, entries[key][1], "google-frequency"
@@ -248,17 +273,24 @@ def analyze(data_dir, output, entries, aliases, profile, ecdict_entries=None, ec
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=Path(r"D:\SubtitleVocabularyList\Data"))
-    parser.add_argument("--analyze", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--analyze", action="store_true")
+    mode.add_argument("--release-dir", type=Path, help="Prepare installer dictionaries without reading personal data")
     parser.add_argument("--output", type=Path, default=Path(".local/dictionary-coverage/optimized"))
     options = parser.parse_args()
-    root = options.data_dir / "dictionaries"
+    root = (Path(__file__).resolve().parents[1] / ".tools/release-cache/dictionaries"
+            if options.release_dir else options.data_dir / "dictionaries")
     root.mkdir(parents=True, exist_ok=True)
+    destination = options.release_dir.resolve() if options.release_dir else root
+    destination.mkdir(parents=True, exist_ok=True)
     download(root)
     entries, aliases, google_profile = parse_sources(root)
     ecdict_entries, ecdict_aliases, ecdict_profile = parse_ecdict(root)
-    target = build(root, entries, aliases, google_profile)
-    ecdict_target = build(root, ecdict_entries, ecdict_aliases, ecdict_profile, ecdict=True)
+    target = build(destination, entries, aliases, google_profile)
+    ecdict_target = build(destination, ecdict_entries, ecdict_aliases, ecdict_profile, ecdict=True)
     profile = {"google": google_profile, "ecdict": ecdict_profile}
+    if options.release_dir:
+        release_manifest(root, destination, profile)
     summary = analyze(options.data_dir, options.output, entries, aliases, profile,
                       ecdict_entries, ecdict_aliases) if options.analyze else profile
     print(json.dumps({"baseDictionary": str(target), "ecdictDictionary": str(ecdict_target),

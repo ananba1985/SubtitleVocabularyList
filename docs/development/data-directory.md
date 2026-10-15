@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DATA-DIR-001 |
-| 文档版本 | 0.2 |
-| 更新日期 | 2026-10-11 |
+| 文档版本 | 0.3 |
+| 更新日期 | 2026-10-14 |
 | 状态 | 0.6.1 实现；本机资料迁移已执行，启动结果见验证记录 |
 | 依据 | NFR-02、NFR-06；[架构](../design/architecture.md)；[实际验证](../testing/data-directory-results.md) |
 
@@ -23,6 +23,8 @@
 ## 2 内容与缓存
 
 Data 根目录保存 `vocabulary.sqlite3`，以及原有 media、jobs、credentials 等资料目录；例句、中文解释、学习状态、设置和同步元数据沿用数据库。`cache/webview` 为主窗口及查询小窗共同使用的 WebView2 资料，`cache/temp` 为本进程及子工具的 TEMP／TMP。启动前明确创建并使用这些目录，不通过 AppData 选择业务库或 WebView 缓存位置；无法访问选定位置时显示启动错误，不退回其他空词库。
+
+0.7.3 安装配置将 Google 和 ECDICT 基础词库作为独立资源写入 `Data/dictionaries`，随包带两份 SQLite、清单和来源说明；升级只替换列明资源，不打包或覆盖 `vocabulary.sqlite3`。发行准备不读取本机日常 Data；standalone 复用同一映射，保留已存在的个人资料。实际 NSIS 包本轮按用户要求未生成，资源流程结果见[记录](../testing/dictionary-packaging-results.md)。
 
 主窗口通过绝对路径 WebviewWindowBuilder 创建，小窗使用同一目录，避免 WindowConfig 的相对目录处理。开发配置与发行配置采用同一应用标识，复用现有单实例机制；关闭或从托盘完全退出上一种运行方式后再切换。数据库结构升级沿用 Store 的迁移规则，旧程序不能读取更高版本结构。
 
@@ -50,3 +52,4 @@ Data 根目录保存 `vocabulary.sqlite3`，以及原有 media、jobs、credenti
 | --- | --- | --- |
 | 0.1 | 2026-10-11 | 记录可选安装目录、本机默认共用资料、绝对 WebView 缓存、离线迁移与当前交付边界 |
 | 0.2 | 2026-10-11 | 关联后续授权生成的 0.6.1 安装测试包，保持实装未验证边界 |
+| 0.3 | 2026-10-14 | 补充独立随包底库、显式更新范围与个人数据库保持规则 |

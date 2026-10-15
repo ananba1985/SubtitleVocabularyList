@@ -22,6 +22,31 @@ use tauri_plugin_global_shortcut::ShortcutState;
 
 type AppState<'a> = State<'a, Arc<Application>>;
 
+#[tauri::command]
+fn assessment_catalog_get(app: AppState<'_>) -> Result<crate::assessment_bank::CatalogInventory, AppError> {
+    app.store.assessment_inventory()
+}
+#[tauri::command]
+fn assessment_settings_get(app: AppState<'_>) -> Result<crate::assessment_bank::AssessmentSettings, AppError> {
+    app.store.assessment_settings()
+}
+#[tauri::command]
+fn assessment_settings_update(app: AppState<'_>, settings: crate::assessment_bank::AssessmentSettings, operation_id: String) -> Result<crate::assessment_bank::AssessmentSettings, AppError> {
+    app.store.assessment_save_settings(settings, &operation_id)
+}
+#[tauri::command]
+fn assessment_bank_prepare(app: AppState<'_>, input: crate::assessment_bank::PrepareBank) -> Result<TaskSnapshot, AppError> {
+    app.inner().assessment_bank_prepare(input)
+}
+#[tauri::command]
+fn assessment_bank_review(app: AppState<'_>, input: crate::assessment_bank::ReviewBank) -> Result<serde_json::Value, AppError> {
+    app.store.assessment_bank_review(&input)
+}
+#[tauri::command]
+fn assessment_bank_items(app: AppState<'_>, bank_id: String, state: Option<String>, offset: usize, limit: usize) -> Result<crate::assessment_bank::BankPage, AppError> {
+    app.store.assessment_bank_items(&bank_id, state.as_deref(), offset, limit)
+}
+
 #[derive(Default)]
 struct TrayAction(Mutex<Option<String>>);
 
@@ -1089,6 +1114,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            assessment_catalog_get,assessment_settings_get,assessment_settings_update,
+            assessment_bank_prepare,assessment_bank_review,assessment_bank_items,
             app_info,
             translation_open,translation_session_open,translation_session_get,translation_query_start,translation_query_cancel,
             translation_window_hide,translation_window_pin,translation_collect,query_copy,

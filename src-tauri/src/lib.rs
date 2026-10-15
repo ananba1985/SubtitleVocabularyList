@@ -1,4 +1,7 @@
 pub mod application;
+pub mod assessment_bank;
+#[cfg(test)]
+mod assessment_bank_tests;
 mod base_dictionary;
 mod batch_explanations;
 pub mod corpus;

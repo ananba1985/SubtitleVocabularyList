@@ -9,6 +9,7 @@ const kinds: Record<string, string> = {
   preview: "原声准备",
   explanation: "本地解释",
   explanation_batch: "剧集中文资料准备",
+  assessment_bank: "水平测试题库准备",
   speech: "系统英语语音",
   selection: "划词采集",
   screen_capture: "截图选区准备",
@@ -30,6 +31,11 @@ const states: Record<string, string> = {
 };
 
 type Result = {
+  processedTargets?: number;
+  generatedItems?: number;
+  unfinishedTargets?: number;
+  reusedTargets?: number;
+  remainingTargets?: number;
   text?: string;
   query?: string;
   meaning?: string;
@@ -308,6 +314,9 @@ function TaskCard({
         <span className={`badge ${task.state}`}>
           {retryWaiting
             ? "等待自动重试"
+            : task.kind === "assessment_bank" && task.state === "succeeded" &&
+                ((value.unfinishedTargets ?? 0) > 0 || (value.remainingTargets ?? 0) > 0)
+              ? "部分待准备"
             : task.kind === "explanation_batch" &&
                 task.state === "succeeded" &&
                 preparation &&
@@ -373,6 +382,12 @@ function TaskCard({
       )}
       {task.kind === "import" && Boolean(task.result) && (
         <ImportResult value={value} />
+      )}
+      {task.kind === "assessment_bank" && value.processedTargets !== undefined && (
+        <div className="task-result">
+          <p>已处理 {value.processedTargets} 个目标 · 新增待核对题 {value.generatedItems ?? 0} 道 · 复用 {value.reusedTargets ?? 0} 个目标</p>
+          <p className="muted">未完成 {value.unfinishedTargets ?? 0} 个目标 · 本次上限外剩余 {value.remainingTargets ?? 0} 个目标。候选题核对并发布后才可测试。</p>
+        </div>
       )}
       {task.state === "succeeded" && task.kind === "preview" && value.asset && (
         <p className="task-result">

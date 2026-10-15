@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
+from frequency_catalog import build_frequency, BIGRAM_URL, BIGRAM_SHA, SOURCE_NOTICE
 
 SUPPLEMENTS = json.loads((Path(__file__).resolve().parents[1] /
                          "src-tauri/resources/dictionary-supplements.json").read_text(encoding="utf-8"))
@@ -138,7 +139,7 @@ def parse_ecdict(root):
                               "unambiguousAliases": len(aliases)}
 
 
-def build(root, entries, aliases, profile, *, ecdict=False):
+def build(root, entries, aliases, profile, *, ecdict=False, sources=None):
     filename = "ecdict" if ecdict else "base"
     target = root / f"{filename}.sqlite3"
     temporary = root / f"{filename}.build.sqlite3"
@@ -158,6 +159,10 @@ CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);""")
             ("lemma_commit", SOURCES[2][2]),
             ("profile", json.dumps(profile, ensure_ascii=False)),
         ])
+        if not ecdict:
+            frequency_profile = build_frequency(connection, sources or root, normalize, lemma_candidates)
+            connection.execute("INSERT INTO metadata VALUES (?,?)", (
+                "frequency_profile", json.dumps(frequency_profile, ensure_ascii=False)))
     connection.close()
     temporary.replace(target)
     return target
@@ -180,7 +185,9 @@ def release_manifest(sources, output, profile):
         "appVersion": json.loads((Path(__file__).resolve().parents[1] / "package.json").read_text(encoding="utf-8"))["version"],
         "profile": profile,
         "sources": [{"file": f"{folder}/{name}", "url": f"https://raw.githubusercontent.com/{repo}/{commit}/{name}",
-                     "commit": commit, "sha256": expected} for folder, repo, commit, name, expected in SOURCES],
+                     "commit": commit, "sha256": expected} for folder, repo, commit, name, expected in SOURCES]
+                    + [{"file":"google-bigrams/count_2w.txt", "url":BIGRAM_URL,
+                        "sha256":BIGRAM_SHA, "notice":SOURCE_NOTICE}],
         "files": [{"path": name, "sha256": hashlib.sha256((output / name).read_bytes()).hexdigest(),
                    "size": (output / name).stat().st_size} for name in files],
     }
@@ -286,7 +293,7 @@ def main():
     download(root)
     entries, aliases, google_profile = parse_sources(root)
     ecdict_entries, ecdict_aliases, ecdict_profile = parse_ecdict(root)
-    target = build(destination, entries, aliases, google_profile)
+    target = build(destination, entries, aliases, google_profile, sources=root)
     ecdict_target = build(destination, ecdict_entries, ecdict_aliases, ecdict_profile, ecdict=True)
     profile = {"google": google_profile, "ecdict": ecdict_profile}
     if options.release_dir:

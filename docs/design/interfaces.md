@@ -3,11 +3,11 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.37 |
-| 更新日期 | 2026-10-14 |
+| 文档版本 | 0.38 |
+| 更新日期 | 2026-10-15 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
-| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 为提案；NFR-02 至 NFR-05 |
-| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-09；ARC-10 为提案 |
+| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
+| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-09；ARC-10 实施中 |
 | 关联设计 | [数据模型](data-model.md)、[应用流程](application-flows.md) |
 
 本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。下列目录保留完整 0.1 的逻辑契约；当前已实现参数另列，不把后续提案当作现有接口。站点认证与协议仍需按 OPEN-04、TECH-06 对齐。
@@ -189,9 +189,9 @@ FR-19 下列命令、设置和事件已在 0.6.0 接通；完整流程和原生�
 
 settings_get／settings_update 增加 replacementShortcut（默认 Ctrl+Alt+R，可空禁用）和 replacementProviderId（默认 qwen）；旧配置读时补默认值，保存时写入，不改既有三键。native_status 增加 replacementRegistered，注册错误沿用 error。原生快捷键读取即时选区并提交，不提供网页传入任意 HWND、范围或待写文字的回填接口。replacement_updated 只通知 operationId／state，详情用 CMD-45 读取；不改变现有 query_updated 或小窗 current。设置改变替换键／服务时取消等待中的替换。
 
-### 2.4 高频水平测试命令（提案，未实现）
+### 2.4 高频水平测试命令（基础已实现，后续提案保留）
 
-FR-20 至 FR-24 的 CMD-46 至 CMD-60 在[高频水平测试设计第 7 节](vocabulary-assessment.md)唯一维护：来源/配置、题库准备核对、预览与开始、公开题面、作答与音频、会话状态、报告修正/历史，以及确认收录。新命令沿用 camelCase、分页、operationId、预期版本及结构化 AppError；当前桌面尚未注册这些接口。
+FR-20 至 FR-24 的 CMD-46 至 CMD-60 在[高频水平测试设计第 7 节](vocabulary-assessment.md)唯一维护：来源/配置、题库准备核对、预览与开始、公开题面、作答与音频、会话状态、报告修正/历史，以及确认收录。新命令沿用 camelCase、分页、operationId、预期版本及结构化 AppError；CMD-46 至 CMD-49 已注册 assessment_catalog_get、assessment_settings_get/update、assessment_bank_prepare/review，并新增 assessment_bank_items(bankId,state?,offset,limit)；CMD-50 至 CMD-60 继续实施。题库审核／发布需操作标识和预期修订，准备返回 TaskSnapshot；测试会话接口尚不可用。
 
 开始时冻结题目及私有答案，IPC 不下发未作答答案；判分事实保存在核心。收录适配复用既有事务，增加可信 assessment 来源关联，不由浏览器自报成绩或伪造剧集来源。具体请求/响应和不足/版本变化处理见详细设计，不在本目录重复一套字段。
 
@@ -337,3 +337,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.35 | 2026-10-12 | 登记 CMD-29 的通用／语境／译文展示、词／句分批协议及各自进度 |
 | 0.36 | 2026-10-14 | 增加 dictionary 释义来源与查询缓存来源，词库命中跳过模型 |
 | 0.37 | 2026-10-14 | 索引 CMD-46 至 CMD-60 高频水平测试提案，区分现行已注册接口 |
+| 0.38 | 2026-10-15 | 登记已注册的目录、配置、题库准备审核及分页读取命令 |

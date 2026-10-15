@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.12 |
-| 更新日期 | 2026-10-12 |
+| 文档版本 | 0.13 |
+| 更新日期 | 2026-10-15 |
 | 状态 | 项目开发中；手动入口与本机环境检查通过，未执行本轮发行打包 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
@@ -104,6 +104,8 @@ pnpm desktop:dev
 
 三个 `build-offline-*.ps1` 入口从固定版本和摘要准备媒体、OCR 与转写资源，使用 Visual Studio 2022 的 MSVC 与 CMake，写入忽略目录 `.tools/release-resources`。FFmpeg 的 Windows 构建辅助程序和源归档保存在 `.tools/release-cache`，不作为最终用户依赖。
 
+0.8.2 的离线构建入口统一使用 `native-build-command.ps1` 执行需要重定向日志的 CMake／make 命令。Windows PowerShell 5.1 会把重定向的原生 stderr 包装为错误记录，`ErrorActionPreference=Stop` 因而会被普通弃用警告提前触发；辅助函数只在这次原生命令调用中允许继续记录输出，结束后恢复原错误策略，并根据实际退出码判定构建结果。警告保留在 configure／build／install 日志，真正的非零退出码仍中断并给出日志位置。不通过关闭全脚本错误处理或默认跳过离线工具来绕过问题。
+
 仅在需要打包或发布版本时，提交源码并保持当前分支工作区干净，然后手动执行：
 
 ```powershell
@@ -130,3 +132,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.10 | 2026-10-11 | 按用户指定改为中文文件名，同步 CMD、pnpm、使用文档及源码材料说明 |
 | 0.11 | 2026-10-11 | 对齐 0.6.1 共享资料默认值、单实例标识、缓存位置及真实迁移与本地 exe 验证 |
 | 0.12 | 2026-10-12 | 三个根目录入口编译前完整清理 Cargo 旧构建产物，CheckOnly 保留只读计划；明确重新编译成本和检查边界 |
+| 0.13 | 2026-10-15 | 修正 Windows PowerShell 5.1 原生警告重定向误中断，明确离线构建的日志与真实退出码处理 |

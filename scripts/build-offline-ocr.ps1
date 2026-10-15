@@ -1,6 +1,7 @@
 param([string]$CacheDirectory='.tools\release-cache', [string]$ResourcesDirectory='.tools\release-resources')
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'native-build-command.ps1')
 $svlCache=if([IO.Path]::IsPathRooted($CacheDirectory)){[IO.Path]::GetFullPath($CacheDirectory)}else{[IO.Path]::GetFullPath((Join-Path (Get-Location) $CacheDirectory))}
 $svlResources=if([IO.Path]::IsPathRooted($ResourcesDirectory)){[IO.Path]::GetFullPath($ResourcesDirectory)}else{[IO.Path]::GetFullPath((Join-Path (Get-Location) $ResourcesDirectory))}
 $svlSources=Join-Path $svlCache 'sources'
@@ -22,13 +23,10 @@ function Get-SvlSource([string]$Name,[string]$Uri,[string]$Hash){
 function Invoke-SvlCmake([string]$Name,[string]$Source,[string[]]$Options){
     $svlBuild=Join-Path $svlCache ('ocr-build\'+$Name)
     New-Item -ItemType Directory -Path $svlBuild -Force | Out-Null
-    & $svlCmake -S $Source -B $svlBuild -G 'Visual Studio 17 2022' -A x64 "-DCMAKE_INSTALL_PREFIX=$svlPrefix" "-DCMAKE_PREFIX_PATH=$svlPrefix" '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW' '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded' -DBUILD_SHARED_LIBS=OFF @Options *> (Join-Path $svlBuild 'configure.log')
-    if($LASTEXITCODE -ne 0){throw "Configure failed: $Name"}
+    Invoke-SvlNativeBuild -FilePath $svlCmake -Arguments (@('-S',$Source,'-B',$svlBuild,'-G','Visual Studio 17 2022','-A','x64',"-DCMAKE_INSTALL_PREFIX=$svlPrefix","-DCMAKE_PREFIX_PATH=$svlPrefix",'-DCMAKE_POLICY_DEFAULT_CMP0091=NEW','-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded','-DBUILD_SHARED_LIBS=OFF')+$Options) -LogPath (Join-Path $svlBuild 'configure.log') -FailureMessage "Configure failed: $Name"
     Write-Output "Building $Name (2 workers); diagnostics: $svlBuild"
-    & $svlCmake --build $svlBuild --config Release --parallel 2 *> (Join-Path $svlBuild 'build.log')
-    if($LASTEXITCODE -ne 0){throw "Build failed: $Name"}
-    & $svlCmake --install $svlBuild --config Release *> (Join-Path $svlBuild 'install.log')
-    if($LASTEXITCODE -ne 0){throw "Install failed: $Name"}
+    Invoke-SvlNativeBuild -FilePath $svlCmake -Arguments @('--build',$svlBuild,'--config','Release','--parallel','2') -LogPath (Join-Path $svlBuild 'build.log') -FailureMessage "Build failed: $Name"
+    Invoke-SvlNativeBuild -FilePath $svlCmake -Arguments @('--install',$svlBuild,'--config','Release') -LogPath (Join-Path $svlBuild 'install.log') -FailureMessage "Install failed: $Name"
 }
 $svlZlib=Get-SvlSource 'zlib-1.3.1' 'https://github.com/madler/zlib/archive/refs/tags/v1.3.1.zip' '50B24B47BF19E1F35D2A21FF36D2A366638CDF958219A66F30CE0861201760E6'
 Invoke-SvlCmake 'zlib' $svlZlib @('-DZLIB_BUILD_EXAMPLES=OFF',"-DINSTALL_BIN_DIR=$svlPrefix/bin","-DINSTALL_LIB_DIR=$svlPrefix/lib","-DINSTALL_INC_DIR=$svlPrefix/include","-DINSTALL_MAN_DIR=$svlPrefix/share/man","-DINSTALL_PKGCONFIG_DIR=$svlPrefix/share/pkgconfig")

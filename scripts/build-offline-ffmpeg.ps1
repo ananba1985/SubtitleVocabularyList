@@ -1,6 +1,7 @@
 param([string]$CacheDirectory='.tools\release-cache',[string]$ResourcesDirectory='.tools\release-resources')
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
+. (Join-Path $PSScriptRoot 'native-build-command.ps1')
 $svlCache=if([IO.Path]::IsPathRooted($CacheDirectory)){[IO.Path]::GetFullPath($CacheDirectory)}else{[IO.Path]::GetFullPath((Join-Path (Get-Location) $CacheDirectory))}
 $svlResources=if([IO.Path]::IsPathRooted($ResourcesDirectory)){[IO.Path]::GetFullPath($ResourcesDirectory)}else{[IO.Path]::GetFullPath((Join-Path (Get-Location) $ResourcesDirectory))}
 $svlArchive=Join-Path $svlCache 'sources\FFmpeg-n9.0.2.zip'
@@ -104,8 +105,7 @@ match($0, /[A-Za-z]:[\\\/]/) {
     }
     [IO.File]::WriteAllText($svlConfigFile,($svlConfigLines -join "`n")+"`n",[Text.UTF8Encoding]::new($false))
     $svlShell=(Join-Path $svlMsys 'usr\bin\sh.exe').Replace('\','/')
-    & $svlMake -j2 -W fftools/ffmpeg.o -W fftools/ffprobe.o "SHELL=$svlShell" ffmpeg.exe ffprobe.exe *> (Join-Path $svlBuild 'build.log')
-    if($LASTEXITCODE -ne 0){throw 'Offline FFmpeg build failed.'}
+    Invoke-SvlNativeBuild -FilePath $svlMake -Arguments @('-j2','-W','fftools/ffmpeg.o','-W','fftools/ffprobe.o',"SHELL=$svlShell",'ffmpeg.exe','ffprobe.exe') -LogPath (Join-Path $svlBuild 'build.log') -FailureMessage 'Offline FFmpeg build failed'
 }finally{Pop-Location}
 $svlOutput=Join-Path $svlResources 'ffmpeg'
 New-Item -ItemType Directory -Path (Join-Path $svlOutput 'licenses') -Force | Out-Null

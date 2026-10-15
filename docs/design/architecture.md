@@ -3,13 +3,13 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.30 |
+| 文档版本 | 0.31 |
 | 对应产品版本 | 0.1 基线；0.4.0 听读、0.5.0 Pot 替代、0.6.0 写作翻译及 0.7.0 底库增量 |
 | 更新日期 | 2026-10-14 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
 | 需求依据 | [产品需求文档](../requirements/PRD.md) |
 | 管理规范 | [文档管理规范](../README.md) |
-| 详细设计 | [数据模型](data-model.md)、[应用流程](application-flows.md)、[接口契约](interfaces.md) |
+| 详细设计 | [数据模型](data-model.md)、[应用流程](application-flows.md)、[接口契约](interfaces.md)、[高频水平测试提案](vocabulary-assessment.md) |
 | 实施与验证 | [开发计划](../planning/development-plan.md)、[测试计划](../testing/test-plan.md) |
 
 本设计定义 Windows 桌面应用的技术栈、系统边界、模块职责、数据关系及集成约束。需求范围和验收标准以 PRD 为准。系统以本地词库为日常使用基础，采集、剧集导入和在线同步通过统一收录与合并逻辑连接学习核心。
@@ -79,6 +79,7 @@ flowchart LR
 | ARC-07 | 本地数据与任务存储 | 数据事务、媒体引用、来源、任务阶段、学习历史和同步队列 | SQLite、应用数据目录 |
 | ARC-08 | 站点同步 | 认证适配、增量交换、去重、冲突与失败重试 | 站点接口、ARC-04、ARC-07 |
 | ARC-09 | 查询会话与服务编排 | 独立小窗会话、输入版本、交互优先、服务注册和声明式插件 | ARC-01、ARC-02、ARC-04、ARC-06、ARC-07 |
+| ARC-10 | 高频水平测试（提案） | 完整排名、题库核对、独立会话、分频段报告及复测；不更新原复习排程 | ARC-01、ARC-04、ARC-06、ARC-07、ARC-08 |
 
 FR-14 至 FR-18 的后续方案见 [Pot 替代功能设计](pot-replacement.md)。新查询会话只在用户明确收录时进入 ARC-04；原有 Tauri／React／Rust／SQLite 及离线边界保持。ARC-09 已由 queries.rs、providers.rs、desktop_query.rs 和 QueryView 接通，会话、服务配置及 query_results 分工保持；实际覆盖见 [Pot 替代验证](../testing/pot-replacement-results.md)。
 
@@ -111,6 +112,12 @@ explanations.rs 的 prepared_explanation 优先读取已有语境释义，其次
 Rust `practice.rs` 保存当前完整阅读与练习位置，读取旧位置及课程原声；练习设置使用 SQLite 现有 `settings` 表，不新增 schema 迁移。课程原声保存在 `media/practice`；收录按稳定章节／句子位置关联 `reading` 来源、例句，并使用既有 `collection_prepare/collection_from_example/collection_commit` 和 `ensure_clip`。日常朗读复用 SAPI 本地 WAV，练习声音覆盖只作用于此次请求，不修改全局设置。
 
 练习状态和完整阅读不属于同步资料包。只把用户确认收录的词条、例句、独立原声及既有学习记录送入原同步流程；抄写不更新复习成绩。实现与最低必要验证见[听读整合记录](../testing/practice-integration-results.md)，网站和安装包验收分别保持原有边界。
+
+### 4.3 高频水平测试增量（FR-20 至 FR-24，未实现）
+
+新增 ARC-10，复用已有技术栈、TaskManager/ModelGate、媒体与统一收录事务，独立维护水平测试事实。完整词频索引保留无中文释义目标，题库发布及会话快照不可变，前端只读取可见题面；以 schema 下一迁移增加个人 assessment 表，不把测试写入 review_attempts 或批量已掌握标记。完整测试历史采用独立会话包及能力协商，不改变原词条同步协议。
+
+详细模块、数据、CMD-46 至 CMD-60、初始策略和兼容方案见[高频水平测试设计](vocabulary-assessment.md)，实施见 [M-15 至 M-19](../planning/vocabulary-assessment-plan.md)。这些是设计提案，当前代码仍为 0.7.3/业务 schema 8；底库扩展、命令和站点能力尚未落地。
 
 ## 5 概念数据视图
 
@@ -271,6 +278,11 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | FR-17 | ARC-06、ARC-07、ARC-09 | 多服务、发送范围、独立结果与来源 |
 | FR-18 | ARC-06、ARC-07、ARC-09 | 声明能力、版本、插件生命周期及业务资料保持 |
 | FR-19 | ARC-02、ARC-06、ARC-09 | 可编辑选区核对、单服务翻译与一次原位回填；不自动收录 |
+| FR-20 | ARC-10、ARC-01、ARC-07 | 配置、完整范围和分层抽样（提案） |
+| FR-21 | ARC-10、ARC-06、ARC-07 | 题目准备、核对、发布与资源（提案） |
+| FR-22 | ARC-10、ARC-01、ARC-06、ARC-07 | 离线作答、音频、快照和独立成绩（提案） |
+| FR-23 | ARC-10、ARC-07、ARC-08 | 报告、历史、复测及完整同步（提案） |
+| FR-24 | ARC-10、ARC-04、ARC-07 | 确认后统一收录及来源关联（提案） |
 | NFR-01 | ARC-02、ARC-03、ARC-05、ARC-06、ARC-07 | 本地资源与完整离线流程 |
 | NFR-02 | ARC-04、ARC-05、ARC-07、ARC-08 | 保存、重启、中断与重试一致性 |
 | NFR-03 | ARC-01、ARC-02、ARC-03、ARC-06、ARC-07 | 后台状态、取消与失败可见性 |
@@ -311,3 +323,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | 0.28 | 2026-10-14 | 补充 ECDICT 独立后备数据库与按需索引读取，保持 Google 优先 |
 | 0.29 | 2026-10-14 | 增加词典专用字形规范化与前后台共享的明确变体／基础缩写补充 |
 | 0.30 | 2026-10-14 | 明确双底库独立生成、显式安装资源与个人资料隔离的升级方式 |
+| 0.31 | 2026-10-14 | 预留 ARC-10，关联高频水平测试详细设计、独立数据和完整同步提案 |

@@ -31,6 +31,83 @@ fn finished(app: &Application, id: &str) -> subtitle_vocabulary_list_core::queri
 }
 
 #[test]
+fn captured_word_is_explained_without_a_sentence_and_saved_for_reuse() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(directory.path()).unwrap());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let settings = Settings {
+        model_url: format!("http://{}", listener.local_addr().unwrap()),
+        ..Default::default()
+    };
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut data = Vec::new();
+        let request = loop {
+            let mut buffer = [0; 4096];
+            let size = stream.read(&mut buffer).unwrap();
+            assert!(size > 0);
+            data.extend_from_slice(&buffer[..size]);
+            if let Some(end) = data.windows(4).position(|p| p == b"\r\n\r\n") {
+                let length: usize = String::from_utf8_lossy(&data[..end])
+                    .lines()
+                    .find_map(|line| line.to_lowercase().strip_prefix("content-length:")
+                        .map(|n| n.trim().parse().unwrap()))
+                    .unwrap();
+                if data.len() >= end + 4 + length {
+                    break serde_json::from_slice::<serde_json::Value>(&data[end + 4..end + 4 + length]).unwrap();
+                }
+            }
+        };
+        let input: serde_json::Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(input["target"], "Certified");
+        assert_eq!(input["context"], "");
+        let explanation = json!({"meaning":"经认证的；合格的","translation":"","notes":"certify 的过去分词，也用作形容词。"});
+        let response = json!({"choices":[{"finish_reason":"stop","message":{"content":explanation.to_string()}}]}).to_string();
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+    });
+    let app = Arc::new(Application::new(
+        Arc::clone(&store),
+        TaskManager::new(Arc::clone(&store), Arc::new(|_| {})),
+        settings.clone(),
+    ));
+    let mut input = QueryInput {
+        target: "Certified".into(),
+        context: "Certified".into(),
+        mode: "explain".into(),
+        source_language: "en".into(),
+        target_language: "zh-CN".into(),
+        origin: QueryOrigin { kind: "selection".into(), ..Default::default() },
+    };
+    let session = app.queries.open(input.clone(), None).unwrap();
+    app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], true, true).unwrap();
+    let session = finished(&app, &session.session_id);
+    server.join().unwrap();
+    assert_eq!(session.input.context, "Certified");
+    assert_eq!(session.input.origin.kind, "selection");
+    assert_eq!(session.results[0].value.as_ref().unwrap().meaning, "经认证的；合格的");
+    assert!(session.results[0].value.as_ref().unwrap().translation.is_empty());
+    assert_eq!(store.explanation("certified", "").unwrap().unwrap().meaning, "经认证的；合格的");
+    assert!(store.list_entries("", 0, 40).unwrap().is_empty());
+    drop(app);
+    drop(store);
+
+    let store = Arc::new(Store::open(directory.path()).unwrap());
+    let app = Arc::new(Application::new(
+        Arc::clone(&store),
+        TaskManager::new(Arc::clone(&store), Arc::new(|_| {})),
+        settings,
+    ));
+    input.target = "certified".into();
+    input.context.clear();
+    let session = app.queries.open(input, None).unwrap();
+    app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+    let session = finished(&app, &session.session_id);
+    assert_eq!(session.results[0].cache_source, "stored");
+    assert_eq!(session.results[0].value.as_ref().unwrap().meaning, "经认证的；合格的");
+}
+
+#[test]
 fn query_multi_provider_collection_cache_and_plugin_normal_flow() {
     let directory = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(directory.path()).unwrap());

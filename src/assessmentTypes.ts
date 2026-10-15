@@ -188,3 +188,124 @@ export const assessmentStateNames: Record<AssessmentSession["state"], string> =
     completed: "已完成",
     ended_early: "提前结束",
   };
+
+export interface AssessmentCounts {
+  planned: number;
+  processed: number;
+  unscored: number;
+  valid: number;
+  unanswered: number;
+  correct: number;
+  independentCorrect: number;
+  incorrect: number;
+  unknown: number;
+  needsConfirmation: number;
+  uncertain: number;
+  hinted: number;
+  correctRate: number | null;
+  independentRate: number | null;
+  reasons: Record<string, number>;
+}
+export interface AssessmentReportGroup {
+  key: string;
+  label: string;
+  counts: AssessmentCounts;
+  insufficientSample: boolean;
+}
+export interface AssessmentReport {
+  sessionId: string;
+  revision: number;
+  state: AssessmentSession["state"];
+  status: string;
+  createdAt: number;
+  generatedAt: number;
+  scorePolicy: string;
+  config: AssessmentConfig;
+  comparisonKey: string;
+  counts: AssessmentCounts;
+  byContent: AssessmentReportGroup[];
+  byBand: AssessmentReportGroup[];
+  byType: AssessmentReportGroup[];
+  byDimension: AssessmentReportGroup[];
+  details: AssessmentReportGroup[];
+  coverage: AssessmentPreview["coverage"];
+  repeatedTargets: number;
+  warnings: string[];
+  itemTotal: number;
+}
+export interface AssessmentReportItem {
+  id: string;
+  position: number;
+  item: {
+    bankId: string;
+    itemId: string;
+    catalog: FrequencyCatalog;
+    targetRank: number;
+    lexemeKey: string;
+    kind: string;
+    questionType: AssessmentQuestionType;
+    fromRank: number;
+    toRank: number;
+    content: AssessmentDraft;
+    repeatRecent: boolean;
+  };
+  answer: {
+    id: string;
+    text: string;
+    optionId: string | null;
+    originalAction: string;
+    result: string;
+    unscoredReason: string | null;
+    uncertain: boolean;
+    hinted: boolean;
+    audioStatus: string;
+  } | null;
+  originalAnswer?: { result: string; unscoredReason: string | null } | null;
+  answerRevision: number | null;
+  corrections: {
+    id: string;
+    result: string;
+    reason: string;
+    createdAt: number;
+    addHint: boolean;
+    revision: number;
+  }[];
+  collectedEntryIds: string[];
+}
+export interface AssessmentHistoryItem {
+  id: string;
+  state: AssessmentSession["state"];
+  revision: number;
+  createdAt: number;
+  config: AssessmentConfig;
+  counts: AssessmentCounts;
+  status: string;
+  comparisonKey: string;
+  repeatedTargets: number;
+}
+export interface AssessmentComparison {
+  first: AssessmentReport;
+  second: AssessmentReport;
+  comparable: boolean;
+  explanation: string;
+  correctRateDelta: number | null;
+  independentRateDelta: number | null;
+}
+export interface AssessmentCollectionCandidate {
+  sessionItemId: string;
+  operationId: string;
+  kind: string;
+  text: string;
+  meaning: string;
+  sentence: string;
+  translation: string;
+  audioKind: string | null;
+  matches: import("./types").Entry[];
+  collectedEntryIds: string[];
+}
+export interface AssessmentCollectionDraft {
+  draftId: string;
+  sessionId: string;
+  reportRevision: number;
+  items: AssessmentCollectionCandidate[];
+}

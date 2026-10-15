@@ -3,14 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-ASSESSMENT-001 |
-| 文档版本 | 0.4 |
+| 文档版本 | 0.5 |
 | 更新日期 | 2026-10-15 |
 | 状态 | M-15 题库基础、M-16 会话核心已实现；M-17 至 M-19 继续实施，完整功能未交付 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-20 至 FR-24、BR-09 至 BR-11、FR-12、NFR-01 至 NFR-06 |
 | 当前实现基线 | 应用 0.8.0 开发中；业务 schema 9，Google 底库 schema 2／ECDICT schema 1；同步仍为 svl-sync-1 |
 | 关联 | [架构](architecture.md)、[数据模型](data-model.md)、[接口](interfaces.md)、[同步](synchronization.md)、[开发计划](../planning/vocabulary-assessment-plan.md)、TC-53 至 TC-58 |
 
-本文件区分设计目标与实际实施：M-15 已由 assessment_bank.rs、009_assessments.sql 与词频构建器落地，CMD-46 至 CMD-49 已注册；assessment.rs／assessment_sampling.rs 已实现会话、抽样、作答、媒体事件及追加修正；桌面界面已接入三题型和题库管理；报告、收录及 assessment-1 同步仍在后续阶段。验证见[增量记录](../testing/vocabulary-assessment-results.md)，不以基础完成代替完整功能。
+本文件区分设计目标与实际实施：M-15 已由 assessment_bank.rs、009_assessments.sql 与词频构建器落地，CMD-46 至 CMD-49 已注册；assessment.rs／assessment_sampling.rs 已实现会话、抽样、作答、媒体事件及追加修正；桌面界面已接入三题型和题库管理；报告与可信确认收录已接入，assessment-1 同步继续实施。验证见[增量记录](../testing/vocabulary-assessment-results.md)，不以基础完成代替完整功能。
 
 ## 1 设计决策与模块边界
 
@@ -112,7 +112,7 @@ M-16 实际采用增广匹配完成全部配额，同类词元在所有题型间
 
 ## 6 数据模型与事务提案
 
-个人数据仍在当前安装目录的 `Data/vocabulary.sqlite3`。009_assessments.sql 已新增 schema 9 的基础表，不复用 review_attempts/review_states 保存水平测试。M-15 已使用题库、题目、准备检查点与操作回执；会话／题目快照／作答／修正已接入 M-16 核心，报告／同步表仍是后续实现基础。原词条、解释、媒体、原复习及同步记录保持。
+个人数据仍在当前安装目录的 `Data/vocabulary.sqlite3`。009_assessments.sql 已新增 schema 9 的基础表，不复用 review_attempts/review_states 保存水平测试。M-15 已使用题库、题目、准备检查点与操作回执；会话／题目快照／作答／修正已接入 M-16 核心，报告／收录关联已由 M-18 接入；同步表仍是 M-19 实现基础。原词条、解释、媒体、原复习及同步记录保持。
 
 | 表 | 关键字段／约束 |
 | --- | --- |
@@ -137,7 +137,7 @@ M-16 实际采用增广匹配完成全部配额，同类词元在所有题型间
 
 ## 7 本地命令提案
 
-CMD-46 至 CMD-55、CMD-57 已注册，另有 assessment_bank_items 分页读取候选题、assessment_session_list 读取待继续会话；CMD-56、CMD-58 至 CMD-60 继续实施。请求/响应 camelCase，分页和 AppError 沿用现行契约；字段类型实施时进入 Rust 和 TypeScript，不由浏览器保存事实。所有变更命令使用 operationId，编辑已有事实另带 expectedRevision。
+CMD-46 至 CMD-55、CMD-57 已注册，另有 assessment_bank_items 分页读取候选题、assessment_session_list 读取待继续会话；CMD-56、CMD-58 至 CMD-60 已由 M-18 注册。请求/响应 camelCase，分页和 AppError 沿用现行契约；字段类型实施时进入 Rust 和 TypeScript，不由浏览器保存事实。所有变更命令使用 operationId，编辑已有事实另带 expectedRevision。
 
 | 编号 | 命令 | 关键输入 → 输出 |
 | --- | --- | --- |
@@ -208,3 +208,11 @@ CMD-46 至 CMD-55、CMD-57 已注册，另有 assessment_bank_items 分页读取
 AssessmentView 默认聚焦开始与继续，配置、覆盖和题库管理按需展开；AssessmentQuestionPanel 接入私有题面、绑定播放回执、草稿、暂停和追加修正。AssessmentBankManager 显式核对／批准／发布，系统录音文本须与目标及例句一致，修改后可通过 assessment_bank_audio_prepare 重新生成。题库准备继续复用全局模型池；批请求按题量采用有界等待并支持取消、重试，项目自拟候选先保存。实际桌面流程记录于 TC-55 增量，真人听感及模型成功请求按用户要求延期。
 
 | 0.4 | 2026-10-15 | 记录 M-17 桌面入口、题库审核、三题型和语音一致性，保留人工验收待办 |
+
+### M-18 实施补充
+
+`assessment_reports.rs` 以会话事实 revision 作为报告修订；首次读取及历史缺失投影在短事务生成并缓存，旧修订不覆盖。读取摘要不返回全部逐题快照，`assessment_report_items` 每页最多 100、界面默认 20。报告保留原提交及有效判分、全部修正和收录引用。主界面只显示所选一种汇总视图，交叉明细和逐题默认折叠。
+
+CMD-59 使用 operationId 保存可信批次草稿和候选收录操作 UUID；不创建个人词。CMD-60 对每项按草稿定位固定题面，允许用户修改中文说明并选新建／匹配词条、是否保留声音；来源、媒体引用、统一 collect_on 收录回执及测试关联同事务提交，结果逐项保留。普通收录也调用该事务函数，不复制合并规则。报告查看和修正不触发原复习规则；只有明确收录才沿用原来的重复收录投影。
+
+| 0.5 | 2026-10-15 | 记录 M-18 报告投影、历史比较、可信确认收录及分页界面 |

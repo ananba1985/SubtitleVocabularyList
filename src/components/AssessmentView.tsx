@@ -14,6 +14,8 @@ import type {
 import type { TaskSnapshot } from "../types";
 import { AssessmentBankManager } from "./AssessmentBankManager";
 import { AssessmentQuestionPanel } from "./AssessmentQuestionPanel";
+import { AssessmentReportPanel } from "./AssessmentReportPanel";
+import { AssessmentHistory } from "./AssessmentHistory";
 
 export function AssessmentView({
   dataDirectory,
@@ -35,6 +37,7 @@ export function AssessmentView({
     [previewBusy, setPreviewBusy] = useState(false),
     [bankOpen, setBankOpen] = useState(false);
   const [previewRefresh, setPreviewRefresh] = useState(0);
+  const [reportId, setReportId] = useState<string | null>(null);
   const mutate = useAssessmentMutation();
   const refresh = useCallback(async () => {
     const [catalog, sessions] = await Promise.all([
@@ -158,6 +161,29 @@ export function AssessmentView({
       setBusy(false);
     }
   }
+  const terminalSession =
+    session && ["completed", "ended_early"].includes(session.state)
+      ? session
+      : null;
+  if (reportId || terminalSession)
+    return (
+      <AssessmentReportPanel
+        key={reportId ?? terminalSession!.id}
+        sessionId={reportId ?? terminalSession!.id}
+        dataDirectory={dataDirectory}
+        onExit={() => {
+          setReportId(null);
+          setSession(null);
+          void refresh().catch((e) => setError(message(e)));
+        }}
+        onRetest={(original) => {
+          setConfig(original);
+          setReportId(null);
+          setSession(null);
+          setPreviewRefresh((v) => v + 1);
+        }}
+      />
+    );
   if (session)
     return (
       <div className="assessment-view">
@@ -252,6 +278,7 @@ export function AssessmentView({
           </div>
         )}
       </section>
+      <AssessmentHistory onOpen={setReportId} />
       <details className="assessment-settings">
         <summary>调整测试范围与题型</summary>
         <div className="assessment-config-grid">

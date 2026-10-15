@@ -307,138 +307,150 @@ impl Store {
     }
 
     pub fn collect(&self, input: &CollectionInput) -> Result<CollectionResult, AppError> {
-        validate(input)?;
-        let request_hash = digest(&serde_json::to_vec(input)?);
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
-        let now = crate::reviews::event_time(&transaction)?;
-        let receipt: Option<(String, String)> = transaction
-            .query_row(
-                "SELECT request_hash,result_json FROM collection_actions WHERE operation_id=?",
-                [&input.operation_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()?;
-        if let Some((saved_hash, json)) = receipt {
-            if saved_hash != request_hash {
-                return Err(AppError::new(
-                    "conflict",
-                    "同一操作标识对应了不同的收录内容，请重新确认。",
-                ));
-            }
-            return Ok(serde_json::from_str(&json)?);
-        }
-        for example in &input.examples {
-            for asset_id in &example.media_asset_ids {
-                let record: Option<(String, String, String)> = transaction
-                    .query_row(
-                        "SELECT relative_path,digest,state FROM media_assets WHERE id=?",
-                        [asset_id],
-                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                    )
-                    .optional()?;
-                let (path, digest, state) = record.ok_or_else(|| {
-                    AppError::new(
-                        "resource_missing",
-                        "原声音频尚未保存成功，草稿已保留，请重试或明确选择先保存文字。",
-                    )
-                })?;
-                crate::corpus::validate_media_file(self.root(), &path, &digest, &state)?;
-            }
-        }
-        let created = input.target_entry_id.is_none();
-        let entry_id = if let Some(entry_id) = &input.target_entry_id {
-            let current: Option<(i64, String)> = transaction
-                .query_row(
-                    "SELECT revision,kind FROM entries WHERE id=?",
-                    [entry_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?;
-            let (revision, kind) =
-                current.ok_or_else(|| AppError::new("not_found", "待合并词条已不存在。"))?;
-            if input.expected_revision != Some(revision) || kind != input.kind {
-                return Err(AppError::new(
-                    "conflict",
-                    "词条版本或类型已经变化，请核对后重新确认。",
-                ));
-            }
-            transaction.execute(
-                "UPDATE entries SET revision=revision+1,updated_at=? WHERE id=?",
-                params![now, entry_id],
-            )?;
-            entry_id.clone()
-        } else {
-            let id = identity();
-            transaction.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES (?,?,?,?,?,?)", params![id, input.kind, input.text.trim(), normalize(&input.text), now, now])?;
-            id
-        };
-        let meaning_id = if input.meaning.trim().is_empty() {
-            None
-        } else {
-            let id = identity();
-            transaction.execute("INSERT OR IGNORE INTO meanings(id,entry_id,text,origin,created_at) VALUES (?,?,?,'user',?)", params![id, entry_id, input.meaning.trim(), now])?;
-            Some(transaction.query_row(
-                "SELECT id FROM meanings WHERE entry_id=? AND text=?",
-                params![entry_id, input.meaning.trim()],
-                |row| row.get::<_, String>(0),
-            )?)
-        };
-        let mut example_ids = Vec::new();
-        for example in &input.examples {
-            let id = insert_example(&transaction, example, now)?;
-            let context_meaning = example.context_meaning.trim();
-            let existing_scope:Option<String>=transaction.query_row("SELECT scope_key FROM entry_examples WHERE entry_id=? AND example_id=? AND meaning_id IS ? AND context_meaning=? LIMIT 1",params![entry_id,id,meaning_id,context_meaning],|r|r.get(0)).optional()?;
-            let scope_key = if let Some(scope) = existing_scope {
-                scope
-            } else {
-                let base = meaning_id.as_deref().unwrap_or("entry");
-                let occupied:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM entry_examples WHERE entry_id=? AND example_id=? AND scope_key=?)",params![entry_id,id,base],|r|r.get(0))?;
-                if occupied {
-                    format!("{base}:ctx:{}", digest(context_meaning.as_bytes()))
-                } else {
-                    base.into()
-                }
-            };
-            transaction.execute("INSERT OR IGNORE INTO entry_examples(entry_id,example_id,scope_key,meaning_id,context_meaning,created_at) VALUES (?,?,?,?,?,?)", params![entry_id, id,scope_key, meaning_id, context_meaning,now])?;
-            for asset in &example.media_asset_ids {
-                transaction.execute(
-                    "INSERT OR IGNORE INTO example_media(example_id,asset_id) VALUES (?,?)",
-                    params![id, asset],
-                )?;
-            }
-            if let Some(source_id) = &example.source_id {
-                transaction.execute("UPDATE occurrences SET entry_id=? WHERE source_id=? AND example_id=? AND candidate_key=?", params![entry_id, source_id, id, normalize(&input.text)])?;
-                transaction.execute("INSERT INTO candidate_decisions(source_id,candidate_key,scope_key,decision,updated_at) VALUES (?,?,?,'collected',?) ON CONFLICT(source_id,candidate_key,scope_key) DO UPDATE SET decision='collected',updated_at=excluded.updated_at", params![source_id, normalize(&input.text), id, now])?;
-            }
-            if !example_ids.contains(&id) {
-                example_ids.push(id);
-            }
-        }
-        let revision = transaction.query_row(
-            "SELECT revision FROM entries WHERE id=?",
-            [&entry_id],
-            |row| row.get(0),
-        )?;
-        let result = CollectionResult {
-            entry_id: entry_id.clone(),
-            operation_id: input.operation_id.clone(),
-            revision,
-            created,
-            example_ids,
-        };
-        transaction.execute("INSERT INTO collection_actions(operation_id,request_hash,entry_id,source_id,result_json,created_at) VALUES (?,?,?,?,?,?)", params![input.operation_id, request_hash, entry_id, input.examples.first().and_then(|e| e.source_id.as_ref()), serde_json::to_string(&result)?, now])?;
-        transaction.execute(
-            "DELETE FROM settings WHERE key=?",
-            [crate::known_targets::target_key(&input.kind, &input.text)],
-        )?;
-        crate::reviews::ensure_units(&transaction, &entry_id, now)?;
-        crate::reviews::recompute_entry(&transaction, &entry_id)?;
-        crate::synchronization::mark_dirty(&transaction, &entry_id)?;
+        let result = collect_on(self.root(), &transaction, input)?;
         transaction.commit()?;
         Ok(result)
     }
+}
 
+/// The same collection transaction is shared by ordinary capture and trusted assessment results.
+pub(crate) fn collect_on(
+    root: &std::path::Path,
+    transaction: &Connection,
+    input: &CollectionInput,
+) -> Result<CollectionResult, AppError> {
+    validate(input)?;
+    let request_hash = digest(&serde_json::to_vec(input)?);
+    let now = crate::reviews::event_time(&transaction)?;
+    let receipt: Option<(String, String)> = transaction
+        .query_row(
+            "SELECT request_hash,result_json FROM collection_actions WHERE operation_id=?",
+            [&input.operation_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    if let Some((saved_hash, json)) = receipt {
+        if saved_hash != request_hash {
+            return Err(AppError::new(
+                "conflict",
+                "同一操作标识对应了不同的收录内容，请重新确认。",
+            ));
+        }
+        return Ok(serde_json::from_str(&json)?);
+    }
+    for example in &input.examples {
+        for asset_id in &example.media_asset_ids {
+            let record: Option<(String, String, String)> = transaction
+                .query_row(
+                    "SELECT relative_path,digest,state FROM media_assets WHERE id=?",
+                    [asset_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .optional()?;
+            let (path, digest, state) = record.ok_or_else(|| {
+                AppError::new(
+                    "resource_missing",
+                    "原声音频尚未保存成功，草稿已保留，请重试或明确选择先保存文字。",
+                )
+            })?;
+            crate::corpus::validate_media_file(root, &path, &digest, &state)?;
+        }
+    }
+    let created = input.target_entry_id.is_none();
+    let entry_id = if let Some(entry_id) = &input.target_entry_id {
+        let current: Option<(i64, String)> = transaction
+            .query_row(
+                "SELECT revision,kind FROM entries WHERE id=?",
+                [entry_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let (revision, kind) =
+            current.ok_or_else(|| AppError::new("not_found", "待合并词条已不存在。"))?;
+        if input.expected_revision != Some(revision) || kind != input.kind {
+            return Err(AppError::new(
+                "conflict",
+                "词条版本或类型已经变化，请核对后重新确认。",
+            ));
+        }
+        transaction.execute(
+            "UPDATE entries SET revision=revision+1,updated_at=? WHERE id=?",
+            params![now, entry_id],
+        )?;
+        entry_id.clone()
+    } else {
+        let id = identity();
+        transaction.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES (?,?,?,?,?,?)", params![id, input.kind, input.text.trim(), normalize(&input.text), now, now])?;
+        id
+    };
+    let meaning_id = if input.meaning.trim().is_empty() {
+        None
+    } else {
+        let id = identity();
+        transaction.execute("INSERT OR IGNORE INTO meanings(id,entry_id,text,origin,created_at) VALUES (?,?,?,'user',?)", params![id, entry_id, input.meaning.trim(), now])?;
+        Some(transaction.query_row(
+            "SELECT id FROM meanings WHERE entry_id=? AND text=?",
+            params![entry_id, input.meaning.trim()],
+            |row| row.get::<_, String>(0),
+        )?)
+    };
+    let mut example_ids = Vec::new();
+    for example in &input.examples {
+        let id = insert_example(&transaction, example, now)?;
+        let context_meaning = example.context_meaning.trim();
+        let existing_scope:Option<String>=transaction.query_row("SELECT scope_key FROM entry_examples WHERE entry_id=? AND example_id=? AND meaning_id IS ? AND context_meaning=? LIMIT 1",params![entry_id,id,meaning_id,context_meaning],|r|r.get(0)).optional()?;
+        let scope_key = if let Some(scope) = existing_scope {
+            scope
+        } else {
+            let base = meaning_id.as_deref().unwrap_or("entry");
+            let occupied:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM entry_examples WHERE entry_id=? AND example_id=? AND scope_key=?)",params![entry_id,id,base],|r|r.get(0))?;
+            if occupied {
+                format!("{base}:ctx:{}", digest(context_meaning.as_bytes()))
+            } else {
+                base.into()
+            }
+        };
+        transaction.execute("INSERT OR IGNORE INTO entry_examples(entry_id,example_id,scope_key,meaning_id,context_meaning,created_at) VALUES (?,?,?,?,?,?)", params![entry_id, id,scope_key, meaning_id, context_meaning,now])?;
+        for asset in &example.media_asset_ids {
+            transaction.execute(
+                "INSERT OR IGNORE INTO example_media(example_id,asset_id) VALUES (?,?)",
+                params![id, asset],
+            )?;
+        }
+        if let Some(source_id) = &example.source_id {
+            transaction.execute("UPDATE occurrences SET entry_id=? WHERE source_id=? AND example_id=? AND candidate_key=?", params![entry_id, source_id, id, normalize(&input.text)])?;
+            transaction.execute("INSERT INTO candidate_decisions(source_id,candidate_key,scope_key,decision,updated_at) VALUES (?,?,?,'collected',?) ON CONFLICT(source_id,candidate_key,scope_key) DO UPDATE SET decision='collected',updated_at=excluded.updated_at", params![source_id, normalize(&input.text), id, now])?;
+        }
+        if !example_ids.contains(&id) {
+            example_ids.push(id);
+        }
+    }
+    let revision = transaction.query_row(
+        "SELECT revision FROM entries WHERE id=?",
+        [&entry_id],
+        |row| row.get(0),
+    )?;
+    let result = CollectionResult {
+        entry_id: entry_id.clone(),
+        operation_id: input.operation_id.clone(),
+        revision,
+        created,
+        example_ids,
+    };
+    transaction.execute("INSERT INTO collection_actions(operation_id,request_hash,entry_id,source_id,result_json,created_at) VALUES (?,?,?,?,?,?)", params![input.operation_id, request_hash, entry_id, input.examples.first().and_then(|e| e.source_id.as_ref()), serde_json::to_string(&result)?, now])?;
+    transaction.execute(
+        "DELETE FROM settings WHERE key=?",
+        [crate::known_targets::target_key(&input.kind, &input.text)],
+    )?;
+    crate::reviews::ensure_units(&transaction, &entry_id, now)?;
+    crate::reviews::recompute_entry(&transaction, &entry_id)?;
+    crate::synchronization::mark_dirty(&transaction, &entry_id)?;
+    Ok(result)
+}
+
+impl Store {
     pub fn get_entry(&self, id: &str) -> Result<Entry, AppError> {
         let connection = self.connection()?;
         get_entry_on(&connection, id)
@@ -481,7 +493,7 @@ impl Store {
     }
 }
 
-fn get_entry_on(connection: &Connection, id: &str) -> Result<Entry, AppError> {
+pub(crate) fn get_entry_on(connection: &Connection, id: &str) -> Result<Entry, AppError> {
     let mut entry = connection.query_row(
         "SELECT id,kind,text,match_key,revision,created_at,updated_at,
           (SELECT COUNT(*) FROM collection_actions WHERE entry_id=entries.id),

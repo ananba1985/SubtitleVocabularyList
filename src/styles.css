@@ -1639,3 +1639,26 @@ h3 {
  .sidebar nav button { padding-top:8px; padding-bottom:8px; }
  .sidebar-footer { padding-top:12px; }
 }
+.assessment-report { display: grid; gap: 18px; }
+.assessment-report h2, .assessment-report h3 { margin: 0 0 8px; }
+.assessment-report-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.assessment-report-stats > div { display: grid; gap: 8px; padding: 18px; background: white; border: 1px solid var(--border, #d8e1d7); border-radius: 12px; }
+.assessment-report-stats strong { font-size: 1.65rem; }
+.assessment-report-stats span, .assessment-history-row > span { font-size: .85rem; color: #718477; }
+.assessment-report-notes { padding: 14px 18px; background: #edf2e7; border-radius: 10px; }
+.assessment-table { overflow-x: auto; }
+.assessment-report table, .assessment-history table { width: 100%; border-collapse: collapse; font-size: .9rem; text-align: left; }
+.assessment-report th, .assessment-report td, .assessment-history th, .assessment-history td { padding: 12px; border-bottom: 1px solid #dce3d8; }
+.assessment-report td small { display: block; color: #947441; margin-top: 4px; }
+.assessment-report-items > summary, .assessment-history > summary { cursor: pointer; padding: 12px 0; }
+.assessment-report-item { border-bottom: 1px solid #dce3d8; padding: 18px 0; }
+.assessment-report-item > label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.assessment-report-item > label > span { font-size: .8rem; color: #718477; }
+.assessment-report-item > details { margin: 12px 0 0 28px; }
+.assessment-collection { background: white; border: 1px solid #cedbc9; padding: 20px; border-radius: 12px; }
+.assessment-collection fieldset { display: grid; gap: 12px; border: 1px solid #dce3d8; border-radius: 8px; margin: 16px 0; padding: 16px; }
+.assessment-collection label { display: grid; gap: 6px; }
+.assessment-collection label.checkbox { display: flex; align-items: center; gap: 8px; }
+.assessment-history-row { padding: 12px 0; border-bottom: 1px solid #dce3d8; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.assessment-compare { padding: 16px; border: 1px solid #dce3d8; border-radius: 12px; margin-top: 16px; }
+@media (max-width: 760px) { .assessment-report-stats { grid-template-columns: 1fr; } }

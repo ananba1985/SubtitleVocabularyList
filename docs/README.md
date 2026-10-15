@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.37 |
+| 文档版本 | 0.38 |
 | 更新日期 | 2026-10-15 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -15,10 +15,10 @@
 | 类型 | 当前或后续位置 | 必须包含 | 职责边界 |
 | --- | --- | --- | --- |
 | 产品需求 PRD | [requirements/PRD.md](requirements/PRD.md) | 背景、目标、范围、流程、需求编号、业务规则、验收标准、待确认项 | 描述需要满足的行为和结果；具体框架、代码结构和数据库实现属于设计文档 |
-| 高频词汇与短语水平测试需求 | [PRD 第 3.6 节与 FR-20 至 FR-24](requirements/PRD.md) | 可配置范围、合格题库、分层抽样、独立作答及报告、错词确认收录和复测 | 已确认需求，尚未实现；不据词频直接换算语言等级，技术设计和发布阶段另行制定 |
-| 高频水平测试设计 | [design/vocabulary-assessment.md](design/vocabulary-assessment.md) | 完整排名索引、题库核对、抽样/判分、数据事务、CMD-46 至 CMD-60、完整历史同步 | M-15 题库基础及 M-16 会话核心已实现；桌面、报告及完整同步继续实施，参数不冒充已校准标准 |
-| 高频水平测试开发计划 | [planning/vocabulary-assessment-plan.md](planning/vocabulary-assessment-plan.md) | M-15 至 M-19 的交付、依赖、完成门槛和 TC-53 至 TC-58 | 已授权实施；M-15、M-16 核心完成，M-17 至 M-19 未完成，不自动授权扩展测试或打包 |
-| 高频水平测试增量验证 | [testing/vocabulary-assessment-results.md](testing/vocabulary-assessment-results.md) | M-15／M-16 来源、题库和会话核心及 TC-53／TC-54 | 合成正常流程与真实来源分开；后续桌面、声音及同步尚未完成 |
+| 高频词汇与短语水平测试需求 | [PRD 第 3.6 节与 FR-20 至 FR-24](requirements/PRD.md) | 可配置范围、合格题库、分层抽样、独立作答及报告、错词确认收录和复测 | 已确认需求，分阶段实施；不据词频直接换算语言等级，技术设计和发布阶段另行制定 |
+| 高频水平测试设计 | [design/vocabulary-assessment.md](design/vocabulary-assessment.md) | 完整排名索引、题库核对、抽样/判分、数据事务、CMD-46 至 CMD-60、完整历史同步 | M-15 题库基础及 M-16 会话核心已实现；桌面、报告和确认收录已接入；完整同步继续实施，参数不冒充已校准标准 |
+| 高频水平测试开发计划 | [planning/vocabulary-assessment-plan.md](planning/vocabulary-assessment-plan.md) | M-15 至 M-19 的交付、依赖、完成门槛和 TC-53 至 TC-58 | 已授权实施；M-15、M-16 核心完成，M-17 真人听感待确认；M-18 本地闭环实现，M-19 未完成，不自动授权扩展测试或打包 |
+| 高频水平测试增量验证 | [testing/vocabulary-assessment-results.md](testing/vocabulary-assessment-results.md) | M-15／M-16 来源、题库和会话核心及 TC-53／TC-54 | 核心正常流程与真实桌面分开；真人听感、实际体验和同步尚待完成 |
 | 需求审查 | [requirements/review.md](requirements/review.md) | 审查对象、方法、结论、开放事项与后续成果 | 文档层核对不代表功能验收或新增范围已确认 |
 | 架构设计 | [design/architecture.md](design/architecture.md) | 需求依据、系统边界、技术决策、模块与依赖、数据流、集成约束、风险与追溯 | 解释如何组织系统；引用需求，不重新定义产品范围 |
 | 详细设计 | [数据模型](design/data-model.md)、[应用流程](design/application-flows.md)、[接口契约](design/interfaces.md) | 接口契约、数据结构、状态转换、异常处理、对应需求编号 | 补足实现所需细节；简单模块可在架构文档内完成，避免重复文件 |
@@ -173,3 +173,5 @@
 | 0.35 | 2026-10-14 | 登记高频水平测试详细设计、五阶段计划和最小正常验证追溯 |
 | 0.36 | 2026-10-15 | 索引 M-15 实施和 TC-53，保留完整模块未交付状态 |
 | 0.37 | 2026-10-15 | 索引 M-16 和 TC-54，维持完整模块未交付边界 |
+
+| 0.38 | 2026-10-15 | 对齐水平测试 M-17／18 实施与 TC-55 部分、TC-56／57 核心证据，M-19 继续实施 |

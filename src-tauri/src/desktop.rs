@@ -46,6 +46,18 @@ fn assessment_audio_start(app: AppState<'_>, input: crate::assessment::Assessmen
 fn assessment_audio_event(app: AppState<'_>, input: crate::assessment::AssessmentAudioEvent) -> Result<serde_json::Value, AppError> {app.store.assessment_audio_event(&input)}
 #[tauri::command]
 fn assessment_result_correct(app: AppState<'_>, input: crate::assessment::CorrectAssessment) -> Result<serde_json::Value, AppError> {app.store.assessment_correct(&input)}
+#[tauri::command]
+fn assessment_report_get(app: AppState<'_>, session_id:String, report_revision:Option<i64>)->Result<serde_json::Value,AppError>{app.store.assessment_report(&session_id,report_revision)}
+#[tauri::command]
+fn assessment_report_items(app: AppState<'_>, session_id:String, report_revision:i64, offset:usize, limit:usize)->Result<serde_json::Value,AppError>{app.store.assessment_report_items(&session_id,report_revision,offset,limit)}
+#[tauri::command]
+fn assessment_history_list(app: AppState<'_>, offset:usize, limit:usize, comparison_key:Option<String>)->Result<serde_json::Value,AppError>{app.store.assessment_history(offset,limit,comparison_key.as_deref())}
+#[tauri::command]
+fn assessment_compare(app: AppState<'_>, first:String, second:String)->Result<serde_json::Value,AppError>{app.store.assessment_compare(&first,&second)}
+#[tauri::command]
+fn assessment_collection_prepare(app: AppState<'_>,input:crate::assessment_reports::PrepareAssessmentCollection)->Result<crate::assessment_reports::AssessmentCollectionDraft,AppError>{app.store.assessment_collection_prepare(&input)}
+#[tauri::command]
+fn assessment_collection_commit(app: AppState<'_>,input:crate::assessment_reports::CommitAssessmentCollection)->Result<TaskSnapshot,AppError>{app.assessment_collection_commit(input)}
 
 #[tauri::command]
 fn assessment_catalog_get(app: AppState<'_>) -> Result<crate::assessment_bank::CatalogInventory, AppError> {
@@ -1147,6 +1159,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             assessment_preview,assessment_start,assessment_session_get,assessment_session_list,
+            assessment_report_get,assessment_report_items,assessment_history_list,assessment_compare,
+            assessment_collection_prepare,assessment_collection_commit,
             assessment_answer_submit,assessment_session_transition,assessment_audio_start,
             assessment_audio_event,assessment_result_correct,
             assessment_catalog_get,assessment_settings_get,assessment_settings_update,

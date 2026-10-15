@@ -386,3 +386,282 @@ fn tc54_stratified_offline_session_and_resume() {
         "TC-54 OK: six unique known targets, two frequency bands x three types, frozen private snapshots/choices, saved draft and reopen/resume, audio acknowledgements, one answer receipt per position, append-only correction and hint retention, regular vocabulary/review unchanged. No model calls."
     );
 }
+#[test]
+fn tc56_tc57_reports_and_confirmed_collection() {
+    use crate::assessment_reports::*;
+    let (_dir, store) = fixture();
+    let config = AssessmentConfig {
+        word_top_n: 2000,
+        question_count: 6,
+        ..Default::default()
+    };
+    let preview = store.assessment_preview(&config).unwrap();
+    let mut session = store
+        .assessment_start(&StartAssessment {
+            config: config.clone(),
+            expected_inventory_revision: preview.inventory_revision,
+            operation_id: op(),
+        })
+        .unwrap();
+    let mut seen = std::collections::HashMap::<String, usize>::new();
+    while let Some(question) = session.question.clone() {
+        let (_, item, _) =
+            load_item(&store.connection().unwrap(), &question.id, &session.id).unwrap();
+        let count = seen.entry(question.question_type.clone()).or_default();
+        *count += 1;
+        if question.question_type == "listening" {
+            let playback = store
+                .assessment_audio_start(&AssessmentAudioStart {
+                    session_id: session.id.clone(),
+                    item_id: question.id.clone(),
+                    expected_revision: session.revision,
+                    operation_id: op(),
+                })
+                .unwrap();
+            for event in ["started", "ended"] {
+                store
+                    .assessment_audio_event(&AssessmentAudioEvent {
+                        session_id: session.id.clone(),
+                        item_id: question.id.clone(),
+                        playback_id: playback.playback_id.clone(),
+                        operation_id: op(),
+                        event: event.into(),
+                        seconds: if event == "ended" { 0.05 } else { 0.0 },
+                        error: String::new(),
+                    })
+                    .unwrap();
+            }
+        }
+        if question.question_type == "recognition" && *count == 1 {
+            session = store
+                .assessment_transition(&TransitionAssessment {
+                    session_id: session.id.clone(),
+                    expected_revision: session.revision,
+                    operation_id: op(),
+                    action: "request_hint".into(),
+                    item_id: Some(question.id.clone()),
+                    draft_text: String::new(),
+                    draft_option: None,
+                })
+                .unwrap();
+        }
+        let unknown = question.question_type == "recognition" && *count == 2;
+        let option = if question.question_type == "listening" && *count == 2 {
+            item.content
+                .choices
+                .iter()
+                .find(|c| Some(&c.id) != item.content.correct_option_id.as_ref())
+                .map(|c| c.id.clone())
+        } else {
+            item.content.correct_option_id.clone()
+        };
+        session = store
+            .assessment_answer_submit(&AssessmentAnswerInput {
+                session_id: session.id.clone(),
+                item_id: question.id,
+                expected_revision: session.revision,
+                operation_id: op(),
+                action: if unknown { "unknown" } else { "answer" }.into(),
+                option_id: option,
+                text: if question.question_type == "cloze" && *count == 1 {
+                    "reasonable variant for manual review".into()
+                } else {
+                    item.content.target
+                },
+                uncertain: question.question_type == "cloze" && *count == 2,
+            })
+            .unwrap();
+    }
+    let original = store.assessment_report(&session.id, None).unwrap();
+    let counts = &original["report"]["counts"];
+    assert_eq!(
+        (
+            counts["planned"].as_u64(),
+            counts["processed"].as_u64(),
+            counts["unscored"].as_u64(),
+            counts["valid"].as_u64()
+        ),
+        (Some(6), Some(6), Some(1), Some(5))
+    );
+    assert_eq!(counts["correct"], 3);
+    assert_eq!(counts["independentCorrect"], 1);
+    assert_eq!(counts["unknown"], 1);
+    assert_eq!(counts["hinted"], 1);
+    assert_eq!(counts["uncertain"], 1);
+    assert_eq!(original["report"]["status"], "provisional");
+    assert!(
+        original["report"]["byBand"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| g["insufficientSample"] == true)
+    );
+    let initial_revision = original["report"]["revision"].as_i64().unwrap();
+    let page = store
+        .assessment_report_items(&session.id, initial_revision, 0, 20)
+        .unwrap();
+    let pending = page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["answer"]["result"] == "needs_confirmation")
+        .unwrap();
+    let answer_id = pending["answer"]["id"].as_str().unwrap();
+    store
+        .assessment_correct(&CorrectAssessment {
+            answer_id: answer_id.into(),
+            expected_revision: 1,
+            operation_id: op(),
+            result: "correct".into(),
+            add_hint: false,
+            reason: "已核对本题可接受的语境变体。".into(),
+        })
+        .unwrap();
+    let revised = store.assessment_report(&session.id, None).unwrap();
+    assert_eq!(revised["report"]["counts"]["correct"], 4);
+    assert_eq!(revised["report"]["counts"]["valid"], 6);
+    assert_eq!(revised["report"]["counts"]["independentCorrect"], 2);
+    assert_eq!(revised["report"]["status"], "settled");
+    assert_eq!(
+        store
+            .assessment_report(&session.id, Some(initial_revision))
+            .unwrap()["report"],
+        original["report"]
+    );
+    let raw: String = store
+        .connection()
+        .unwrap()
+        .query_row(
+            "SELECT answer_json FROM assessment_answers WHERE id=?",
+            [answer_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(raw.contains("needs_confirmation"));
+    let preview = store.assessment_preview(&config).unwrap();
+    let second = store
+        .assessment_start(&StartAssessment {
+            config,
+            expected_inventory_revision: preview.inventory_revision,
+            operation_id: op(),
+        })
+        .unwrap();
+    // An ordinary early-ended retest remains comparable in configuration and explicitly incomplete.
+    store
+        .assessment_transition(&TransitionAssessment {
+            session_id: second.id.clone(),
+            expected_revision: second.revision,
+            operation_id: op(),
+            action: "end_early".into(),
+            item_id: None,
+            draft_text: String::new(),
+            draft_option: None,
+        })
+        .unwrap();
+    let comparison = store.assessment_compare(&session.id, &second.id).unwrap();
+    assert_eq!(comparison["comparable"], true);
+    assert_eq!(comparison["second"]["counts"]["unanswered"], 6);
+    assert!(comparison["correctRateDelta"].is_null());
+    let history = store.assessment_history(0, 20, None).unwrap();
+    assert_eq!(history["total"], 2);
+    assert_eq!(
+        store.find_entries("word", "bright").unwrap()[0].meanings[0].text,
+        "原人工释义"
+    );
+    let page = store
+        .assessment_report_items(
+            &session.id,
+            revised["report"]["revision"].as_i64().unwrap(),
+            0,
+            20,
+        )
+        .unwrap();
+    let rows = page["items"].as_array().unwrap();
+    let existing = rows
+        .iter()
+        .find(|r| r["item"]["content"]["target"] == "bright")
+        .unwrap();
+    let new = rows
+        .iter()
+        .find(|r| {
+            r["item"]["content"]["target"] != "bright" && r["item"]["questionType"] == "listening"
+        })
+        .unwrap();
+    let items = vec![
+        existing["id"].as_str().unwrap().into(),
+        new["id"].as_str().unwrap().into(),
+    ];
+    let draft = store
+        .assessment_collection_prepare(&PrepareAssessmentCollection {
+            session_id: session.id.clone(),
+            item_ids: items,
+            operation_id: op(),
+        })
+        .unwrap();
+    assert_eq!(
+        store
+            .connection()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM entries", [], |r| r.get::<_, usize>(0))
+            .unwrap(),
+        1
+    );
+    for candidate in &draft.items {
+        let matched = candidate.matches.first();
+        let selection = CollectionSelection {
+            session_item_id: candidate.session_item_id.clone(),
+            target_entry_id: matched.map(|e| e.id.clone()),
+            expected_revision: matched.map(|e| e.revision),
+            meaning: candidate.meaning.clone(),
+            translation: candidate.translation.clone(),
+            save_audio: true,
+        };
+        let receipt = store
+            .assessment_collect_item(&draft.draft_id, &selection)
+            .unwrap();
+        assert_eq!(receipt.created, matched.is_none());
+        let entry = store.get_entry(&receipt.entry_id).unwrap();
+        assert!(entry.examples.iter().any(|e|e.text==candidate.sentence&&e.context_meaning==candidate.translation));
+        if candidate.audio_kind.is_some() {
+            assert!(
+                entry
+                    .examples
+                    .iter()
+                    .any(|e| e.audio.iter().any(|a| a.kind == "system"))
+            );
+        }
+    }
+    let bright = store.find_entries("word", "bright").unwrap().remove(0);
+    assert!(bright.meanings.iter().any(|m| m.text == "原人工释义"));
+    assert!(
+        bright
+            .examples
+            .iter()
+            .any(|e| e.text == "The light is bright.")
+    );
+    let c = store.connection().unwrap();
+    assert_eq!(
+        c.query_row(
+            "SELECT COUNT(*) FROM assessment_collection_links",
+            [],
+            |r| r.get::<_, usize>(0)
+        )
+        .unwrap(),
+        2
+    );
+    assert_eq!(
+        c.query_row(
+            "SELECT COUNT(*) FROM sources WHERE kind='assessment'",
+            [],
+            |r| r.get::<_, usize>(0)
+        )
+        .unwrap(),
+        2
+    );
+    assert_eq!(
+        c.query_row("SELECT COUNT(*) FROM review_attempts", [], |r| r
+            .get::<_, usize>(0))
+            .unwrap(),
+        0
+    );
+}

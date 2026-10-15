@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.23 |
+| 文档版本 | 0.24 |
 | 更新日期 | 2026-10-15 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02；FR-20 至 FR-24 实施中 |
@@ -178,7 +178,9 @@ FR-14 至 FR-18 的 QuerySession、query_results、服务／插件偏好和凭�
 
 FR-20 至 FR-24 的完整数据方案在[高频水平测试设计第 2、6、8 节](vocabulary-assessment.md)维护。Google 参考底库已增加完整 frequency_catalogs/targets（底库 schema 2），个人业务库新增 schema 9，增加 assessment 题库/会话/作答/修正/报告/收录关联及独立同步状态，不改原学习单元和复习投影。
 
-已发布题库与会话快照不可变，接收历史无需安装同一题库；作答、状态和报告修订在事务内保存。用户确认收录后才按原收录事务建立词条关联，引用映射与同步回执保持幂等。009_assessments.sql 已创建这些基础表，并增加 assessment_preparation_targets 检查点与 assessment_operations 幂等回执。当前业务 schema 为 9，Google 底库为 schema 2，ECDICT 保持 schema 1；M-15 只实现题库部分，后续会话／报告／同步逻辑尚未交付。TC-53 已验证合成 schema 8 升级及原词条／人工释义／复习保持，见[增量记录](../testing/vocabulary-assessment-results.md)。
+已发布题库与会话快照不可变，接收历史无需安装同一题库；作答、状态和报告修订在事务内保存。用户确认收录后才按原收录事务建立词条关联，引用映射与同步回执保持幂等。009_assessments.sql 已创建这些基础表，并增加 assessment_preparation_targets 检查点与 assessment_operations 幂等回执。当前业务 schema 为 9，Google 底库为 schema 2，ECDICT 保持 schema 1；M-15 已实现题库，M-16 已接入 assessment_sessions、session_items、answers、corrections 与操作回执；桌面、报告及完整同步尚未交付。TC-53 已验证合成 schema 8 升级及原词条／人工释义／复习保持，见[增量记录](../testing/vocabulary-assessment-results.md)。
+
+M-16 会话 config_json 保存配置，sampling_json 固定来源／seed／配额／抽样及评分策略；session_items.snapshot_json 保存完整私有题目和随机选项，interaction_json 保存草稿、提示及关联 playbackId/播放事实。answer_json 不覆盖，修正追加到 corrections 并递增答案与会话修订；普通重听只更新互动事实。答题及暂停恢复不调用原收录或复习接口。
 
 ## 12 修订记录
 
@@ -207,3 +209,4 @@ FR-20 至 FR-24 的完整数据方案在[高频水平测试设计第 2、6、8 �
 | 0.21 | 2026-10-12 | 增加 schema 8 的独立句子译文，保留旧语境解释并定义空 context 通用义 |
 | 0.22 | 2026-10-14 | 索引水平测试独立领域表、完整词频参考索引及完整历史交换提案，不改当前 schema |
 | 0.23 | 2026-10-15 | 新增 schema 9 assessment 基础迁移，区分表结构与后续逻辑状态 |
+| 0.24 | 2026-10-15 | M-16 使用既有 schema 9 保存会话和追加判分修正，不新增迁移 |

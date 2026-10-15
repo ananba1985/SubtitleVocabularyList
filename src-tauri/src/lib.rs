@@ -1,5 +1,9 @@
 pub mod application;
+pub mod assessment;
 pub mod assessment_bank;
+mod assessment_sampling;
+#[cfg(test)]
+mod assessment_tests;
 #[cfg(test)]
 mod assessment_bank_tests;
 mod base_dictionary;

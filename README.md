@@ -19,8 +19,8 @@
 | [产品需求文档](docs/requirements/PRD.md) | 产品目标、0.1 范围、用户流程、需求和验收标准 |
 | [需求审查记录](docs/requirements/review.md) | 文档层审查与开放事项的推进方式 |
 | [架构设计文档](docs/design/architecture.md) | 已确认的技术栈、系统边界、模块职责、数据与集成设计 |
-| [高频水平测试设计](docs/design/vocabulary-assessment.md) | 题库基础 M-15 已实现；抽样、独立会话/报告、收录和同步继续实施 |
-| [高频水平测试开发计划](docs/planning/vocabulary-assessment-plan.md) | M-15 至 M-19 的依赖、交付和正常验证门槛；M-15 基础通过，其余未完成 |
+| [高频水平测试设计](docs/design/vocabulary-assessment.md) | 题库及会话核心 M-15／M-16 已实现；桌面、报告、收录和同步继续实施 |
+| [高频水平测试开发计划](docs/planning/vocabulary-assessment-plan.md) | M-15 至 M-19 的依赖、交付和正常验证门槛；M-15／M-16 核心通过，后续未完成 |
 | [数据模型设计](docs/design/data-model.md) | 词条、例句、原声、收录、测验及同步数据的关系与一致性 |
 | [应用流程设计](docs/design/application-flows.md) | 预习、采集、确认、播放、测验、专项和异常状态 |
 | [接口契约设计](docs/design/interfaces.md) | 本地命令、任务、错误及外部适配与同步契约 |

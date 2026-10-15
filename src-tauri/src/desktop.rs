@@ -23,6 +23,31 @@ use tauri_plugin_global_shortcut::ShortcutState;
 type AppState<'a> = State<'a, Arc<Application>>;
 
 #[tauri::command]
+async fn assessment_preview(app: AppState<'_>, config: crate::assessment_bank::AssessmentConfig) -> Result<crate::assessment_sampling::AssessmentPreview, AppError> {
+    let app=Arc::clone(app.inner());
+    tauri::async_runtime::spawn_blocking(move||app.store.assessment_preview(&config)).await.map_err(|_|AppError::new("internal_error","测试预览中断，请重试。"))?
+}
+#[tauri::command]
+async fn assessment_start(app: AppState<'_>, input: crate::assessment::StartAssessment) -> Result<crate::assessment::AssessmentSession, AppError> {
+    let app=Arc::clone(app.inner());
+    tauri::async_runtime::spawn_blocking(move||app.store.assessment_start(&input)).await.map_err(|_|AppError::new("internal_error","测试启动中断，请重新读取未完成测试。"))?
+}
+#[tauri::command]
+fn assessment_session_get(app: AppState<'_>, session_id: String) -> Result<crate::assessment::AssessmentSession, AppError> {app.store.assessment_session(&session_id)}
+#[tauri::command]
+fn assessment_session_list(app: AppState<'_>, unfinished_only: bool, offset: usize, limit: usize) -> Result<serde_json::Value, AppError> {app.store.assessment_session_list(unfinished_only,offset,limit)}
+#[tauri::command]
+fn assessment_answer_submit(app: AppState<'_>, input: crate::assessment::AssessmentAnswerInput) -> Result<crate::assessment::AssessmentSession, AppError> {app.store.assessment_answer_submit(&input)}
+#[tauri::command]
+fn assessment_session_transition(app: AppState<'_>, input: crate::assessment::TransitionAssessment) -> Result<crate::assessment::AssessmentSession, AppError> {app.store.assessment_transition(&input)}
+#[tauri::command]
+fn assessment_audio_start(app: AppState<'_>, input: crate::assessment::AssessmentAudioStart) -> Result<crate::assessment::AssessmentPlayback, AppError> {app.store.assessment_audio_start(&input)}
+#[tauri::command]
+fn assessment_audio_event(app: AppState<'_>, input: crate::assessment::AssessmentAudioEvent) -> Result<serde_json::Value, AppError> {app.store.assessment_audio_event(&input)}
+#[tauri::command]
+fn assessment_result_correct(app: AppState<'_>, input: crate::assessment::CorrectAssessment) -> Result<serde_json::Value, AppError> {app.store.assessment_correct(&input)}
+
+#[tauri::command]
 fn assessment_catalog_get(app: AppState<'_>) -> Result<crate::assessment_bank::CatalogInventory, AppError> {
     app.store.assessment_inventory()
 }
@@ -1114,6 +1139,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            assessment_preview,assessment_start,assessment_session_get,assessment_session_list,
+            assessment_answer_submit,assessment_session_transition,assessment_audio_start,
+            assessment_audio_event,assessment_result_correct,
             assessment_catalog_get,assessment_settings_get,assessment_settings_update,
             assessment_bank_prepare,assessment_bank_review,assessment_bank_items,
             app_info,

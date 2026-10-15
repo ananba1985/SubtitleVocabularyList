@@ -3,14 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-ASSESSMENT-001 |
-| 文档版本 | 0.2 |
+| 文档版本 | 0.3 |
 | 更新日期 | 2026-10-15 |
-| 状态 | M-15 题库基础已实现；M-16 至 M-19 继续实施，完整功能未交付 |
+| 状态 | M-15 题库基础、M-16 会话核心已实现；M-17 至 M-19 继续实施，完整功能未交付 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-20 至 FR-24、BR-09 至 BR-11、FR-12、NFR-01 至 NFR-06 |
 | 当前实现基线 | 应用 0.8.0 开发中；业务 schema 9，Google 底库 schema 2／ECDICT schema 1；同步仍为 svl-sync-1 |
 | 关联 | [架构](architecture.md)、[数据模型](data-model.md)、[接口](interfaces.md)、[同步](synchronization.md)、[开发计划](../planning/vocabulary-assessment-plan.md)、TC-53 至 TC-58 |
 
-本文件区分设计目标与实际实施：M-15 已由 assessment_bank.rs、009_assessments.sql 与词频构建器落地，CMD-46 至 CMD-49 已注册；会话、答题、报告、收录及 assessment-1 同步仍在后续阶段。验证见[增量记录](../testing/vocabulary-assessment-results.md)，不以基础完成代替完整功能。
+本文件区分设计目标与实际实施：M-15 已由 assessment_bank.rs、009_assessments.sql 与词频构建器落地，CMD-46 至 CMD-49 已注册；assessment.rs／assessment_sampling.rs 已实现会话、抽样、作答、媒体事件及追加修正；桌面界面、报告、收录及 assessment-1 同步仍在后续阶段。验证见[增量记录](../testing/vocabulary-assessment-results.md)，不以基础完成代替完整功能。
 
 ## 1 设计决策与模块边界
 
@@ -72,6 +72,8 @@ M-15 已固定组合来源为 [Norvig 公开双词频次子集](https://norvig.c
 
 开始时校验预览版本，核心产生 seed，在“内容类别 × 频段 × 题型”配额内按随机优先序做无重复分配，同一明确词元在一场测试中只占一个位置。实现须检查完整配额可满足，不能只贪心取前若干项后静默缩量；不足返回具体层和数量，用户调整后重新预览。选项顺序独立随机并冻结。保存 seed、实际项目、来源、配额、重复标记和策略，重开不重新抽题。
 
+M-16 实际采用增广匹配完成全部配额，同类词元在所有题型间只占一个位置；先分配非近期目标，不足再在原频段补入。余数在固定内容／频段顺序中轮转分配给题型，避免小配额总落在首题型。预览分别返回 planned、available、unfilled、覆盖与重复提示，存量已掌握状态不参与筛选。开始事务内再次核对 inventoryRevision，冻结 seed、来源、配额、实际题目、选项和 assessment-score-1。选项原 ID 替换为每场不含答案含义的稳定 ID，题序和选项序均冻结。
+
 ## 4 交互与会话状态
 
 新增主导航“水平测试”。首页以快速开始、范围摘要和继续未完成测试为主；配置编辑、题库准备/核对、来源和历史默认收起。组合未准备时说明状态，用户可自行改测单词，不暗自切换。
@@ -110,7 +112,7 @@ M-15 已固定组合来源为 [Norvig 公开双词频次子集](https://norvig.c
 
 ## 6 数据模型与事务提案
 
-个人数据仍在当前安装目录的 `Data/vocabulary.sqlite3`。009_assessments.sql 已新增 schema 9 的基础表，不复用 review_attempts/review_states 保存水平测试。M-15 已使用题库、题目、准备检查点与操作回执；会话／报告／同步表是后续实现基础，表存在不表示功能已实现。原词条、解释、媒体、原复习及同步记录保持。
+个人数据仍在当前安装目录的 `Data/vocabulary.sqlite3`。009_assessments.sql 已新增 schema 9 的基础表，不复用 review_attempts/review_states 保存水平测试。M-15 已使用题库、题目、准备检查点与操作回执；会话／题目快照／作答／修正已接入 M-16 核心，报告／同步表仍是后续实现基础。原词条、解释、媒体、原复习及同步记录保持。
 
 | 表 | 关键字段／约束 |
 | --- | --- |
@@ -135,7 +137,7 @@ M-15 已固定组合来源为 [Norvig 公开双词频次子集](https://norvig.c
 
 ## 7 本地命令提案
 
-CMD-46 至 CMD-49 已注册，另有 assessment_bank_items 分页读取候选题；CMD-50 至 CMD-60 尚未注册。请求/响应 camelCase，分页和 AppError 沿用现行契约；字段类型实施时进入 Rust 和 TypeScript，不由浏览器保存事实。所有变更命令使用 operationId，编辑已有事实另带 expectedRevision。
+CMD-46 至 CMD-55、CMD-57 已注册，另有 assessment_bank_items 分页读取候选题、assessment_session_list 读取待继续会话；CMD-56、CMD-58 至 CMD-60 继续实施。请求/响应 camelCase，分页和 AppError 沿用现行契约；字段类型实施时进入 Rust 和 TypeScript，不由浏览器保存事实。所有变更命令使用 operationId，编辑已有事实另带 expectedRevision。
 
 | 编号 | 命令 | 关键输入 → 输出 |
 | --- | --- | --- |
@@ -183,7 +185,7 @@ CMD-46 至 CMD-49 已注册，另有 assessment_bank_items 分页读取候选题
 
 ## 10 需求、阶段与最小验证追溯
 
-| 需求 | 设计位置 | 开发阶段 | 对应场景（TC-53 基础通过，其余未执行） |
+| 需求 | 设计位置 | 开发阶段 | 对应场景（TC-53、TC-54 核心通过，其余未执行） |
 | --- | --- | --- | --- |
 | FR-20 | §2、§3、§4、CMD-46/47/50/51 | M-15 至 M-17 | TC-53、TC-54、TC-55 |
 | FR-21 | §2、§6、CMD-48/49 | M-15 | TC-53 |
@@ -191,7 +193,7 @@ CMD-46 至 CMD-49 已注册，另有 assessment_bank_items 分页读取候选题
 | FR-23 | §5、§6、§8 | M-18、M-19 | TC-56、TC-58 |
 | FR-24 | §6、§8、CMD-59/60 | M-18 | TC-57 |
 
-详细执行顺序、阶段门槛和当前状态唯一维护在[开发计划](../planning/vocabulary-assessment-plan.md)。M-15 已执行 TC-53、真实来源索引生成及桌面命令编译；没有运行日常资料迁移、安装或站点操作。设计中的恢复、冲突及缺项规则不自动授权故障注入、压力、兼容矩阵或测量校准实验。
+详细执行顺序、阶段门槛和当前状态唯一维护在[开发计划](../planning/vocabulary-assessment-plan.md)。已执行 TC-53、TC-54、真实来源索引生成及桌面命令编译；没有运行日常资料迁移、安装或站点操作。设计中的恢复、冲突及缺项规则不自动授权故障注入、压力、兼容矩阵或测量校准实验。
 
 ## 11 修订记录
 
@@ -199,3 +201,4 @@ CMD-46 至 CMD-49 已注册，另有 assessment_bank_items 分页读取候选题
 | --- | --- | --- |
 | 0.1 | 2026-10-14 | 按 FR-20 至 FR-24 定义完整词频索引、题库、分层抽样、独立会话/报告、确认收录及同步提案 |
 | 0.2 | 2026-10-15 | 记录 M-15 实现和 TC-53；完整测试及同步仍未交付 |
+| 0.3 | 2026-10-15 | 记录配额匹配、私有快照、离线判分及 CMD-50 至 CMD-55／57 核心 |

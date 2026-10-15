@@ -3,14 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-ASSESSMENT-001 |
-| 文档版本 | 0.3 |
+| 文档版本 | 0.4 |
 | 更新日期 | 2026-10-15 |
 | 状态 | M-15 题库基础、M-16 会话核心已实现；M-17 至 M-19 继续实施，完整功能未交付 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-20 至 FR-24、BR-09 至 BR-11、FR-12、NFR-01 至 NFR-06 |
 | 当前实现基线 | 应用 0.8.0 开发中；业务 schema 9，Google 底库 schema 2／ECDICT schema 1；同步仍为 svl-sync-1 |
 | 关联 | [架构](architecture.md)、[数据模型](data-model.md)、[接口](interfaces.md)、[同步](synchronization.md)、[开发计划](../planning/vocabulary-assessment-plan.md)、TC-53 至 TC-58 |
 
-本文件区分设计目标与实际实施：M-15 已由 assessment_bank.rs、009_assessments.sql 与词频构建器落地，CMD-46 至 CMD-49 已注册；assessment.rs／assessment_sampling.rs 已实现会话、抽样、作答、媒体事件及追加修正；桌面界面、报告、收录及 assessment-1 同步仍在后续阶段。验证见[增量记录](../testing/vocabulary-assessment-results.md)，不以基础完成代替完整功能。
+本文件区分设计目标与实际实施：M-15 已由 assessment_bank.rs、009_assessments.sql 与词频构建器落地，CMD-46 至 CMD-49 已注册；assessment.rs／assessment_sampling.rs 已实现会话、抽样、作答、媒体事件及追加修正；桌面界面已接入三题型和题库管理；报告、收录及 assessment-1 同步仍在后续阶段。验证见[增量记录](../testing/vocabulary-assessment-results.md)，不以基础完成代替完整功能。
 
 ## 1 设计决策与模块边界
 
@@ -202,3 +202,9 @@ CMD-46 至 CMD-55、CMD-57 已注册，另有 assessment_bank_items 分页读取
 | 0.1 | 2026-10-14 | 按 FR-20 至 FR-24 定义完整词频索引、题库、分层抽样、独立会话/报告、确认收录及同步提案 |
 | 0.2 | 2026-10-15 | 记录 M-15 实现和 TC-53；完整测试及同步仍未交付 |
 | 0.3 | 2026-10-15 | 记录配额匹配、私有快照、离线判分及 CMD-50 至 CMD-55／57 核心 |
+
+### M-17 实施补充
+
+AssessmentView 默认聚焦开始与继续，配置、覆盖和题库管理按需展开；AssessmentQuestionPanel 接入私有题面、绑定播放回执、草稿、暂停和追加修正。AssessmentBankManager 显式核对／批准／发布，系统录音文本须与目标及例句一致，修改后可通过 assessment_bank_audio_prepare 重新生成。题库准备继续复用全局模型池；批请求按题量采用有界等待并支持取消、重试，项目自拟候选先保存。实际桌面流程记录于 TC-55 增量，真人听感及模型成功请求按用户要求延期。
+
+| 0.4 | 2026-10-15 | 记录 M-17 桌面入口、题库审核、三题型和语音一致性，保留人工验收待办 |

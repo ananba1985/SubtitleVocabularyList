@@ -13,6 +13,7 @@ import { CollectionModal } from "./components/CollectionModal";
 import { LibraryView } from "./components/LibraryView";
 import { EpisodesView, type EpisodePanel } from "./components/EpisodesView";
 import { ReviewView } from "./components/ReviewView";
+import { AssessmentView } from "./components/AssessmentView";
 import { SyncView } from "./components/SyncView";
 import { TasksView } from "./components/TasksView";
 import { KnownTargetsManager } from "./components/KnownTargetsManager";
@@ -25,6 +26,7 @@ type Tab =
   | "episodes"
   | "practice"
   | "reviews"
+  | "assessment"
   | "leech"
   | "sync"
   | "tasks"
@@ -172,6 +174,7 @@ export default function App() {
               ["episodes", "观看前预习"],
               ["practice", "听读练习"],
               ["reviews", "主动回忆测验"],
+              ["assessment", "水平测试"],
               ["leech", "易忘词专项"],
               ["sync", "站点同步"],
               ["tasks", "后台任务"],
@@ -213,11 +216,11 @@ export default function App() {
         </div>
       </aside>
       <main
-        className={`workspace${tab === "practice" ? " workspace-practice" : ""}`}
+        className={`workspace${tab === "practice" ? " workspace-practice" : tab === "assessment" ? " workspace-assessment" : ""}`}
       >
         <header className="workspace-header">
           <div>
-            {tab !== "episodes" && tab !== "practice" && (
+            {tab !== "episodes" && tab !== "practice" && tab !== "assessment" && (
               <p className="eyebrow">英语学习，从真实语境开始</p>
             )}
             <h1>
@@ -227,6 +230,7 @@ export default function App() {
                   episodes: "观看前预习",
                   practice: "听读练习",
                   reviews: "主动回忆测验",
+                  assessment: "水平测试",
                   leech: "易忘词专项",
                   sync: "站点同步",
                   tasks: "后台任务",
@@ -365,6 +369,7 @@ export default function App() {
             refreshKey={refreshKey}
           />
         )}
+        {tab === "assessment" && <AssessmentView dataDirectory={info?.dataDirectory ?? ""} tasks={tasks} showTasks={() => setTab("tasks")} />}
         {tab === "practice" && info && (
           <PracticeView
             dataDirectory={info.dataDirectory}

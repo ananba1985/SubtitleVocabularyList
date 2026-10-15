@@ -1,3 +1,5 @@
+export type * from "./assessmentTypes";
+
 export interface AppInfo {
   version: string;
   dataDirectory: string;

@@ -115,7 +115,7 @@ fn fixture() -> (tempfile::TempDir, Store) {
                             kind: "system".into(),
                             relative_path: "media/fixture.wav".into(),
                             sha256: digest(&wave),
-                            text: sentence.clone(),
+                            text: format!("{}. {}", target.text, sentence),
                             voice_id: "synthetic-test-only".into(),
                             asset_id: None,
                         }),

@@ -71,6 +71,13 @@ fn assessment_bank_review(app: AppState<'_>, input: crate::assessment_bank::Revi
 fn assessment_bank_items(app: AppState<'_>, bank_id: String, state: Option<String>, offset: usize, limit: usize) -> Result<crate::assessment_bank::BankPage, AppError> {
     app.store.assessment_bank_items(&bank_id, state.as_deref(), offset, limit)
 }
+#[tauri::command]
+fn assessment_bank_audio_prepare(app: AppState<'_>, input: AssessmentBankAudioInput) -> Result<TaskSnapshot, AppError> {
+    app.inner().assessment_bank_audio_prepare(input.content, input.operation_id)
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase")]
+struct AssessmentBankAudioInput {content: crate::assessment_bank::QuestionDraft, operation_id:String}
 
 #[derive(Default)]
 struct TrayAction(Mutex<Option<String>>);
@@ -1144,6 +1151,7 @@ pub fn run() {
             assessment_audio_event,assessment_result_correct,
             assessment_catalog_get,assessment_settings_get,assessment_settings_update,
             assessment_bank_prepare,assessment_bank_review,assessment_bank_items,
+            assessment_bank_audio_prepare,
             app_info,
             translation_open,translation_session_open,translation_session_get,translation_query_start,translation_query_cancel,
             translation_window_hide,translation_window_pin,translation_collect,query_copy,

@@ -93,6 +93,14 @@ pub struct TaskContext {
 }
 
 impl TaskContext {
+    pub fn message(&self, stage: &str, value: &str) {
+        let _ = self.manager.update(&self.task_id, |snapshot| {
+            if !snapshot.terminal() && snapshot.state != "cancel_requested" {
+                snapshot.stage = stage.into();
+                snapshot.message = value.into();
+            }
+        });
+    }
     pub fn subject(&self, value: &str) {
         let _ = self.manager.update(&self.task_id, |snapshot| {
             snapshot.subject = Some(value.chars().take(240).collect());

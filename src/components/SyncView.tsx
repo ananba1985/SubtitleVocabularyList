@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { call, message, uid, waitTask } from "../api";
 import type {
+  AssessmentSyncStatus,
+  AssessmentSyncConflict,
+} from "../assessmentTypes";
+import { assessmentStateNames } from "../assessmentTypes";
+import type {
   ConnectionStatus,
   TaskSnapshot,
   SyncStatus,
@@ -28,15 +33,26 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
     [targets, setTargets] = useState<Record<string, string>>({}),
     [taskId, setTaskId] = useState<string | null>(null),
     [notice, setNotice] = useState("");
+  const [assessment, setAssessment] = useState<AssessmentSyncStatus | null>(
+    null,
+  );
+  const [assessmentConflicts, setAssessmentConflicts] = useState<
+    AssessmentSyncConflict[]
+  >([]);
   const refresh = useCallback(async () => {
-    const [next, progress, pending] = await Promise.all([
-      call<ConnectionStatus>("connection_status"),
-      call<SyncStatus>("sync_status"),
-      call<SyncConflict[]>("sync_conflicts"),
-    ]);
+    const [next, progress, pending, assessmentStatus, assessmentPending] =
+      await Promise.all([
+        call<ConnectionStatus>("connection_status"),
+        call<SyncStatus>("sync_status"),
+        call<SyncConflict[]>("sync_conflicts"),
+        call<AssessmentSyncStatus>("assessment_sync_status"),
+        call<AssessmentSyncConflict[]>("assessment_sync_conflicts"),
+      ]);
     setConnection(next);
     setStatus(progress);
     setConflicts(pending);
+    setAssessment(assessmentStatus);
+    setAssessmentConflicts(assessmentPending);
   }, []);
   useEffect(() => {
     refresh().catch((e) => setError(message(e)));
@@ -69,8 +85,9 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
       });
       setTaskId(task.id);
       const result = await waitTask<SyncResult>(task);
+      const a = result.assessment;
       setNotice(
-        `已拉取 ${result.pulled} 次变更，发送 ${result.pushed} 份资料。${result.conflicts ? `还有 ${result.conflicts} 项需要确认。` : ""}`,
+        `已拉取 ${result.pulled} 次词条变更，发送 ${result.pushed} 份词条资料。${result.conflicts ? `还有 ${result.conflicts} 项词条需要确认。` : ""}${a ? (a.capability !== "assessment-1" && a.pending ? "水平测试记录仍待站点支持。" : `水平测试：${a.pending} 次待发送，${a.conflicts} 次冲突，${a.pendingReferences} 处词条关联待同步。`) : ""}`,
       );
       onChanged();
     } catch (e) {
@@ -112,6 +129,29 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
       setBusy(false);
     }
   }
+  async function keepAssessmentBoth(conflict: AssessmentSyncConflict) {
+    setBusy(true);
+    setError("");
+    try {
+      await call("assessment_sync_keep_both", {
+        input: {
+          sessionId: conflict.sessionId,
+          expectedLocalRevision: conflict.localRevision,
+          expectedRemoteRevision: conflict.remoteRevision,
+          operationId: uid(),
+        },
+      });
+      await refresh();
+      onChanged();
+      setNotice(
+        "已保留两份测试记录，本地副本已标记。再次同步即可发送副本；个人词库和收录次数保持不变。",
+      );
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   function summary(bundle: SyncBundle | null) {
     if (!bundle) return <p className="muted">尚未建立本地关联</p>;
     return (
@@ -146,7 +186,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
     <section className="settings-panel">
       <h2>English Practice</h2>
       <p>
-        连接后可交换词条、释义、例句、原声和学习记录。剧集文件、未收录对白、截图和系统语音缓存不会上传。
+        连接后可交换词条、释义、例句、原声、学习记录及完整水平测试历史。剧集文件、未收录对白、截图和系统语音缓存不会上传。
       </p>
       {error && (
         <p className="error" role="alert">
@@ -243,11 +283,62 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
               {status.pending} 个词条待同步 · {status.conflicts} 项待确认
             </p>
           )}
+          {assessment && (
+            <p className="muted">
+              水平测试：{assessment.pending} 次待发送 · {assessment.conflicts}{" "}
+              次冲突 · {assessment.pendingReferences} 处词条关联待完成
+              {assessment.pending > 0 &&
+              assessment.capability !== "assessment-1"
+                ? "；站点能力待检查或尚未支持，测试记录仍保留在本机。"
+                : ""}
+            </p>
+          )}
+          {assessmentConflicts.map((conflict) => (
+            <article className="suggestion" key={conflict.sessionId}>
+              <h3>水平测试记录需要处理</h3>
+              <p>{conflict.reason}</p>
+              <div className="sync-comparison">
+                {(
+                  [
+                    ["本地记录", conflict.local],
+                    ["网站记录", conflict.remote],
+                  ] as const
+                ).map(([title, side]) => (
+                  <section key={title}>
+                    <h4>{title}</h4>
+                    <p>
+                      {assessmentStateNames[side.state] ?? side.state} · 已答{" "}
+                      {side.answers}/{side.planned} 题
+                    </p>
+                    <p className="muted">
+                      {side.corrections} 条修正 · {side.reports} 份报告
+                    </p>
+                  </section>
+                ))}
+              </div>
+              <details>
+                <summary>如何保留记录</summary>
+                <p>
+                  网站记录保留原会话编号，本地内容另存为已标记副本。原始两份资料完整存档；副本不作为新的独立复测，也不会重复收录词条。
+                </p>
+              </details>
+              <button
+                disabled={busy}
+                onClick={() => void keepAssessmentBoth(conflict)}
+              >
+                保留两份
+              </button>
+            </article>
+          ))}
           {conflicts.map((conflict) => (
             <article className="suggestion" key={conflict.id}>
               <h3>{conflict.text}</h3>
-              <p>{conflict.reason.replace(/(entry|meanings|examples|sources)\.[a-z_]+/g,
-                (field) => conflictFields[field] ?? "同一项资料")}</p>
+              <p>
+                {conflict.reason.replace(
+                  /(entry|meanings|examples|sources)\.[a-z_]+/g,
+                  (field) => conflictFields[field] ?? "同一项资料",
+                )}
+              </p>
               <div className="sync-comparison">
                 <section>
                   <h4>本地资料</h4>

@@ -134,7 +134,7 @@ mod tests {
                 .unwrap()
                 .schema_version()
                 .unwrap(),
-            8
+            9
         );
     }
 

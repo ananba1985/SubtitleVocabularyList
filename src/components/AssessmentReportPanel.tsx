@@ -9,10 +9,14 @@ import type {
   AssessmentReportGroup,
   AssessmentReportItem,
 } from "../assessmentTypes";
-import { assessmentStateNames, assessmentTypeNames } from "../assessmentTypes";
+import {
+  assessmentStateNames,
+  assessmentTypeNames,
+  assessmentScopeLabel,
+} from "../assessmentTypes";
 import { AssessmentFeedbackCard } from "./AssessmentQuestionPanel";
 import { AssessmentCollectionPanel } from "./AssessmentCollectionPanel";
-import { AudioPlayer } from "./AudioPlayer";
+import { AssessmentHistoryAudio } from "./AssessmentHistoryAudio";
 const rate = (value: number | null) =>
   value === null ? "暂无有效结果" : `${(value * 100).toFixed(1)}%`;
 const resultNames: Record<string, string> = {
@@ -58,12 +62,10 @@ function GroupTable({ groups }: { groups: AssessmentReportGroup[] }) {
 }
 export function AssessmentReportPanel({
   sessionId,
-  dataDirectory,
   onExit,
   onRetest,
 }: {
   sessionId: string;
-  dataDirectory: string;
   onExit: () => void;
   onRetest: (config: AssessmentConfig) => void;
 }) {
@@ -159,10 +161,14 @@ export function AssessmentReportPanel({
       <div className="assessment-line">
         <div>
           <h2>本次抽样表现</h2>
+          <p>{assessmentScopeLabel(report.config)} · 已准备题目抽样</p>
           <p className="muted">
             {new Date(report.createdAt).toLocaleString()} ·{" "}
             {assessmentStateNames[report.state]} ·{" "}
             {report.status === "provisional" ? "暂定判分" : "判分已确定"}
+            {report.warnings.some((w) => w.startsWith("保留副本："))
+              ? " · 保留副本（非独立复测）"
+              : ""}
           </p>
         </div>
         <div className="actions">
@@ -208,7 +214,12 @@ export function AssessmentReportPanel({
           report.status === "provisional"
         }
       >
-        <summary>样本与计分说明</summary>
+        <summary>
+          样本与计分说明
+          {report.coverage.some((v) => v.missingTargets > 0)
+            ? " · 题库覆盖未齐"
+            : ""}
+        </summary>
         {report.warnings.map((w, n) => (
           <p key={n} className="muted">
             {w}
@@ -218,6 +229,7 @@ export function AssessmentReportPanel({
           已处理 = 有效 +
           未计分；不知道和错误计入有效分母。无提示且确定的正确率使用相同分母。不确定和提示数可重叠，不能相加当成题数。
         </p>
+        <p className="muted">题库版本：{report.bankVersions.join("、")}</p>
         <p className="muted">
           评分依据：{report.scorePolicy} · 近期重复 {report.repeatedTargets}
         </p>
@@ -253,9 +265,9 @@ export function AssessmentReportPanel({
               }}
             >
               <option value="">最新修订</option>
-              {revisions.map((r) => (
+              {revisions.map((r, index) => (
                 <option key={r} value={r}>
-                  修订 {r}
+                  历史报告 {index + 1}
                 </option>
               ))}
             </select>
@@ -398,13 +410,10 @@ export function AssessmentReportPanel({
                   </>
                 )}
                 {d.audio && (
-                  <AudioPlayer
-                    path={`${dataDirectory}/${d.audio.relativePath}`}
-                    label={
-                      d.audio.kind === "original"
-                        ? "真实原声"
-                        : "Windows 本地英语语音"
-                    }
+                  <AssessmentHistoryAudio
+                    sessionId={sessionId}
+                    itemId={row.id}
+                    kind={d.audio.kind}
                   />
                 )}
                 {row.originalAnswer && (

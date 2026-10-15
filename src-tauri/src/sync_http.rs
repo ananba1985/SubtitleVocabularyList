@@ -26,6 +26,7 @@ struct HttpRemote {
     credential: SiteCredential,
     client: Client,
     supports_chunks: bool,
+    supports_assessments: bool,
     cancelled: Option<Arc<AtomicBool>>,
 }
 fn failure(code: &str, message: &str) -> AppError {
@@ -62,6 +63,7 @@ impl HttpRemote {
             credential,
             client: crate::site_connection::desktop_client()?,
             supports_chunks: false,
+            supports_assessments: false,
             cancelled: None,
         })
     }
@@ -125,11 +127,127 @@ impl HttpRemote {
         self.supports_chunks = v["packetTransport"].as_str() == Some("chunks-1")
             && v["packetChunkBytes"].as_u64() == Some(CHUNK_BYTES as u64)
             && v["maxPacketBytes"].as_u64() == Some(MAX_PACKET_BYTES as u64);
+        self.supports_assessments = v["assessmentSync"].as_str() == Some("assessment-1");
+        self.app
+            .store
+            .assessment_sync_capability(&self.scope(), v["assessmentSync"].as_str())?;
         Ok(())
     }
     fn get(&mut self, path: &str) -> Result<Value, AppError> {
         Transport::new(&self.client, &self.site, &self.credential.token)
             .fetch(path, || self.check())
+    }
+    fn receive_assessment(
+        &mut self,
+        scope: &str,
+        document: &crate::assessment_sync::AssessmentDocument,
+    ) -> Result<(), AppError> {
+        document.bundle.validate()?;
+        for media in &document.bundle.media {
+            self.check()?;
+            if let Ok(bytes) = self
+                .app
+                .store
+                .assessment_sync_media(&media.digest, &media.format)
+            {
+                self.app.store.assessment_save_remote_media(media, &bytes)?;
+                continue;
+            }
+            let bytes = self.download(&media.digest, &media.format)?;
+            self.app.store.assessment_save_remote_media(media, &bytes)?;
+        }
+        self.app.store.assessment_sync_receive(scope, document)?;
+        Ok(())
+    }
+    fn sync_assessments(
+        &mut self,
+        scope: &str,
+        context: &crate::tasks::TaskContext,
+    ) -> Result<crate::assessment_sync::AssessmentSyncStatus, AppError> {
+        if !self.supports_assessments {
+            return self.app.store.assessment_sync_status(scope);
+        }
+        let mut cursor = self.app.store.assessment_sync_status(scope)?.cursor;
+        loop {
+            context.check_cancelled()?;
+            let page = self.get(&format!("/api/svl/v1/assessments/changes?after={cursor}"))?;
+            let changes = page["changes"]
+                .as_array()
+                .ok_or_else(|| failure("invalid_data", "测试历史游标响应无效。"))?;
+            for change in changes {
+                let next = change["cursor"]
+                    .as_i64()
+                    .filter(|v| *v > cursor)
+                    .ok_or_else(|| failure("invalid_data", "测试历史游标没有推进。"))?;
+                context.progress(
+                    "assessment_pull",
+                    cursor as usize,
+                    0,
+                    "正在保存完整水平测试历史",
+                );
+                let document: crate::assessment_sync::AssessmentDocument = serde_json::from_value(
+                    self.get(&format!("/api/svl/v1/assessments/changes/{next}"))?,
+                )?;
+                if change["sessionId"].as_str() != Some(document.session_id.as_str())
+                    || change["revision"].as_i64() != Some(document.revision)
+                {
+                    return Err(failure("invalid_data", "测试历史变更关联无效。"));
+                }
+                self.receive_assessment(scope, &document)?;
+                self.app.store.assessment_sync_cursor(scope, next)?;
+                cursor = next;
+            }
+            if changes.len() < 50 {
+                break;
+            }
+        }
+        // A confirmed version conflict may create one merged append. Unknown responses keep the same frozen push.
+        for _ in 0..2 {
+            let pushes = self.app.store.assessment_freeze_pushes(scope)?;
+            if pushes.is_empty() {
+                break;
+            }
+            for push in pushes {
+                context.check_cancelled()?;
+                context.progress(
+                    "assessment_push",
+                    0,
+                    0,
+                    "正在发送完整水平测试会话、作答和报告",
+                );
+                for media in &push.bundle.media {
+                    let bytes = self
+                        .app
+                        .store
+                        .assessment_sync_media(&media.digest, &media.format)?;
+                    self.upload(&media.digest, &media.format, bytes)?;
+                }
+                let (status, value) =
+                    Transport::new(&self.client, &self.site, &self.credential.token).push_value(
+                        &format!("/api/svl/v1/assessments/{}", push.bundle.session.id),
+                        &serde_json::to_value(&push)?,
+                        self.supports_chunks,
+                        || self.check(),
+                    )?;
+                self.check()?;
+                if value["sessionId"].as_str() != Some(push.bundle.session.id.as_str()) {
+                    return Err(failure("invalid_data", "测试回执会话标识不一致。"));
+                }
+                if status == 409 {
+                    let document: crate::assessment_sync::AssessmentDocument =
+                        serde_json::from_value(value)?;
+                    self.receive_assessment(scope, &document)?;
+                } else {
+                    let revision = value["revision"]
+                        .as_i64()
+                        .ok_or_else(|| failure("invalid_data", "测试回执缺少版本。"))?;
+                    self.app
+                        .store
+                        .assessment_sync_saved(scope, &push, revision)?;
+                }
+            }
+        }
+        self.app.store.assessment_sync_status(scope)
     }
 }
 impl Remote for HttpRemote {
@@ -247,6 +365,55 @@ impl Remote for HttpRemote {
     }
 }
 impl Application {
+    pub fn assessment_sync_keep_both(
+        &self,
+        input: &crate::assessment_sync::KeepAssessmentBoth,
+    ) -> Result<Value, AppError> {
+        let _guard = self
+            .sync_guard
+            .try_lock()
+            .map_err(|_| failure("busy", "同步正在进行，请稍后处理冲突。"))?;
+        let site = site_origin(&self.settings()?.site_url)?;
+        let c = credentials::load(self.store.root(), &site)?
+            .filter(|c| c.account_scope.is_some())
+            .ok_or_else(|| failure("not_connected", "请先连接原账号。"))?;
+        self.store
+            .assessment_sync_keep_both(&format!("{site}|{}", c.account_scope.unwrap()), input)
+    }
+    pub fn assessment_sync_conflicts(&self) -> Result<Vec<Value>, AppError> {
+        let settings = self.settings()?;
+        let site = site_origin(&settings.site_url)?;
+        if let Some(c) =
+            credentials::load(self.store.root(), &site)?.filter(|c| c.account_scope.is_some())
+        {
+            self.store
+                .assessment_sync_conflicts(&format!("{site}|{}", c.account_scope.unwrap()))
+        } else {
+            Ok(vec![])
+        }
+    }
+    pub fn assessment_sync_status(
+        &self,
+    ) -> Result<crate::assessment_sync::AssessmentSyncStatus, AppError> {
+        let settings = self.settings()?;
+        let site = site_origin(&settings.site_url)?;
+        if let Some(c) =
+            credentials::load(self.store.root(), &site)?.filter(|c| c.account_scope.is_some())
+        {
+            self.store
+                .assessment_sync_status(&format!("{site}|{}", c.account_scope.unwrap()))
+        } else {
+            let pending = self.store.connection()?.query_row(
+                "SELECT COUNT(*) FROM assessment_sessions",
+                [],
+                |r| r.get(0),
+            )?;
+            Ok(crate::assessment_sync::AssessmentSyncStatus {
+                pending,
+                ..Default::default()
+            })
+        }
+    }
     pub fn sync_status(&self) -> Result<SyncStatus, AppError> {
         let settings = self.settings()?;
         let site = site_origin(&settings.site_url)?;
@@ -297,7 +464,10 @@ impl Application {
                         },
                     )
                 })?;
-            Ok(serde_json::to_value(result)?)
+            let assessment = remote.sync_assessments(&scope, &context)?;
+            let mut result = serde_json::to_value(result)?;
+            result["assessment"] = serde_json::to_value(assessment)?;
+            Ok(result)
         })
     }
     pub fn sync_resolve(
@@ -742,6 +912,288 @@ mod live_recovery_tests {
                 .unwrap()
                 .len(),
             1
+        );
+    }
+    #[test]
+    #[ignore = "Requires the approved real account, assessment-1 deployment and a private original clip"]
+    fn actual_assessment_complete_history_roundtrip() {
+        use crate::{assessment::*, assessment_bank::*, assessment_reports::*};
+        use rusqlite::{Connection, OptionalExtension, params};
+        let credential_root = PathBuf::from(
+            std::env::var_os("SVL_LIVE_CREDENTIAL_ROOT").expect("approved credential directory"),
+        );
+        let root = PathBuf::from(
+            std::env::var_os("SVL_ASSESSMENT_LIVE_ROOT")
+                .expect("dedicated persistent test directory"),
+        );
+        let audio = std::fs::read(
+            std::env::var_os("SVL_LIVE_AUDIO_FIXTURE").expect("previously confirmed original clip"),
+        )
+        .unwrap();
+        let credential = credentials::load(
+            &credential_root,
+            "https://english-copy-practice.hxwjb.chatgpt.site",
+        )
+        .unwrap()
+        .expect("existing real approval");
+        std::fs::create_dir_all(root.join("source/dictionaries")).unwrap();
+        let reference = root.join("source/dictionaries/base.sqlite3");
+        if !reference.exists() {
+            let c = Connection::open(reference).unwrap();
+            c.execute_batch("CREATE TABLE dictionary_entries(word TEXT,meaning TEXT);CREATE TABLE dictionary_aliases(form TEXT,lemma TEXT);CREATE TABLE metadata(key TEXT,value TEXT);INSERT INTO metadata VALUES('source','TC-58 transport fixture');CREATE TABLE frequency_catalogs(id TEXT,kind TEXT,title TEXT,source_url TEXT,source_version TEXT,source_sha256 TEXT,rank_unit TEXT,raw_rows INTEGER,max_rank INTEGER,notice TEXT);INSERT INTO frequency_catalogs VALUES('tc58','phrase','TC-58 传输验收合成范围','https://github.com/ananba1985/SubtitleVocabularyList','fixture-1','fixture','fixture_rank',1,1,'仅用于真实传输技术验收，不代表词频排名或用户水平');CREATE TABLE frequency_targets(catalog_id TEXT,rank INTEGER,text TEXT,target_key TEXT,lexeme_key TEXT,mapping_basis TEXT,frequency INTEGER,eligible INTEGER,seed_json TEXT);INSERT INTO frequency_targets VALUES('tc58',1,'Kids, breakfast!','kids, breakfast!','kids, breakfast!','identity',NULL,1,NULL);").unwrap();
+        }
+        let source = application(&root.join("source"), &credential);
+        let existing: Option<String> = source
+            .store
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT value_json FROM settings WHERE key='tc58_session'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap();
+        let session_id = if let Some(id) = existing {
+            serde_json::from_str::<String>(&id).unwrap()
+        } else {
+            std::fs::write(source.store.root().join("media/tc58-original.m4a"), &audio).unwrap();
+            let bank = Uuid::new_v4().to_string();
+            let sources = source.store.assessment_catalogs().unwrap();
+            source.store.connection().unwrap().execute("INSERT INTO assessment_banks(id,state,sources_json,policy_version,created_at) VALUES (?,'draft',?,?,?)",params![bank,serde_json::to_string(&sources).unwrap(),POLICY,chrono::Utc::now().timestamp_millis()]).unwrap();
+            let target = source
+                .store
+                .assessment_targets("tc58", 1)
+                .unwrap()
+                .remove(0);
+            source
+                .store
+                .assessment_save_candidates(
+                    &bank,
+                    &target,
+                    &[(
+                        "cloze".into(),
+                        QuestionDraft {
+                            target: target.text.clone(),
+                            meaning: "孩子们，吃早饭啦！".into(),
+                            sentence: "[ Claire ]\nKids, breakfast!".into(),
+                            translation: "（克莱尔）孩子们，吃早饭啦！".into(),
+                            prompt: "[ Claire ]\n___".into(),
+                            choices: vec![],
+                            correct_option_id: None,
+                            accepted_answers: vec!["Kids, breakfast!".into()],
+                            explanation:
+                                "TC-58 传输技术夹具，沿用之前已确认的剧集片段；不作为用户水平测量。"
+                                    .into(),
+                            origin: "TC-58 transport fixture, Modern Family S01E01".into(),
+                            audio: Some(AssessmentAudio {
+                                kind: "original".into(),
+                                relative_path: "media/tc58-original.m4a".into(),
+                                sha256: digest(&audio),
+                                text: "Kids, breakfast!".into(),
+                                voice_id: String::new(),
+                                asset_id: None,
+                            }),
+                        },
+                    )],
+                )
+                .unwrap();
+            source.store.connection().unwrap().execute("UPDATE assessment_items SET state='approved',review_note='TC-58 pre-reviewed transport fixture' WHERE bank_id=?",[&bank]).unwrap();
+            source
+                .store
+                .assessment_bank_review(&ReviewBank {
+                    operation_id: Uuid::new_v4().to_string(),
+                    bank_id: bank.clone(),
+                    expected_revision: source
+                        .store
+                        .assessment_bank_summary(&bank)
+                        .unwrap()
+                        .revision,
+                    action: "publish".into(),
+                    item_id: None,
+                    expected_item_revision: None,
+                    content: None,
+                    note: "仅作为技术传输夹具，原声来源与之前确认的例句一致。".into(),
+                })
+                .unwrap();
+            let config = AssessmentConfig {
+                content: "phrase".into(),
+                phrase_top_n: 1,
+                question_count: 1,
+                question_types: vec!["cloze".into()],
+                ..Default::default()
+            };
+            let preview = source.store.assessment_preview(&config).unwrap();
+            let started = source
+                .store
+                .assessment_start(&StartAssessment {
+                    config,
+                    expected_inventory_revision: preview.inventory_revision,
+                    operation_id: Uuid::new_v4().to_string(),
+                })
+                .unwrap();
+            let session = source
+                .store
+                .assessment_answer_submit(&AssessmentAnswerInput {
+                    session_id: started.id.clone(),
+                    item_id: started.question.unwrap().id,
+                    expected_revision: started.revision,
+                    operation_id: Uuid::new_v4().to_string(),
+                    action: "answer".into(),
+                    option_id: None,
+                    text: "Kids, breakfast".into(),
+                    uncertain: true,
+                })
+                .unwrap();
+            source.store.assessment_report(&session.id, None).unwrap();
+            let feedback = session.last_feedback.as_ref().unwrap();
+            source
+                .store
+                .assessment_correct(&CorrectAssessment {
+                    answer_id: feedback.answer_id.clone(),
+                    expected_revision: feedback.answer_revision,
+                    operation_id: Uuid::new_v4().to_string(),
+                    result: "correct".into(),
+                    add_hint: false,
+                    reason: "技术夹具：本题可接受省略句尾感叹号，保留原回答和不确定事实。".into(),
+                })
+                .unwrap();
+            let draft = source
+                .store
+                .assessment_collection_prepare(&PrepareAssessmentCollection {
+                    session_id: session.id.clone(),
+                    item_ids: vec![feedback.session_item_id.clone()],
+                    operation_id: Uuid::new_v4().to_string(),
+                })
+                .unwrap();
+            let candidate = &draft.items[0];
+            source
+                .store
+                .assessment_collect_item(
+                    &draft.draft_id,
+                    &CollectionSelection {
+                        session_item_id: candidate.session_item_id.clone(),
+                        target_entry_id: None,
+                        expected_revision: None,
+                        meaning: candidate.meaning.clone(),
+                        translation: candidate.translation.clone(),
+                        save_audio: true,
+                    },
+                )
+                .unwrap();
+            source
+                .store
+                .connection()
+                .unwrap()
+                .execute(
+                    "INSERT INTO settings(key,value_json) VALUES ('tc58_session',?)",
+                    [serde_json::to_string(&session.id).unwrap()],
+                )
+                .unwrap();
+            session.id
+        };
+        fn sync(app: &Arc<Application>) {
+            let task = app.sync_start(Uuid::new_v4().to_string()).unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+            loop {
+                let t = app.tasks.get(&task.id).unwrap();
+                if t.terminal() {
+                    assert_eq!(t.state, "succeeded", "sync error: {:?}", t.error);
+                    let a = &t.result.as_ref().unwrap()["assessment"];
+                    assert_eq!(a["capability"], "assessment-1");
+                    assert_eq!(a["conflicts"], 0);
+                    assert_eq!(a["pending"], 0);
+                    assert_eq!(a["pendingReferences"], 0);
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "normal sync did not finish"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
+        sync(&source);
+        let peer = application(&root.join("peer"), &credential);
+        sync(&peer);
+        let peer_session = peer.store.assessment_session(&session_id).unwrap();
+        let feedback = peer_session.last_feedback.unwrap();
+        let correction_done: bool = peer
+            .store
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM settings WHERE key='tc58_peer_corrected')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        if !correction_done {
+            peer.store.assessment_correct(&CorrectAssessment{answer_id:feedback.answer_id,expected_revision:feedback.answer_revision,operation_id:Uuid::new_v4().to_string(),result:"invalid".into(),add_hint:false,reason:"TC-58：此记录为同步技术夹具，不计入学习成绩；从第二客户端保存修正并经真实网站回传。".into()}).unwrap();
+            peer.store.assessment_report(&session_id, None).unwrap();
+            peer.store
+                .connection()
+                .unwrap()
+                .execute(
+                    "INSERT INTO settings(key,value_json) VALUES ('tc58_peer_corrected','true')",
+                    [],
+                )
+                .unwrap();
+        }
+        sync(&peer);
+        sync(&source);
+        let report = source.store.assessment_report(&session_id, None).unwrap();
+        assert_eq!(report["report"]["counts"]["unscored"], 1);
+        assert_eq!(report["report"]["counts"]["valid"], 0);
+        let source_answer = source
+            .store
+            .assessment_session(&session_id)
+            .unwrap()
+            .last_feedback
+            .unwrap();
+        assert_eq!(
+            source_answer.unscored_reason.as_deref(),
+            Some("invalid_item")
+        );
+        assert!(source_answer.uncertain);
+        let c = source.store.connection().unwrap();
+        let raw: String = c
+            .query_row(
+                "SELECT answer_json FROM assessment_answers WHERE id=?",
+                [&source_answer.answer_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&raw).unwrap()["result"],
+            "needs_confirmation"
+        );
+        assert_eq!(
+            c.query_row(
+                "SELECT COUNT(*) FROM assessment_corrections WHERE answer_id=?",
+                [&source_answer.answer_id],
+                |r| r.get::<_, usize>(0)
+            )
+            .unwrap(),
+            2
+        );
+        drop(c);
+        let receiver = application(&root.join("receiver"), &credential);
+        sync(&receiver);
+        let received = receiver.store.assessment_report(&session_id, None).unwrap();
+        assert_eq!(received["report"]["counts"], report["report"]["counts"]);
+        let c = receiver.store.connection().unwrap();
+        let links:usize=c.query_row("SELECT COUNT(*) FROM assessment_collection_links WHERE session_item_id IN (SELECT id FROM assessment_session_items WHERE session_id=?)",[&session_id],|r|r.get(0)).unwrap();
+        assert_eq!(links, 1);
+        let audio_path:String=c.query_row("SELECT json_extract(snapshot_json,'$.content.audio.relativePath') FROM assessment_session_items WHERE session_id=?",[&session_id],|r|r.get(0)).unwrap();
+        drop(c);
+        assert_eq!(
+            digest(&std::fs::read(receiver.store.root().join(audio_path)).unwrap()),
+            digest(&audio)
+        );
+        println!(
+            "TC-58 real assessment roundtrip: {session_id}; immutable original answer, 2 corrections, versioned reports, collection reference and original audio retained. Test data: {}",
+            root.display()
         );
     }
 }

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.40 |
+| 文档版本 | 0.41 |
 | 更新日期 | 2026-10-15 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -191,7 +191,7 @@ settings_get／settings_update 增加 replacementShortcut（默认 Ctrl+Alt+R，
 
 ### 2.4 高频水平测试命令（基础已实现，后续提案保留）
 
-FR-20 至 FR-24 的 CMD-46 至 CMD-60 在[高频水平测试设计第 7 节](vocabulary-assessment.md)唯一维护：来源/配置、题库准备核对、预览与开始、公开题面、作答与音频、会话状态、报告修正/历史，以及确认收录。新命令沿用 camelCase、分页、operationId、预期版本及结构化 AppError；CMD-46 至 CMD-49 已注册 assessment_catalog_get、assessment_settings_get/update、assessment_bank_prepare/review，并新增 assessment_bank_items(bankId,state?,offset,limit)；CMD-50 至 CMD-55、CMD-57 的核心已注册，另有 assessment_session_list(unfinishedOnly,offset,limit)；CMD-56、CMD-58 至 CMD-60 已接入报告、历史、比较和可信确认收录；另有 assessment_report_items 逐题分页命令。题库审核／发布需操作标识和预期修订，准备返回 TaskSnapshot；真实桌面入口已由 M-17 接入，M-18 报告和确认收录继续复用原词库事务。
+FR-20 至 FR-24 的 CMD-46 至 CMD-60 在[高频水平测试设计第 7 节](vocabulary-assessment.md)唯一维护：来源/配置、题库准备核对、预览与开始、公开题面、作答与音频、会话状态、报告修正/历史，以及确认收录。新命令沿用 camelCase、分页、operationId、预期版本及结构化 AppError；CMD-46 至 CMD-49 已注册 assessment_catalog_get、assessment_settings_get/update、assessment_bank_prepare/review，并新增 assessment_bank_items(bankId,state?,offset,limit)；CMD-50 至 CMD-55、CMD-57 的核心已注册，另有 assessment_session_list(unfinishedOnly,offset,limit)；CMD-56、CMD-58 至 CMD-60 已接入报告、历史、比较和可信确认收录；另有 assessment_report_items 逐题分页命令。题库审核／发布需操作标识和预期修订，准备返回 TaskSnapshot；真实桌面入口已由 M-17 接入，M-18 报告和确认收录继续复用原词库事务。M-19 增加 assessment_audio_prepare、assessment_sync_status、assessment_sync_conflicts 与 assessment_sync_keep_both，输入输出及事务边界见[详细设计 M-19 补充](vocabulary-assessment.md)。完整网络包唯一维护于 protocol/svl-assessment-1.json，独立于旧词条包。
 
 开始时冻结题目及私有答案，IPC 不下发未作答答案；判分事实保存在核心。收录适配复用既有事务，增加可信 assessment 来源关联，不由浏览器自报成绩或伪造剧集来源。具体请求/响应和不足/版本变化处理见详细设计，不在本目录重复一套字段。
 
@@ -343,3 +343,5 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.39 | 2026-10-15 | 登记预览、开始、公开题面、提交、音频事件、会话状态及修正核心 |
 
 | 0.40 | 2026-10-15 | 对齐水平测试 M-17／18 实施与 TC-55 部分、TC-56／57 核心证据，M-19 继续实施 |
+
+| 0.41 | 2026-10-15 | 接通 assessment-1 完整测试历史、版本 27 真实往返及独立同步状态；人工体验按用户要求延期 |

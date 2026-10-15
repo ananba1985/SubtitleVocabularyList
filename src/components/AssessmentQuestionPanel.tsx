@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { audioUrl, call, message, uid } from "../api";
+import { audioUrl, call, message, uid, waitTask } from "../api";
+import type { TaskSnapshot } from "../types";
 import { useAssessmentMutation } from "../assessmentApi";
 import { assessmentStateNames, assessmentTypeNames } from "../assessmentTypes";
 import type {
@@ -233,6 +234,13 @@ export function AssessmentQuestionPanel({
     setAudioBusy(true);
     setError("");
     try {
+      const prepared = await call<TaskSnapshot>("assessment_audio_prepare", {
+        sessionId: session.id,
+        itemId: question.id,
+        operationId: uid(),
+      });
+      await waitTask(prepared);
+      if (version !== generation.current) return;
       const next = await mutate<AssessmentPlayback>("assessment_audio_start", {
         sessionId: session.id,
         itemId: question.id,

@@ -1,0 +1,39 @@
+{
+  "protocol": "assessment-1",
+  "schemaVersion": 1,
+  "root": "session UUID",
+  "capability": "assessmentSync=assessment-1",
+  "routes": {
+    "changes": "/api/svl/v1/assessments/changes?after=:cursor",
+    "change": "/api/svl/v1/assessments/changes/:cursor",
+    "session": "/api/svl/v1/assessments/:sessionId",
+    "history": "/api/svl/v1/assessments/history?offset=:offset&limit=:limit"
+  },
+  "packetFields": ["protocol", "schemaVersion", "originDeviceId", "session", "items", "answers", "corrections", "reports", "collectionLinks", "media"],
+  "sessionFields": ["id", "state", "revision", "config", "sampling", "position", "createdAt", "updatedAt"],
+  "itemFields": ["id", "position", "snapshot", "interactionJson"],
+  "answerFields": ["answer", "revision"],
+  "reportFields": ["digest", "reportJson"],
+  "collectionLinkFields": ["sessionItemId", "operationId", "entryId", "details"],
+  "mediaFields": ["digest", "format"],
+  "pushFields": ["changeId", "baseRevision", "bundle"],
+  "transport": {
+    "maxPacketBytes": 8388608,
+    "chunkBytes": 500000,
+    "reuse": "chunks-1 packet and digest media endpoints; independent assessment cursor, records and receipts"
+  },
+  "identity": {
+    "items": "id; position and frozen semantic snapshot immutable",
+    "answers": "answer.id; one immutable original answer per sessionItemId",
+    "corrections": "id; append only, conflicting revisions for the same answer retained for resolution",
+    "reports": "SHA256 of canonical report JSON, independent of local display revision slot",
+    "collectionLinks": "sessionItemId + operationId; entryId mapped through account entity aliases"
+  },
+  "audio": {
+    "paths": "relativePath is empty and assetId is null on the wire; never send local paths",
+    "original": "media digest and format reference; bytes uploaded before packet commit",
+    "system": "preserve text, voice description, kind, original digest and playback facts; rebuild local cache without changing old scores"
+  },
+  "merge": "Three-way append merge from acknowledged base. Immutable conflicts, competing answers or corrections retain both complete packets. Pending push stays frozen until acknowledged. Unresolved entry references remain pending without creating personal entries.",
+  "scope": "One authenticated account. No complete catalog, bank drafts, model settings, credentials or unselected questions. Existing svl-sync-1 remains unchanged."
+}

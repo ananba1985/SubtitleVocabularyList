@@ -4,7 +4,7 @@ import type {
   AssessmentComparison,
   AssessmentHistoryItem,
 } from "../assessmentTypes";
-import { assessmentStateNames } from "../assessmentTypes";
+import { assessmentStateNames, assessmentScopeLabel } from "../assessmentTypes";
 const rate = (n: number | null) =>
   n === null ? "暂无有效结果" : `${(n * 100).toFixed(1)}%`;
 export function AssessmentHistory({
@@ -84,7 +84,7 @@ export function AssessmentHistory({
           <button className="text-button" onClick={() => onOpen(i.id)}>
             {new Date(i.createdAt).toLocaleString()} ·{" "}
             {assessmentStateNames[i.state]} · {i.counts.processed}/
-            {i.counts.planned} 题
+            {i.counts.planned} 题{i.preservedCopy ? " · 保留副本" : ""}
           </button>
           <span>
             正确 {rate(i.counts.correctRate)} · 无提示且确定{" "}
@@ -156,9 +156,9 @@ export function AssessmentHistory({
               <section key={r.sessionId}>
                 <h4>{new Date(r.createdAt).toLocaleString()}</h4>
                 <p>
-                  {r.config.content} · 单词 Top {r.config.wordTopN} · 组合 Top{" "}
-                  {r.config.phraseTopN} · {r.config.questionCount} 题 · 每段{" "}
-                  {r.config.bandSize}
+                  {assessmentScopeLabel(r.config)} · 每段 {r.config.bandSize}
+                  <br />
+                  题库版本：{r.bankVersions.join("、")}
                 </p>
                 {r.warnings.map((w, n) => (
                   <p className="muted" key={n}>

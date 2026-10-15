@@ -157,7 +157,9 @@ impl<'a> Transport<'a> {
             return Err(failure("invalid_data", "完整资料摘要不匹配，游标保留。"));
         }
         let bundle: Value = serde_json::from_slice(&bytes)?;
-        if bundle["entry"]["id"] != value["entryId"] {
+        if (value.get("sessionId").is_some() && bundle["session"]["id"] != value["sessionId"])
+            || (value.get("sessionId").is_none() && bundle["entry"]["id"] != value["entryId"])
+        {
             return Err(failure("invalid_data", "资料分片关联的词条不一致。"));
         }
         value
@@ -171,6 +173,23 @@ impl<'a> Transport<'a> {
     pub(crate) fn push(
         &self,
         request: &Push,
+        supports_chunks: bool,
+        check: impl Fn() -> Result<(), AppError>,
+    ) -> Result<(u16, Value), AppError> {
+        self.push_value(
+            &format!(
+                "/api/svl/v1/entries/{}",
+                request.bundle.entry["id"].as_str().unwrap()
+            ),
+            &serde_json::to_value(request)?,
+            supports_chunks,
+            check,
+        )
+    }
+    pub(crate) fn push_value(
+        &self,
+        path: &str,
+        request: &Value,
         supports_chunks: bool,
         check: impl Fn() -> Result<(), AppError>,
     ) -> Result<(u16, Value), AppError> {
@@ -257,11 +276,7 @@ impl<'a> Transport<'a> {
         check()?;
         let (status, value) = read_json(
             self.client
-                .put(format!(
-                    "{}/api/svl/v1/entries/{}",
-                    self.site,
-                    request.bundle.entry["id"].as_str().unwrap()
-                ))
+                .put(format!("{}{path}", self.site))
                 .bearer_auth(self.token)
                 .json(&body)
                 .send()

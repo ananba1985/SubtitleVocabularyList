@@ -271,6 +271,7 @@ export interface SyncResult {
   pushed: number;
   conflicts: number;
   cursor: number;
+  assessment?: import("./assessmentTypes").AssessmentSyncStatus;
 }
 export interface SyncBundle {
   schemaVersion: number;

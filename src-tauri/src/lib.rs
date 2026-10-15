@@ -2,6 +2,7 @@ pub mod application;
 pub mod assessment;
 pub mod assessment_bank;
 pub mod assessment_reports;
+pub mod assessment_sync;
 mod assessment_sampling;
 #[cfg(test)]
 mod assessment_tests;

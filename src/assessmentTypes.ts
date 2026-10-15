@@ -213,6 +213,7 @@ export interface AssessmentReportGroup {
   insufficientSample: boolean;
 }
 export interface AssessmentReport {
+  bankVersions: string[];
   sessionId: string;
   revision: number;
   state: AssessmentSession["state"];
@@ -232,6 +233,9 @@ export interface AssessmentReport {
   repeatedTargets: number;
   warnings: string[];
   itemTotal: number;
+}
+export function assessmentScopeLabel(c: AssessmentConfig): string {
+  return `${c.content === "word" ? `单词 Top ${c.wordTopN}` : c.content === "phrase" ? `组合 Top ${c.phraseTopN}` : `单词 Top ${c.wordTopN} ＋ 组合 Top ${c.phraseTopN}`} · ${c.questionCount} 题`;
 }
 export interface AssessmentReportItem {
   id: string;
@@ -282,6 +286,7 @@ export interface AssessmentHistoryItem {
   status: string;
   comparisonKey: string;
   repeatedTargets: number;
+  preservedCopy: boolean;
 }
 export interface AssessmentComparison {
   first: AssessmentReport;
@@ -290,6 +295,29 @@ export interface AssessmentComparison {
   explanation: string;
   correctRateDelta: number | null;
   independentRateDelta: number | null;
+}
+export interface AssessmentSyncStatus {
+  capability: string | null;
+  pending: number;
+  conflicts: number;
+  pendingReferences: number;
+  cursor: number;
+}
+export interface AssessmentSyncConflict {
+  sessionId: string;
+  reason: string;
+  localRevision: number;
+  remoteRevision: number;
+  local: AssessmentConflictSide;
+  remote: AssessmentConflictSide;
+}
+interface AssessmentConflictSide {
+  state: AssessmentSession["state"];
+  position: number;
+  planned: number;
+  answers: number;
+  corrections: number;
+  reports: number;
 }
 export interface AssessmentCollectionCandidate {
   sessionItemId: string;

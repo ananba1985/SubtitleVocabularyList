@@ -1091,7 +1091,7 @@ impl Application {
         }
         Ok(out)
     }
-    fn assessment_prepare_audio(
+    pub(crate) fn assessment_prepare_audio(
         &self,
         items: &mut [(String, QuestionDraft)],
         context: &TaskContext,

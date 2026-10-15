@@ -155,6 +155,13 @@ fn summary(report: &AssessmentReport) -> Result<Value, AppError> {
     let mut value = serde_json::to_value(report)?;
     value.as_object_mut().unwrap().remove("items");
     value["itemTotal"] = json!(report.items.len());
+    value["bankVersions"] = json!(
+        report
+            .items
+            .iter()
+            .map(|i| i.item.bank_id.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+    );
     Ok(value)
 }
 
@@ -227,7 +234,7 @@ pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, Ap
             "单词"
         };
         let band_key = format!(
-            "{}:{}:{}:{}",
+            "{}:{}:{:010}:{:010}",
             item.catalog.id, item.catalog.source_sha256, item.from_rank, item.to_rank
         );
         let band_label = format!("{kind} · {}–{}", item.from_rank, item.to_rank);
@@ -364,7 +371,12 @@ impl Store {
             .collect::<Result<Vec<_>, _>>()?;
         drop(q);
         tx.commit()?;
-        Ok(json!({"report":summary(&report)?,"revisions":revisions}))
+        let mut view = summary(&report)?;
+        // Received reports retain their immutable source JSON; this number is a local lookup slot.
+        if let Some(slot) = revision {
+            view["revision"] = json!(slot);
+        }
+        Ok(json!({"report":view,"revisions":revisions}))
     }
     pub fn assessment_report_items(
         &self,
@@ -401,7 +413,7 @@ impl Store {
             report_on(&tx, &id)?;
         }
         let total:usize=tx.query_row("SELECT COUNT(*) FROM assessment_sessions s JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=s.revision WHERE (?1 IS NULL OR json_extract(r.report_json,'$.comparisonKey')=?1)",[comparison_key],|r|r.get(0))?;
-        let mut q=tx.prepare("SELECT json_object('id',s.id,'state',s.state,'revision',s.revision,'createdAt',s.created_at,'config',json(s.config_json),'counts',json_extract(r.report_json,'$.counts'),'status',json_extract(r.report_json,'$.status'),'comparisonKey',json_extract(r.report_json,'$.comparisonKey'),'repeatedTargets',json_extract(r.report_json,'$.repeatedTargets')) FROM assessment_sessions s JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=s.revision WHERE (?1 IS NULL OR json_extract(r.report_json,'$.comparisonKey')=?1) ORDER BY s.created_at DESC,s.id DESC LIMIT ?2 OFFSET ?3")?;
+        let mut q=tx.prepare("SELECT json_object('id',s.id,'state',s.state,'revision',s.revision,'createdAt',s.created_at,'config',json(s.config_json),'counts',json_extract(r.report_json,'$.counts'),'status',json_extract(r.report_json,'$.status'),'comparisonKey',json_extract(r.report_json,'$.comparisonKey'),'repeatedTargets',json_extract(r.report_json,'$.repeatedTargets'),'preservedCopy',json(CASE WHEN EXISTS(SELECT 1 FROM json_each(s.sampling_json,'$.warnings') WHERE substr(value,1,5)='保留副本：') THEN 'true' ELSE 'false' END)) FROM assessment_sessions s JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=s.revision WHERE (?1 IS NULL OR json_extract(r.report_json,'$.comparisonKey')=?1) ORDER BY s.created_at DESC,s.id DESC LIMIT ?2 OFFSET ?3")?;
         let items = q
             .query_map(params![comparison_key, limit.clamp(1, 100), offset], |r| {
                 r.get::<_, String>(0)
@@ -417,8 +429,19 @@ impl Store {
         let tx = c.transaction()?;
         let a = report_on(&tx, first)?;
         let b = report_on(&tx, second)?;
-        let comparable = a.comparison_key == b.comparison_key;
-        let result = json!({"first":summary(&a)?,"second":summary(&b)?,"comparable":comparable,"explanation":if comparable{"配置及评分依据一致；仍需结合各频段实际样本、覆盖和近期重复解读，不代表已校准能力提升。"}else{"目录版本、范围、频段、题量／题型构成或评分依据不同，仅作并列展示，不作同尺度提升结论。"},
+        let banks = |r: &AssessmentReport| {
+            r.items
+                .iter()
+                .map(|i| i.item.bank_id.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        let copied = |r: &AssessmentReport| r.warnings.iter().any(|w| w.starts_with("保留副本："));
+        let comparable = first != second
+            && !copied(&a)
+            && !copied(&b)
+            && a.comparison_key == b.comparison_key
+            && banks(&a) == banks(&b);
+        let result = json!({"first":summary(&a)?,"second":summary(&b)?,"comparable":comparable,"explanation":if comparable{"配置及评分依据一致；仍需结合各频段实际样本、覆盖和近期重复解读，不代表已校准能力提升。"}else{"所选记录不是两次独立测试，或目录／题库版本、范围、频段、题量／题型构成或评分依据不同，仅作并列展示，不作同尺度提升结论。"},
             "correctRateDelta":if comparable{a.counts.correct_rate.zip(b.counts.correct_rate).map(|(x,y)|y-x)}else{None},
             "independentRateDelta":if comparable{a.counts.independent_rate.zip(b.counts.independent_rate).map(|(x,y)|y-x)}else{None}});
         tx.commit()?;
@@ -589,8 +612,9 @@ impl Store {
                 };
                 let mut assets = Vec::new();
                 if selection.save_audio {
-                    if let Some(audio) = &item.content.audio {
-                        let path = safe_audio_path(self.root(), audio)?;
+                    if let Some(frozen) = &item.content.audio {
+                        let audio = crate::assessment::resolved_audio_on(self.root(), tx, frozen)?;
+                        let path = safe_audio_path(self.root(), &audio)?;
                         let bytes = std::fs::read(&path)?;
                         if digest(&bytes) != audio.sha256 {
                             return Err(AppError::new(
@@ -601,7 +625,9 @@ impl Store {
                         let asset = if let Some(id) = &audio.asset_id {
                             id.clone()
                         } else {
-                            let recipe = format!("assessment:{}:{}", audio.kind, audio.sha256);
+                            let recipe = digest(
+                                format!("assessment:{}:{}", audio.kind, audio.sha256).as_bytes(),
+                            );
                             let existing: Option<String> = tx
                                 .query_row(
                                     "SELECT id FROM media_assets WHERE recipe_key=?",
@@ -654,20 +680,25 @@ impl Store {
 
 impl crate::application::Application {
     pub fn assessment_collection_commit(
-        &self,
+        self: &std::sync::Arc<Self>,
         input: CommitAssessmentCollection,
     ) -> Result<crate::tasks::TaskSnapshot, AppError> {
         if input.items.is_empty() || input.items.len() > 300 {
             return Err(AppError::new("invalid_input", "请选择并确认要保存的项目。"));
         }
         let store = std::sync::Arc::clone(&self.store);
+        let app = std::sync::Arc::clone(self);
         let hash = digest(&serde_json::to_vec(&input)?);
         self.tasks.start("collection",&input.operation_id,&hash,move|context|{
             context.subject("水平测试确认收录");
             let mut receipts=Vec::new();let total=input.items.len();
             for (index,selection) in input.items.iter().enumerate() {
                 context.check_cancelled()?;
-                let result=store.assessment_collect_item(&input.draft_id,selection);
+                #[cfg(all(windows,feature="desktop"))]
+                let audio=if selection.save_audio{app.prepare_assessment_audio_cached_from_draft(&input.draft_id,&selection.session_item_id,&context).map(|_|())}else{Ok(())};
+                #[cfg(not(all(windows,feature="desktop")))]
+                let audio:Result<(),AppError>={let _=&app;Ok(())};
+                let result=audio.and_then(|()|store.assessment_collect_item(&input.draft_id,selection));
                 receipts.push(match result{Ok(result)=>json!({"sessionItemId":selection.session_item_id,"saved":true,"result":result}),Err(error)=>json!({"sessionItemId":selection.session_item_id,"saved":false,"error":error})});
                 context.partial_result(json!({"items":receipts}));
                 context.progress("collection",index+1,total,"正在保存已确认的测试内容");

@@ -690,7 +690,8 @@ impl Store {
             let audio = item.content.audio.as_ref().ok_or_else(|| {
                 AppError::new("assessment_audio_unavailable", "该题没有已准备音频。")
             })?;
-            let path = validated_audio(self, audio);
+            let path = resolved_audio_on(self.root(), tx, audio)
+                .and_then(|a| safe_audio_path(self.root(), &a));
             let playback_id = Uuid::new_v4().to_string();
             interaction.playback_id = Some(playback_id.clone());
             interaction.audio_started = false;
@@ -764,19 +765,44 @@ impl Store {
         Ok(result)
     }
 }
-fn validated_audio(store: &Store, audio: &AssessmentAudio) -> Result<std::path::PathBuf, AppError> {
-    let path = safe_audio_path(store.root(), audio)?;
-    let bytes = std::fs::read(&path).map_err(|_| {
-        AppError::new(
-            "assessment_audio_unavailable",
-            "本地听音资源不可用，可跳过并标为未计分。",
-        )
-    })?;
-    if digest(&bytes) != audio.sha256 {
-        return Err(AppError::new(
-            "assessment_audio_unavailable",
-            "音频与题目版本不一致，请重新准备。",
-        ));
+pub(crate) fn resolved_audio_on(
+    root: &std::path::Path,
+    c: &Connection,
+    audio: &AssessmentAudio,
+) -> Result<AssessmentAudio, AppError> {
+    if let Ok(path) = safe_audio_path(root, audio) {
+        if std::fs::read(path).is_ok_and(|bytes| digest(&bytes) == audio.sha256) {
+            return Ok(audio.clone());
+        }
     }
-    Ok(path)
+    if audio.kind == "system" {
+        let saved: Option<String> = c
+            .query_row(
+                "SELECT value_json FROM settings WHERE key=?",
+                [format!("assessment_audio_cache:{}", audio.sha256)],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(saved) = saved {
+            let cached: AssessmentAudio = serde_json::from_str(&saved)?;
+            if cached.kind == "system" && cached.text == audio.text {
+                let path = safe_audio_path(root, &cached)?;
+                if std::fs::read(path).is_ok_and(|bytes| digest(&bytes) == cached.sha256) {
+                    return Ok(cached);
+                }
+            }
+        }
+    }
+    Err(AppError::new(
+        "assessment_audio_unavailable",
+        "本地听音资源尚未准备，可重新准备或跳过并标为未计分。",
+    ))
+}
+pub(crate) fn validated_audio(
+    store: &Store,
+    audio: &AssessmentAudio,
+) -> Result<std::path::PathBuf, AppError> {
+    let c = store.connection()?;
+    let resolved = resolved_audio_on(store.root(), &c, audio)?;
+    safe_audio_path(store.root(), &resolved)
 }

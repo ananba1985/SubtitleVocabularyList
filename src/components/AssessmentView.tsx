@@ -170,7 +170,6 @@ export function AssessmentView({
       <AssessmentReportPanel
         key={reportId ?? terminalSession!.id}
         sessionId={reportId ?? terminalSession!.id}
-        dataDirectory={dataDirectory}
         onExit={() => {
           setReportId(null);
           setSession(null);

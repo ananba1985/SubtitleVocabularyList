@@ -91,6 +91,36 @@ fn assessment_bank_audio_prepare(app: AppState<'_>, input: AssessmentBankAudioIn
 #[serde(rename_all="camelCase")]
 struct AssessmentBankAudioInput {content: crate::assessment_bank::QuestionDraft, operation_id:String}
 
+#[tauri::command]
+fn assessment_sync_status(
+    app: AppState<'_>,
+) -> Result<crate::assessment_sync::AssessmentSyncStatus, AppError> {
+    app.assessment_sync_status()
+}
+#[tauri::command]
+fn assessment_sync_conflicts(app: AppState<'_>) -> Result<Vec<serde_json::Value>, AppError> {
+    app.assessment_sync_conflicts()
+}
+#[tauri::command]
+async fn assessment_sync_keep_both(
+    app: AppState<'_>,
+    input: crate::assessment_sync::KeepAssessmentBoth,
+) -> Result<serde_json::Value, AppError> {
+    let app = Arc::clone(app.inner());
+    tauri::async_runtime::spawn_blocking(move || app.assessment_sync_keep_both(&input))
+        .await
+        .map_err(|_| AppError::new("internal_error", "冲突处理未完成，请刷新记录。"))?
+}
+#[tauri::command]
+fn assessment_audio_prepare(
+    app: AppState<'_>,
+    session_id: String,
+    item_id: String,
+    operation_id: String,
+) -> Result<TaskSnapshot, AppError> {
+    app.assessment_audio_prepare(session_id, item_id, operation_id)
+}
+
 #[derive(Default)]
 struct TrayAction(Mutex<Option<String>>);
 
@@ -1161,6 +1191,10 @@ pub fn run() {
             assessment_preview,assessment_start,assessment_session_get,assessment_session_list,
             assessment_report_get,assessment_report_items,assessment_history_list,assessment_compare,
             assessment_collection_prepare,assessment_collection_commit,
+            assessment_sync_status,
+            assessment_sync_conflicts,
+            assessment_sync_keep_both,
+            assessment_audio_prepare,
             assessment_answer_submit,assessment_session_transition,assessment_audio_start,
             assessment_audio_event,assessment_result_correct,
             assessment_catalog_get,assessment_settings_get,assessment_settings_update,

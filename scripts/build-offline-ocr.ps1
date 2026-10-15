@@ -62,10 +62,10 @@ Copy-Item -LiteralPath (Join-Path $svlZlib 'LICENSE') -Destination (Join-Path $s
 Copy-Item -LiteralPath (Join-Path $svlTiff 'LICENSE.md') -Destination (Join-Path $svlOcrOutput 'licenses\Libtiff-LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $svlJpeg 'LICENSE.md') -Destination (Join-Path $svlOcrOutput 'licenses\Libjpeg-LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $svlJpeg 'README.ijg') -Destination (Join-Path $svlOcrOutput 'licenses\Libjpeg-IJG.txt')
-$svlEnglishData=Join-Path $svlCache 'eng.traineddata'
-if(-not(Test-Path -LiteralPath $svlEnglishData)){Invoke-WebRequest -Uri https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/eng.traineddata -OutFile $svlEnglishData -TimeoutSec 180}
-if((Get-FileHash -LiteralPath $svlEnglishData -Algorithm SHA256).Hash -ne '7D4322BD2A7749724879683FC3912CB542F19906C83BCC1A52132556427170B2'){throw 'English OCR data checksum mismatch.'}
+$svlEnglishData=Join-Path $svlCache 'eng-best-4.1.0.traineddata'
+if(-not(Test-Path -LiteralPath $svlEnglishData)){Invoke-WebRequest -Uri https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/eng.traineddata -OutFile $svlEnglishData -TimeoutSec 180}
+if((Get-FileHash -LiteralPath $svlEnglishData -Algorithm SHA256).Hash -ne '8280AED0782FE27257A68EA10FE7EF324CA0F8D85BD2FD145D1C2B560BCB66BA'){throw 'English OCR data checksum mismatch.'}
 Copy-Item -LiteralPath $svlEnglishData -Destination (Join-Path $svlOcrOutput 'tessdata\eng.traineddata')
 $svlEnglishLicense=Join-Path $svlOcrOutput 'licenses\English-data-LICENSE.txt'
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/LICENSE -OutFile $svlEnglishLicense -TimeoutSec 30
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/LICENSE -OutFile $svlEnglishLicense -TimeoutSec 30
 Write-Output "Built offline OCR executable: $svlOcrOutput"

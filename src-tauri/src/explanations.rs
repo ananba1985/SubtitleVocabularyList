@@ -29,14 +29,39 @@ pub fn validate_input(text: &str, context: &str) -> Result<(), AppError> {
 }
 
 impl Explanation {
+    pub(crate) fn recover_name_meaning(&mut self, original: &str) {
+        if !self.meaning.trim().is_empty()
+            || !original.chars().next().is_some_and(char::is_uppercase)
+            || ["可能", "疑似", "不确定", "无法确定", "不是人名", "并非人名", "不是姓氏", "并非姓氏"]
+                .iter().any(|word| self.notes.contains(word))
+        {
+            return;
+        }
+        let category = if ["为姓氏", "是姓氏"].iter().any(|word| self.notes.contains(word)) {
+            "姓氏"
+        } else if ["为人名", "是人名"].iter().any(|word| self.notes.contains(word)) {
+            "人名"
+        } else { return; };
+        self.meaning = format!("{category}：{original}（保留原拼写）");
+    }
+
+    pub(crate) fn valid_meaning(meaning: &str) -> bool {
+        let meaning = meaning.trim().trim_start_matches(['"', '“']);
+        meaning.chars().any(|c| ('\u{3400}'..='\u{9fff}').contains(&c))
+            && !["无此单词", "没有这个单词", "该词不存在", "未找到该词", "无法识别该词", "无法识别此词", "可能为拼写错误", "请检查拼写"]
+                .iter().any(|diagnosis| meaning.starts_with(diagnosis))
+    }
+
     pub fn validate(&self, context: &str) -> Result<(), AppError> {
         let chinese = |value: &str| {
             value
                 .chars()
                 .any(|c| ('\u{3400}'..='\u{9fff}').contains(&c))
         };
-        if !chinese(&self.meaning)
-            || (!context.trim().is_empty() && !chinese(&self.translation))
+        if !Self::valid_meaning(&self.meaning) {
+            return Err(AppError::new("invalid_data", "未获得有效中文词义；英文展开式或拼写诊断不能代替释义，请核对原文或图片字幕。"));
+        }
+        if (!context.trim().is_empty() && !chinese(&self.translation))
             || [&self.meaning, &self.translation, &self.notes]
                 .iter()
                 .any(|value| value.chars().count() > 16000)
@@ -51,6 +76,24 @@ impl Explanation {
 }
 
 impl Store {
+    // A definition remains shared by word. One original occurrence only supplies
+    // case and a usage clue, so names and deliberate spellings are not mistaken
+    // for nonexistent lowercase English words.
+    pub(crate) fn definition_reference(&self, text: &str) -> Result<Option<(String, String)>, AppError> {
+        let connection = self.connection()?;
+        let occurrence = connection.query_row(
+            "SELECT o.raw_text,e.source_id,e.start_ms,e.end_ms FROM occurrences o JOIN examples e ON e.id=o.example_id JOIN sources s ON s.id=o.source_id WHERE o.candidate_key=? AND e.archived=0 ORDER BY s.imported_at DESC,e.start_ms LIMIT 1",
+            [crate::vocabulary::normalize(text)], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,i64>(2)?, row.get::<_,i64>(3)?)),
+        ).optional()?;
+        let Some((raw, source, start, end)) = occurrence else { return Ok(None); };
+        // Bitmap cues split sentences: the following cue can explicitly say
+        // "a man we met...". A bounded neighboring window retains that clue.
+        let mut query = connection.prepare("SELECT text FROM examples WHERE source_id=? AND archived=0 AND start_ms BETWEEN ? AND ? ORDER BY start_ms LIMIT 9")?;
+        let lines = query.query_map(params![source,start.saturating_sub(10000),end.saturating_add(10000)], |row| row.get::<_,String>(0))?.collect::<Result<Vec<_>,_>>()?;
+        let reference = lines.join("\n").chars().take(4000).collect();
+        Ok(Some((raw, reference)))
+    }
+
     pub fn explanation(&self, text: &str, context: &str) -> Result<Option<Explanation>, AppError> {
         validate_input(text, context)?;
         Ok(self
@@ -73,7 +116,8 @@ impl Store {
                     })
                 },
             )
-            .optional()?)
+            .optional()?
+            .filter(|value| value.validate(context).is_ok()))
     }
 
     pub fn prepared_explanation(
@@ -153,7 +197,7 @@ impl Store {
         Ok(())
     }
 
-    // Keep the first durable result when requests or legacy imports race.
+    // Keep the first valid durable result when requests or legacy imports race.
     // Generated annotations never modify confirmed vocabulary or learning records.
     pub fn save_explanation(
         &self,
@@ -180,7 +224,7 @@ impl Store {
              VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(target,context) DO NOTHING",
             params![text.trim(), context, value.meaning, value.translation, value.notes, model_url, model_name, Utc::now().timestamp_millis()],
         )?;
-        let saved = transaction.query_row(
+        let mut saved = transaction.query_row(
             "SELECT meaning,translation,notes FROM explanations WHERE target=? AND context=?",
             params![text.trim(), context],
             |row| {
@@ -191,6 +235,12 @@ impl Store {
                 })
             },
         )?;
+        // Older versions accepted spelling diagnostics as meanings. Only replace
+        // such invalid generated cache rows; confirmed vocabulary lives elsewhere.
+        if saved.validate(context).is_err() {
+            transaction.execute("UPDATE explanations SET meaning=?,translation=?,notes=?,model_url=?,model_name=?,created_at=? WHERE target=? AND context=?", params![value.meaning,value.translation,value.notes,model_url,model_name,Utc::now().timestamp_millis(),text.trim(),context])?;
+            saved = value.clone();
+        }
         if !context.trim().is_empty() {
             transaction.execute("INSERT INTO sentence_translations(sentence,translation,model_url,model_name,created_at) VALUES (?,?,?,?,?) ON CONFLICT(sentence) DO NOTHING", params![context.trim(),value.translation,model_url,model_name,Utc::now().timestamp_millis()])?;
         }

@@ -31,4 +31,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Media runtime preparation failed.' }
 & tesseract --version 2>&1 | Select-Object -First 2
 & tesseract --list-langs
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $taskTesseractRoot 'tessdata\eng.traineddata'))) { throw 'English OCR data is not available.' }
+$taskPgsData = Join-Path $taskRuntime 'pgs-tessdata'
+New-Item -ItemType Directory -Path $taskPgsData -Force | Out-Null
+$taskBestData = Get-MediaDownload 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/eng.traineddata' 'eng-best-4.1.0.traineddata' '8280AED0782FE27257A68EA10FE7EF324CA0F8D85BD2FD145D1C2B560BCB66BA'
+Copy-Item -LiteralPath $taskBestData -Destination (Join-Path $taskPgsData 'eng.traineddata')
+Invoke-WebRequest -UseBasicParsing -Uri https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/LICENSE -OutFile (Join-Path $taskPgsData 'LICENSE') -TimeoutSec 30
 Write-Output "Media runtime: $taskRuntime"

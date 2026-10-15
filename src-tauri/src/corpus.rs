@@ -67,8 +67,9 @@ struct Token {
     end: usize,
 }
 
-fn tokens(text: &str) -> Vec<Token> {
+fn tokens(text: &str, dictionary: &crate::base_dictionary::BaseDictionary) -> Result<Vec<Token>, AppError> {
     static WORDS: OnceLock<Regex> = OnceLock::new();
+    static HYPHENATED: OnceLock<Regex> = OnceLock::new();
     static ANNOTATIONS: OnceLock<Regex> = OnceLock::new();
     static PHRASES: OnceLock<Vec<Regex>> = OnceLock::new();
     let annotations =
@@ -77,7 +78,7 @@ fn tokens(text: &str) -> Vec<Token> {
         " ".repeat(capture[0].len())
     });
     let words = WORDS
-        .get_or_init(|| Regex::new(r"[A-Za-z]+(?:['’][A-Za-z]+)*").expect("fixed word pattern"));
+        .get_or_init(|| Regex::new(r"\p{Latin}+(?:['’]\p{Latin}+)*").expect("fixed word pattern"));
     let mut result: Vec<_> = words
         .find_iter(&masked)
         .map(|matched| Token {
@@ -88,6 +89,16 @@ fn tokens(text: &str) -> Vec<Token> {
             end: matched.end(),
         })
         .collect();
+    // Subtitles may split a word for emphasis (e.g. "won-derful"). Join only
+    // when the full spelling is known by the dictionary; retain original spans.
+    let hyphenated = HYPHENATED.get_or_init(|| Regex::new(r"\p{Latin}+(?:-\p{Latin}+)+").expect("fixed hyphen pattern"));
+    for matched in hyphenated.find_iter(&masked) {
+        let key = vocabulary::normalize(&matched.as_str().replace('-', ""));
+        if dictionary.explanation(&key)?.is_some() {
+            result.retain(|token| token.end <= matched.start() || token.start >= matched.end());
+            result.push(Token { key, raw: matched.as_str().to_owned(), kind: "word", start: matched.start(), end: matched.end() });
+        }
+    }
     let phrases = PHRASES.get_or_init(|| {
         [
             "look up",
@@ -153,7 +164,8 @@ fn tokens(text: &str) -> Vec<Token> {
             });
         }
     }
-    result
+    result.sort_by_key(|token| token.start);
+    Ok(result)
 }
 
 pub fn file_hash(path: &Path) -> Result<String, AppError> {
@@ -246,7 +258,7 @@ impl Store {
                 [&example_id],
                 |row| row.get(0),
             )?;
-            for token in tokens(&saved_text) {
+            for token in tokens(&saved_text, &self.dictionary)? {
                 transaction.execute("INSERT OR IGNORE INTO occurrences(id,source_id,example_id,candidate_key,raw_text,token_start,token_end,kind) VALUES (?,?,?,?,?,?,?,?)",params![Uuid::new_v4().to_string(),id,example_id,token.key,token.raw,token.start as i64,token.end as i64,token.kind])?;
             }
         }
@@ -501,7 +513,7 @@ impl Store {
             "DELETE FROM candidate_decisions WHERE source_id=? AND scope_key=?",
             params![source_id, id],
         )?;
-        for token in tokens(text) {
+        for token in tokens(text, &self.dictionary)? {
             transaction.execute("INSERT OR IGNORE INTO occurrences(id,source_id,example_id,candidate_key,raw_text,token_start,token_end,kind,entry_id) VALUES (?,?,?,?,?,?,?,?,?)",params![Uuid::new_v4().to_string(),source_id,id,token.key,token.raw,token.start as i64,token.end as i64,token.kind,old_links.get(&token.key)])?;
         }
         if old_start != start_ms || old_end != end_ms {

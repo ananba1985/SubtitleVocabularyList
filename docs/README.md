@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.40 |
+| 文档版本 | 0.41 |
 | 更新日期 | 2026-10-15 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -53,6 +53,7 @@
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
 | 资料目录与迁移 | [development/data-directory.md](development/data-directory.md)、[testing/data-directory-results.md](testing/data-directory-results.md) | 安装目录内 Data、本机测试默认、缓存、迁移与保留证据 | 本地迁移和 exe 验证不代替发行包实装 |
 | 后台词义去重修复 | [testing/preparation-dedup-results.md](testing/preparation-dedup-results.md) | 通用词义跨集缓存、句子译文独立保存、旧解释保持及正常验证 | 项数与 HTTP 数量区分，不宣称全量生成或性能验收 |
+| 后台准备内容诊断 | [testing/preparation-content-results.md](testing/preparation-content-results.md) | 原始 PGS 核对、缩写、专名线索、分词和诊断缓存修复 | 实际内容修复与发行包升级分别记录，不通过忽略失败项冒充完成 |
 | 离线基础词库 | [design/base-dictionary.md](design/base-dictionary.md)、[testing/base-dictionary-results.md](testing/base-dictionary-results.md) | 已翻译词表、明确词形映射、底库命中不调用模型及真实候选覆盖 | 底库与个人词库分离，词语覆盖与句子翻译分开，不捆绑未经核对的第三方数据 |
 | 未命中词复核与匹配优化 | [testing/unmatched-vocabulary-results.md](testing/unmatched-vocabulary-results.md) | 487 项原因初分、明确变体与缩写补充、覆盖增量和最小正常验证 | 疑似 OCR／专名不作为确定结论，不猜义、删词或改写对白 |
 | 基础词库安装资源 | [testing/dictionary-packaging-results.md](testing/dictionary-packaging-results.md) | 独立生成、首次落盘与更新、显式映射及个人库保持 | 本地资源流程不代替 NSIS 包生成和真实覆盖安装，第三方数据不提交源码仓库 |
@@ -179,3 +180,4 @@
 | 0.39 | 2026-10-15 | 接通 assessment-1 完整测试历史、版本 27 真实往返及独立同步状态；人工体验按用户要求延期 |
 
 | 0.40 | 2026-10-15 | 按用户确认结束本轮验收，保留实际证据与未复核边界，后续问题按 bug 处理 |
+| 0.41 | 2026-10-15 | 索引中文准备真实内容诊断、原字幕修复及已补齐记录，保留源码与安装版边界 |

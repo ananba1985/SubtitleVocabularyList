@@ -157,29 +157,33 @@ impl Store {
              ), sentences AS (
                 SELECT *,ROW_NUMBER() OVER(PARTITION BY sentence ORDER BY imported_at DESC,source_id) rank FROM material
              ), work AS (
-                SELECT source_id,title,kind,candidate_key target,'' context,imported_at,0 phase FROM words
-                WHERE rank=1 AND NOT EXISTS(SELECT 1 FROM explanations x WHERE x.target=words.candidate_key AND x.context='')
+                SELECT w.source_id,w.title,w.kind,w.candidate_key target,'' context,w.imported_at,0 phase,x.meaning cached_meaning FROM words w
+                LEFT JOIN explanations x ON x.target=w.candidate_key AND x.context=''
+                WHERE w.rank=1
                 UNION ALL
-                SELECT source_id,title,'sentence',sentence,'',imported_at,1 FROM sentences
+                SELECT source_id,title,'sentence',sentence,'',imported_at,1,NULL FROM sentences
                 WHERE rank=1 AND sentence<>'' AND NOT EXISTS(SELECT 1 FROM sentence_translations x WHERE x.sentence=sentences.sentence)
-             ) SELECT source_id,title,kind,target,context FROM work
+             ) SELECT source_id,title,kind,target,context,cached_meaning FROM work
              ORDER BY imported_at DESC,source_id,phase,length(target) DESC,target")?;
         let inputs = query
             .query_map(
                 params![source_id, source_id, crate::known_targets::PREFIX],
                 |row| {
-                    Ok(PreparationInput {
+                    Ok((PreparationInput {
                         source_id: row.get(0)?,
                         title: row.get(1)?,
                         kind: row.get(2)?,
                         text: row.get(3)?,
                         context: row.get(4)?,
-                    })
+                    }, row.get::<_, Option<String>>(5)?))
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
         let mut pending = Vec::new();
-        for input in inputs {
+        for (input, cached_meaning) in inputs {
+            if cached_meaning.as_deref().is_some_and(crate::explanations::Explanation::valid_meaning) {
+                continue;
+            }
             if input.kind == "sentence" || self.dictionary.explanation(&input.text)?.is_none() {
                 pending.push(input);
             }

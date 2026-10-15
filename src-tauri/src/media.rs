@@ -18,6 +18,8 @@ pub struct MediaTools {
     pub ffmpeg: PathBuf,
     pub ffprobe: PathBuf,
     pub tesseract: PathBuf,
+    #[serde(default)]
+    pub pgs_tessdata: Option<PathBuf>,
     pub whisper: PathBuf,
     pub whisper_model: PathBuf,
 }
@@ -29,6 +31,7 @@ impl MediaTools {
             ffmpeg: runtime.join("ffmpeg/ffmpeg.exe"),
             ffprobe: runtime.join("ffmpeg/ffprobe.exe"),
             tesseract: runtime.join("tesseract/tesseract.exe"),
+            pgs_tessdata: Some(runtime.join("tesseract/tessdata")),
             whisper: runtime.join("whisper/whisper-cli.exe"),
             whisper_model: runtime.join("whisper/ggml-base.en.bin"),
         }
@@ -39,6 +42,8 @@ impl MediaTools {
             ffmpeg: "ffmpeg".into(),
             ffprobe: "ffprobe".into(),
             tesseract: "tesseract".into(),
+            pgs_tessdata: runtime.join("pgs-tessdata/eng.traineddata").is_file()
+                .then(|| runtime.join("pgs-tessdata")),
             whisper: runtime.join("whisper/Release/whisper-cli.exe"),
             whisper_model: runtime.join("ggml-base.en.bin"),
         }
@@ -888,22 +893,42 @@ pub fn ocr_pgs(
         let text = if let Some(text) = recognized.get(&key) {
             text.clone()
         } else {
+            // PGS contains small italic glyphs. Keep spacing at a useful OCR
+            // resolution, and treat a single printed line as a line, not a block.
+            let mut line_count = 0;
+            let mut in_line = false;
+            for row in image.rows() {
+                let ink = row.into_iter().any(|pixel| pixel[0] < 128);
+                if ink && !in_line {
+                    line_count += 1;
+                }
+                in_line = ink;
+            }
+            let image = if image.height() <= 300 && image.width() <= 4096 {
+                image::imageops::resize(&image, image.width() * 2, image.height() * 2, image::imageops::FilterType::Lanczos3)
+            } else { image };
             let path = directory.join(format!("pgs-{index}.png"));
             image
                 .save(&path)
                 .map_err(|e| AppError::new("io_error", e.to_string()))?;
-            let output = run_tool(
-                &tools.tesseract,
-                &strings(&[
+            let mut arguments = strings(&[
                     &path.to_string_lossy(),
                     "stdout",
                     "-l",
                     "eng",
                     "--psm",
-                    "6",
+                    if line_count == 1 { "7" } else { "6" },
+                    "--oem",
+                    "1",
                     "--dpi",
                     "300",
-                ]),
+                ]);
+            if let Some(data) = &tools.pgs_tessdata {
+                arguments.extend(["--tessdata-dir".into(), data.to_string_lossy().into_owned()]);
+            }
+            let output = run_tool(
+                &tools.tesseract,
+                &arguments,
                 cancelled,
             )?;
             let text = String::from_utf8_lossy(&output).trim().to_owned();

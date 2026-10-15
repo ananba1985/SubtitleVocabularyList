@@ -12,7 +12,11 @@
     "that'll": { "meaning": "那将……；那会……；that will 的缩写。", "notes": "通用缩写释义，不代替整句翻译。" },
     "this'll": { "meaning": "这将……；这会……；this will 的缩写。", "notes": "通用缩写释义，不代替整句翻译。" },
     "it'd": { "meaning": "it had 或 it would 的缩写。", "notes": "保留两种展开，不脱离语境选择其中一种。" },
-    "they'd": { "meaning": "他们已经……／他们会……；they had 或 they would 的缩写。", "notes": "保留两种展开；校订 ECDICT 此词条中的无关错误释义，不改写原始下载文件。" }
+    "they'd": { "meaning": "他们已经……／他们会……；they had 或 they would 的缩写。", "notes": "保留两种展开；校订 ECDICT 此词条中的无关错误释义，不改写原始下载文件。" },
+    "how'd": { "meaning": "怎么……了／此前如何……／将如何……；how did、how had 或 how would 的口语缩写。", "notes": "保留多种展开，依后续动词和原句判断；不能把英文展开式当作中文释义。参考：https://en.wiktionary.org/wiki/how%27d" },
+    "what'd": { "meaning": "做了什么／此前已经……什么／将会……什么；what did、what had 或 what would 的口语缩写。", "notes": "保留多种展开，依后续动词和原句判断。参考：https://en.wiktionary.org/wiki/what%27d" },
+    "vamos": { "meaning": "（西班牙语）我们去；走吧；快点；用于催促、鼓励。", "notes": "常用西语词；不采用 ECDICT 同形军事缩写解释。动词 ir 的形式，依原句判断。参考：https://dle.rae.es/vamos；https://dle.rae.es/ir" },
+    "woosnum": { "meaning": "姓氏，保留 Woosnum 原拼写。", "notes": "已对照原字幕核对的姓氏，不按普通英语单词作拼写纠错；不编造标准音译或人物身份。" }
   },
   "variants": {
     "couldnt": { "target": "couldn't", "kind": "省略撇号" },

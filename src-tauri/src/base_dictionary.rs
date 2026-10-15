@@ -99,7 +99,7 @@ impl BaseDictionary {
             return Ok(Some(Explanation {
                 meaning: value.meaning.clone(),
                 translation: String::new(),
-                notes: format!("基础缩写补充（自拟中文）：{}", value.notes),
+                notes: format!("基础词义补充（自拟中文）：{}", value.notes),
             }));
         }
         let Some(ecdict) = &self.ecdict else {

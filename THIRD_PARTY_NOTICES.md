@@ -22,7 +22,7 @@
 | image | PGS 图像输出、屏幕快照与裁剪处理，版本见 Cargo 锁文件 | [image-rs/image](https://github.com/image-rs/image)，MIT 或 Apache-2.0 |
 | whisper.cpp | 发行资源从 1.8.3 固定源码编译 Windows x64 CPU CLI，静态 CRT | [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)，MIT |
 | 英语 Whisper 模型 | ggml-base.en，下载与 SHA256 见 build-offline-whisper.ps1，模型附 MIT 条款 | [转换模型来源](https://huggingface.co/ggerganov/whisper.cpp)、[原始 Whisper](https://github.com/openai/whisper)，MIT |
-| Tesseract 与英语数据 | 发行资源从 5.5.3 源码构建；tessdata_fast 4.1.0 的 eng.traineddata | [Tesseract](https://github.com/tesseract-ocr/tesseract)、[tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast)，Apache-2.0 |
+| Tesseract 与英语数据 | 发行资源从 5.5.3 源码构建；0.8.3 构建脚本改用 tessdata_best 4.1.0 的 eng.traineddata，旧发行包使用 fast 数据 | [Tesseract](https://github.com/tesseract-ocr/tesseract)、[tessdata_best](https://github.com/tesseract-ocr/tessdata_best)，Apache-2.0 |
 | OCR 静态依赖 | Leptonica 1.85.0、libpng 1.6.43、libtiff 4.6.0、libjpeg-turbo 3.0.1、zlib 1.3.1 | 固定源码与摘要见 build-offline-ocr.ps1；分别保留 BSD 类、libpng、TIFF、IJG/BSD/zlib 及 zlib 条款，不替换成项目许可 |
 | FFmpeg 与 ffprobe | 发行资源从 n9.0.2 固定源码构建，未开启 GPL、nonfree、网络或外部编解码库，使用静态 zlib；历史开发环境的 Gyan 构建不进入安装包 | [FFmpeg](https://github.com/FFmpeg/FFmpeg)、[许可说明](https://ffmpeg.org/legal.html)，本次构建 LGPL-2.1-or-later；原始源码、适配脚本与配置随源码资料交付 |
 | selectors 等传递依赖 | selectors 0.38.0 用于 HTML 解析；完整版本见生成的依赖清单 | [servo/stylo](https://github.com/servo/stylo)，MPL-2.0；保留源码许可声明，并附[正式条款](https://www.mozilla.org/media/MPL/2.0/index.txt) |

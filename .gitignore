@@ -16,6 +16,8 @@ node_modules/
 /.playwright/
 *.log
 *.tmp
+__pycache__/
+*.py[cod]
 
 # Personal inputs, runtime data and model files
 /data/

@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-003 |
-| 文档版本 | 0.4 |
-| 更新日期 | 2026-10-11 |
+| 文档版本 | 0.5 |
+| 更新日期 | 2026-10-15 |
 | 状态 | 本增量已执行；完整 M-05 与 0.1 尚未完成 |
 | 对应需求 | FR-03、FR-05、FR-06、FR-07、FR-09，部分 NFR-01、NFR-03 |
 | 执行依据 | [测试计划](test-plan.md)、[开发计划](../planning/development-plan.md) |
@@ -80,7 +80,24 @@ WPF 素材由 `scripts/probe-selection.ps1` 创建，仅含自编英文；它不
 
 最小验证：pot_style_shortcuts_upgrade_and_survive_restart 为 1 passed、91 filtered，证明合成词库的旧默认值升级为三组新值、保存和重开保持。Windows 桌面 cargo check 和 pnpm exec tsc --noEmit 均通过。Pot 在本次检查时仍运行，未停止它，也未实测相同键的注册／触发；切换前应退出 Pot 释放快捷键。未额外运行冲突故障、兼容矩阵或完整回归，未生成安装包。
 
-## 7 修订记录
+## 7 浏览器首次划词就绪修复（0.8.4）
+
+对应 FR-03、TC-07。用户确认问题出现在 Chrome／Edge 网页。原取词实现只请求一次 UI Automation；浏览器按需启用辅助功能后，渲染器尚未发布 TextPattern 就被判为不支持。参见 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/accessibility/overview.md#command-line-options) 及其关于跨进程树缓存可能稍迟于渲染器的说明。
+
+本机 Chrome 155.0.8059.41，独立新配置目录、无强制辅助功能参数。自编 HTML 在加载后选中 reluctant；探针等待该测试页位于前台，再调用与快捷键相同的生产 `selected_text`，没有先用辅助工具读取页面树。证据保留于 `.local/selection-first-use-0.8.4`，不含用户网页或个人词库。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 原实现复现 | 0.8.2 原生核心：首次返回与用户截图相同的 unsupported，约 63 ms；同一选区第二次成功，返回 reluctant 和完整自编原句，约 13 ms |
+| 修复后最小正常流程 | 另启全新配置的 Chrome，只调用一次：成功返回相同单词、原句及 chrome.exe 来源，约 149 ms；不要求第二次调用 |
+| 编译 | `cargo build --manifest-path src-tauri/Cargo.toml --example windows_probe --features desktop` 通过，实际验证链接该 Windows desktop 核心 |
+| 版本与提交检查 | 统一版本检查与 `git diff --check` 通过，产品版本 0.8.4，schema 不变 |
+
+修复仅在 chrome.exe／msedge.exe／chromium.exe 返回暂时缺少 TextPattern 或空选区时，在同一 COM 客户端内以 60 ms 间隔重新取得焦点元素与选区，就绪窗口 1,500 ms；已有前台窗口、元素归属、密码和长度检查保留。最终读取完成后才由原流程打开查询窗，不为中间尝试发布错误。
+
+本轮是实际浏览器原生取词正常流程；Edge 使用相同处理分支，但没有扩大到多浏览器兼容矩阵、故障注入、压力或全量回归，也没有新增全局快捷键至查询窗口的人工验收。没有读写个人数据库或剪贴板，没有重启、替换正在运行的 0.8.2 安装版；本次交付源码，不生成新安装包。各次耗时只说明本次调用，不作为性能保证。
+
+## 8 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -88,3 +105,4 @@ WPF 素材由 `scripts/probe-selection.ps1` 创建，仅含自编英文；它不
 | 0.2 | 2026-10-06 | 链接后续 OCR 增量证据，更新替代入口的当前状态 |
 | 0.3 | 2026-10-10 | 记录 0.4.2 托盘左右键和菜单跳转的用户实际确认 |
 | 0.4 | 2026-10-11 | 记录 Pot 基本能力核对、本机快捷键匹配与升级保存的最小证据 |
+| 0.5 | 2026-10-15 | 记录 Chrome 首次失败第二次成功的真实复现、0.8.4 就绪重读及全新窗口首次调用通过 |

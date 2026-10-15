@@ -500,6 +500,30 @@ pub fn selected_text(origin: &CaptureOrigin) -> Result<SelectedText, AppError> {
             let _ = options.SetConnectionTimeout(2000);
             let _ = options.SetTransactionTimeout(2000);
         }
+        // Chromium enables accessibility on demand. The first request may see
+        // the browser shell before the renderer publishes its TextPattern.
+        // Keep this client alive, but obtain fresh focused elements each time.
+        let browser = matches!(origin.application.to_ascii_lowercase().as_str(), "chrome.exe" | "msedge.exe" | "chromium.exe");
+        let started = Instant::now();
+        let ready_window = Duration::from_millis(1500);
+        loop {
+            let result = selected_text_once(origin, &automation);
+            let transient = result.as_ref().is_err_and(|error| {
+                matches!(error.code.as_str(), "unsupported" | "empty_selection")
+            });
+            if !browser || !transient || started.elapsed() >= ready_window {
+                return result;
+            }
+            if GetForegroundWindow() != HWND(origin.window as *mut _) {
+                return Err(AppError::new("capture_changed", "前台窗口已变化，请在原应用重新选择文字。"));
+            }
+            std::thread::sleep(Duration::from_millis(60).min(ready_window.saturating_sub(started.elapsed())));
+        }
+    }
+}
+
+fn selected_text_once(origin: &CaptureOrigin, automation: &IUIAutomation) -> Result<SelectedText, AppError> {
+    unsafe {
         let element = automation.GetFocusedElement().map_err(native_error)?;
         let walker = automation.ControlViewWalker().map_err(native_error)?;
         let mut ancestor = element.clone();

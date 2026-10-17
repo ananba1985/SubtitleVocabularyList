@@ -91,6 +91,7 @@ pub struct AssessmentDocument {
     pub bundle: AssessmentPacket,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentSyncStatus {
     pub capability: Option<String>,
@@ -100,6 +101,7 @@ pub struct AssessmentSyncStatus {
     pub cursor: i64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct KeepAssessmentBoth {
     pub session_id: String,

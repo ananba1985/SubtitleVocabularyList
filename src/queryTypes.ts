@@ -1,84 +1,11 @@
-export interface QueryOrigin {
-  kind: string;
-  sourceId?: string | null;
-  sourceTitle: string;
-  locationKey: string;
-}
-export interface QueryInput {
-  target: string;
-  context: string;
-  mode: "explain" | "translate";
-  sourceLanguage: string;
-  targetLanguage: string;
-  origin: QueryOrigin;
-}
-export interface QueryValue {
-  meaning: string;
-  translation: string;
-  notes: string;
-  sourceUrl: string;
-}
-export interface ProviderResult {
-  providerId: string;
-  name: string;
-  state: "queued" | "running" | "ready" | "failed" | "cancelled";
-  cacheSource: string;
-  value: QueryValue | null;
-  error: string | null;
-}
-export interface QuerySession {
-  sessionId: string;
-  inputRevision: number;
-  queryId: string | null;
-  input: QueryInput;
-  automatic: boolean;
-  results: ProviderResult[];
-}
-export interface ClipboardStatus {
-  enabled: boolean;
-  debounceMs: number;
-  persistResults: boolean;
-  error: string | null;
-}
-export interface ReplacementStatus {
-  operationId: string;
-  state: string;
-  originalText: string;
-  translation: string;
-  providerId: string;
-  error: string | null;
-  clipboardPending: boolean;
-}
-export interface PluginField {
-  id: string;
-  label: string;
-  secret: boolean;
-  required: boolean;
-}
-export interface PluginManifest {
-  id: string;
-  name: string;
-  version: string;
-  protocolVersion: number;
-  minHostVersion: string;
-  license: string;
-  capabilities: string[];
-  allowedHosts: string[];
-  endpoint: string;
-  method: string;
-  fields: PluginField[];
-}
-export interface Provider {
-  id: string;
-  name: string;
-  kind: string;
-  enabled: boolean;
-  autoQuery: boolean;
-  sendContext: boolean;
-  order: number;
-  maxConcurrency: number;
-  networkScope: string;
-  values: Record<string, string>;
-  credentialFields: string[];
-  manifest: PluginManifest | null;
-}
+import type * as Native from "./generated/ipc";
+export type QueryOrigin = Native.QueryOrigin;
+export type QueryInput = Native.QueryInput;
+export type QueryValue = Native.QueryValue;
+export type ProviderResult = Native.ProviderResult;
+export type QuerySession = Native.QuerySession;
+export type ClipboardStatus = Native.ClipboardStatus;
+export type ReplacementStatus = Native.ReplacementStatus;
+export type PluginField = Native.PluginField;
+export type PluginManifest = Native.PluginManifest;
+export type Provider = Native.Provider;

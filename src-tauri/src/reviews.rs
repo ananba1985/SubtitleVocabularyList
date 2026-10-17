@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewUnit {
     pub id: String,
@@ -399,6 +400,7 @@ mod tests {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct QuestionSnapshot {
     pub entry_id: String,
@@ -411,6 +413,7 @@ pub struct QuestionSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Question {
     pub id: String,
@@ -422,6 +425,7 @@ pub struct Question {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AnswerInput {
     pub operation_id: String,
@@ -431,6 +435,7 @@ pub struct AnswerInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CorrectionInput {
     pub operation_id: String,
@@ -441,6 +446,7 @@ pub struct CorrectionInput {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Attempt {
     pub id: String,
@@ -458,6 +464,7 @@ pub struct Attempt {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Correction {
     pub outcome: Outcome,

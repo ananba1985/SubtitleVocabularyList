@@ -8,6 +8,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeSentence {
     pub text: String,
@@ -16,6 +17,7 @@ pub struct PracticeSentence {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeChapter {
     pub title: String,
@@ -23,6 +25,7 @@ pub struct PracticeChapter {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeDocument {
     pub id: String,
@@ -33,6 +36,7 @@ pub struct PracticeDocument {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeProgress {
     pub chapter_index: usize,
@@ -58,6 +62,7 @@ impl Default for PracticeProgress {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeState {
     pub document: PracticeDocument,

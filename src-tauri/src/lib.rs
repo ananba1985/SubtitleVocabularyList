@@ -15,6 +15,10 @@ pub mod desktop_layout;
 pub mod error;
 pub mod explanations;
 pub mod known_targets;
+#[cfg(any(feature = "desktop", test))]
+mod ipc_dto;
+#[cfg(feature = "ipc-types")]
+mod ipc_export;
 pub mod lookup;
 pub mod media;
 mod model_gate;
@@ -64,3 +68,6 @@ mod desktop;
 
 #[cfg(feature = "desktop")]
 pub use desktop::run;
+
+#[cfg(feature = "ipc-types")]
+pub fn export_ipc_types() -> String { desktop::export_ipc_types() }

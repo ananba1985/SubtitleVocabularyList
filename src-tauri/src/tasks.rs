@@ -13,6 +13,7 @@ use std::{
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSnapshot {
     pub id: String,
@@ -43,6 +44,7 @@ impl TaskSnapshot {
 }
 
 #[derive(Clone, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskUpdate<'a> {
     #[serde(flatten)]
@@ -51,6 +53,7 @@ pub struct TaskUpdate<'a> {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskHistoryPage {
     pub items: Vec<TaskSnapshot>,

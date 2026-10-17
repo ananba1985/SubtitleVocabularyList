@@ -21,9 +21,18 @@ async fn background<T: Send + 'static>(
         .map_err(|_| AppError::new("internal_error", "本次操作异常中断，已保存内容保留。"))?
 }
 
+async fn background_project<T, S>(
+    work: impl FnOnce() -> Result<S, AppError> + Send + 'static,
+) -> Result<T, AppError>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
+    S: serde::Serialize + Send + 'static,
+{
+    background(move || crate::ipc_dto::project(work()?)).await
+}
+
 // Keep all desktop IPC registrations at this single entry point.
-pub(super) fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
-    tauri::generate_handler![
+svl_ipc_macros::catalog! {
         assessment::assessment_preview,
         assessment::assessment_start,
         assessment::assessment_session_get,
@@ -130,5 +139,4 @@ pub(super) fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Sen
         capture::capture_session_get,
         capture::capture_ocr_cancel,
         capture::capture_ocr_submit,
-    ]
 }

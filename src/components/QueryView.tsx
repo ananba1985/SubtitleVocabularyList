@@ -18,7 +18,7 @@ const empty: QueryInput = {
   mode: "explain",
   sourceLanguage: "en",
   targetLanguage: "zh-CN",
-  origin: { kind: "input", sourceTitle: "", locationKey: "" },
+  origin: { kind: "input", sourceId: null, sourceTitle: "", locationKey: "" },
 };
 const states: Record<string, string> = {
   queued: "排队等待…",

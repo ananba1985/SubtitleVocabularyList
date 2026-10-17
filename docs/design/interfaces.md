@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.45 |
+| 文档版本 | 0.46 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -14,11 +14,17 @@
 
 ## 1 命令与数据约定
 
-0.8.12 起，所有 106 个已注册命令的前端请求与成功结果统一由 `src/commands.ts` 的 CommandMap 定义，`src/api.ts` 的 call 按命令名推导参数和结果，不接受由界面指定的任意返回类型。无参命令可直接调用，必填参数必须提供，Option 参数按表中可选字段传递；路径结果在前端为字符串。`practice_audio_save` 直接传 Uint8Array，保持原生 Raw 请求体，不包成 JSON。
+0.8.13 起，所有 106 个已注册命令的前端请求与成功结果统一由 Rust 生成的 `src/generated/ipc.ts` 中的 CommandMap 定义（替代 0.8.12 的手工表），`src/api.ts` 的 call 按命令名推导参数和结果，不接受由界面指定的任意返回类型。无参命令可直接调用，必填参数必须提供，Option 参数按表中可选字段传递；路径结果在前端为字符串。`practice_audio_save` 直接传 Uint8Array，保持原生 Raw 请求体，不包成 JSON。
 
 例如 `call("task_get", { taskId })` 的结果为 TaskSnapshot，`call("practice_progress_save", { documentId, progress })` 的结果为 void。useAssessmentMutation 按命令约束不含 operationId 的输入，再补回稳定回执标识；同步和翻译替换的动态操作只接受明确的命令联合。`assessment_report_get` 的实际结果包括已完成报告及进行中状态两种形状；界面核对 report 字段后展示报告，进行中时提示完成或提前结束后查看。
 
-Rust 命令统一注册在 `desktop/commands/mod.rs`，命令实现按[架构 4.1.1](architecture.md#411-桌面命令适配层与类型表0812)划分。新增或调整命令时同步维护注册、CommandMap 与领域 DTO；`pnpm commands:check`（亦由 pnpm build 执行）核对注册集合、顶层参数名／可选性和原始二进制入口。该检查不自动核对嵌套 DTO 或返回字段的 Rust／TypeScript 等价性；成功结果仍依赖核心序列化，AppError 拒绝契约保持，TaskSnapshot.result 仍为随任务类型变化的数据。
+Rust 命令统一注册在 `desktop/commands/mod.rs` 的 catalog，命令函数使用 svl-ipc-macros::command，分工见[架构 4.1.1](architecture.md#411-桌面命令适配层与类型表0812)。新增或调整接口时在 Rust 修改签名和 DTO，执行 `pnpm commands:generate`，提交生成文件及必要调用修改；不得手改生成文件。`pnpm commands:check`（亦由 pnpm build 执行）用同一注册和真实 Rust 类型图重新导出，只读比较整个文件；嵌套字段、结果新增／遗漏、枚举、数组、映射和空值变化都会使旧生成文件不再匹配。正常桌面编译不需要启用 ipc-types；导出工具不访问个人库。
+
+生成规则沿用 IPC JSON：i64／u64 等数字继续映射 JavaScript number，PathBuf 为 string，Option 字段为 T|null；顶层 Option 参数同时允许省略。Rust String 如有业务限定仍由核心既有校验判定，不由另一份前端 DTO 枚举假定其取值。Serde flatten 用于听读进度、已准备解释、任务事件及同步 entry 扩展字段；二进制请求保持 Uint8Array，Result 的成功分支生成返回类型，拒绝仍为 AppError。TaskSnapshot 现在包含此前前端遗漏的 requestHash；Entry 的 createdAt／updatedAt、MediaTools 的 pgsTessdata、PluginManifest 的完整配置字段也随 Rust 定义导出。
+
+水平测试会话分页、报告／明细／历史／比较、作答修正、音频回执、题库核对、同步冲突／保留两份，以及截图会话改为明确的 Rust 返回 DTO。旧核心 JSON 结果在 IPC 边界核对嵌套结构并确认重新序列化不丢字段，不匹配时返回 internal_error；音频回执 error 的正常值可为 null。同步冲突中 entry 的必要展示字段类型明确，其他 entry 字段通过 flatten 保留。
+
+TaskSnapshot.result、插件 body、同步表行与 entry 扩展字段具有业务决定的动态结构，生成类型明确为递归 JsonValue 或 JSON 映射，不使用 any；生成检查不校验这些动态对象的每种业务内容，也不取代运行期标识、版本、权限及核心输入校验。CollectionSeed 等纯界面数据与按任务类型解读结果的辅助类型不作为新的 Rust 命令 DTO。
 
 0.8.11 的 task_updated 事件保留原 TaskSnapshot 顶层字段，并增加 visibleInList:boolean，由原生临时／业务任务规则计算；该字段仅用于事件展示，不写 tasks 记录，不改变 tasks_list／task_get 结果和持久化 schema。主窗口按事件维护任务展示，快照读取期间收到的事件在读取结束后重放；单项等待先订阅再查询 task_get，终态释放监听。仅可见的未结束操作保留无事件 10 秒后的补查。
 
@@ -363,3 +369,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.43 | 2026-10-17 | 记录 dictionaryWarnings 可见资源状态和数据库相关 IPC 的后台执行边界，保持既有命令契约 |
 | 0.44 | 2026-10-17 | 记录 task_updated 的 visibleInList、订阅与快照顺序、按需补查，保持听读命令外部结构 |
 | 0.45 | 2026-10-17 | 统一已注册命令的参数／结果类型与调用入口，记录二进制音频、报告联合结果及跨语言目录检查边界 |
+| 0.46 | 2026-10-17 | 以 Rust 自动生成请求及嵌套返回结构，记录固定 JSON 投影、字段补齐、空值与生成检查的真实边界 |

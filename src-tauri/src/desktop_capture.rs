@@ -32,6 +32,7 @@ pub enum CaptureAction {
     Replacement,
 }
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NativeStatus {
     pub selection_registered: bool,

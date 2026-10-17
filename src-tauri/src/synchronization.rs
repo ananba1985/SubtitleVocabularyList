@@ -539,6 +539,7 @@ pub struct SyncConflict {
     pub candidates: Vec<crate::vocabulary::Entry>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResolutionInput {
     pub conflict_id: String,
@@ -549,6 +550,7 @@ pub struct ResolutionInput {
     pub expected_target_revision: Option<i64>,
 }
 #[derive(Debug, Clone, Serialize, Default)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
     pub cursor: i64,
@@ -556,6 +558,7 @@ pub struct SyncStatus {
     pub conflicts: usize,
 }
 #[derive(Debug, Clone, Serialize, Default)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SyncResult {
     pub pulled: usize,

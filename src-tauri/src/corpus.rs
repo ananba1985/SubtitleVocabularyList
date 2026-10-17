@@ -18,6 +18,7 @@ use std::{
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSummary {
     pub id: String,
@@ -30,6 +31,7 @@ pub struct SourceSummary {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CandidateExample {
     pub id: String,
@@ -41,6 +43,7 @@ pub struct CandidateExample {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
     pub key: String,

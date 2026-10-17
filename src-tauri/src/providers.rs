@@ -10,6 +10,7 @@ use std::{
 const KEY: &str = "query_providers_v1";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginField {
     pub id: String,
@@ -21,6 +22,7 @@ pub struct PluginField {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PluginManifest {
     pub id: String,
@@ -50,6 +52,7 @@ pub struct PluginManifest {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Provider {
     pub id: String,
@@ -79,6 +82,7 @@ impl Provider {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderUpdate {
     pub id: String,

@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 #[derive(serde::Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AppInfo {
     version: String,
@@ -22,9 +23,25 @@ pub(crate) struct AppInfo {
 }
 
 #[derive(Default)]
-pub(crate) struct TrayAction(pub(crate) Mutex<Option<String>>);
+pub(crate) struct TrayAction(pub(crate) Mutex<Option<TrayNavigation>>);
 
-#[tauri::command]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TrayNavigation {
+    Library,
+    Collect,
+    Import,
+    Episodes,
+    Practice,
+    Reviews,
+    Leech,
+    Sync,
+    Tasks,
+    Settings,
+}
+
+#[svl_ipc_macros::command]
 pub(crate) async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
     let app = app.inner().clone();
     background(move || {
@@ -51,13 +68,13 @@ pub(crate) async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.settings()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn settings_update(
     app: AppState<'_>,
     handle: tauri::AppHandle,
@@ -100,19 +117,19 @@ pub(crate) async fn settings_update(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn task_get(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.tasks.get(&task_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn tasks_list(app: AppState<'_>) -> Result<Vec<TaskSnapshot>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.tasks.list()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn tasks_history(
     app: AppState<'_>,
     offset: Option<u32>,
@@ -122,7 +139,7 @@ pub(crate) async fn tasks_history(
     background(move || app.tasks.history(offset.unwrap_or(0), limit.unwrap_or(10))).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn task_cancel(
     app: AppState<'_>,
     task_id: String,
@@ -138,8 +155,10 @@ pub(crate) async fn task_cancel(
     .await
 }
 
-#[tauri::command]
-pub(crate) fn tray_action_get(action: State<'_, TrayAction>) -> Result<Option<String>, AppError> {
+#[svl_ipc_macros::command]
+pub(crate) fn tray_action_get(
+    action: State<'_, TrayAction>,
+) -> Result<Option<TrayNavigation>, AppError> {
     Ok(action
         .0
         .lock()
@@ -147,7 +166,7 @@ pub(crate) fn tray_action_get(action: State<'_, TrayAction>) -> Result<Option<St
         .take())
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn app_quit(handle: tauri::AppHandle) {
     desktop_capture::quit(&handle);
 }

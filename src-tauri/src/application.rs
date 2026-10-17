@@ -21,6 +21,7 @@ use std::{
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub model_url: String,
@@ -62,6 +63,7 @@ impl Default for Settings {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedCollection {
     pub draft_id: String,

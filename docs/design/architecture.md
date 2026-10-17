@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.38 |
+| 文档版本 | 0.39 |
 | 对应产品版本 | 0.1 基线；0.4.0 听读、0.5.0 Pot 替代、0.6.0 写作翻译及 0.7.0 底库增量 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
@@ -124,9 +124,13 @@ explanations.rs 的 prepared_explanation 优先读取已有语境释义，其次
 | synchronization | 站点连接、词条同步与冲突处理 |
 | assessment | 独立水平测试的题库、会话、报告、收录与同步入口 |
 
-前端 `src/commands.ts` 的 CommandMap 集中关联命令名、camelCase 参数和成功结果；`src/api.ts` 的 call 根据命令推导类型，界面不再自行指定返回类型。水平测试操作回执包装也限定命令与输入，仍复用原 operationId 重试规则；听读二进制音频经过同一入口传递 Uint8Array。
+0.8.12 以前端 CommandMap 集中关联命令名、camelCase 参数和成功结果；`src/api.ts` 的 call 根据命令推导类型，界面不再自行指定返回类型。水平测试操作回执包装也限定命令与输入，仍复用原 operationId 重试规则；听读二进制音频经过同一入口传递 Uint8Array。
 
-`pnpm commands:check` 核对 Rust 注册目录与类型表的命令集合、顶层参数名、可选性和二进制入口，已纳入前端 build。领域 DTO 仍由既有 Rust／TypeScript 类型维护，这不是跨语言自动生成或运行期响应校验。原命令名称、业务执行方式、数据库与事件订阅规则保持；需求基线不新增功能。最小编译与契约检查的实际结果见[增量记录第 12 节](../testing/performance-results.md#12-0812-命令模块与类型契约)。
+0.8.13 将 CommandMap 与可达的嵌套 DTO 改为由 Rust 生成到 `src/generated/ipc.ts`，`src/commands.ts` 只保留调用辅助类型，types／queryTypes／assessmentTypes／practice 复用生成定义。项目内 `svl-ipc-macros` 复用同一份命令函数签名及 catalog 注册，为 Tauri 生成原调用入口，为导出工具收集参数和成功结果；不再用正则解析 Rust 签名。DTO 使用可选 ipc-types 特性的 ts-rs 12.0.1（MIT）派生，跟随 Serde 的字段命名、枚举、嵌套容器和 flatten；正常桌面运行不启用此生成依赖。库来源与支持属性见 [ts-rs 官方说明](https://docs.rs/ts-rs/12.0.1/ts_rs/)。
+
+固定形状的水平测试 JSON 结果、截图会话及同步冲突在 IPC 边界使用明确的 ipc_dto。旧核心 JSON 投影经过反序列化与字段保持核对再返回，不静默丢弃新增字段；数据库读取和较大投影仍在 background 工作线程中。同步 entry 的额外字段完整保留，协议表行继续为动态 JSON，不修改原同步协议或库 schema。
+
+`pnpm commands:generate` 显式更新生成文件；已纳入 build 的 `pnpm commands:check` 重新运行只导出类型的 Rust 工具并只读比对，因此能发现嵌套字段、空值、容器、返回类型和命令参数变化，过期时要求重新生成。该开发工具需要本机 Rust／Windows 桌面编译依赖，但不启动应用、不读取个人资料、不打包。原业务、后台执行与事件规则保持，需求基线不新增功能。0.8.12 的历史检查边界见[第 12 节](../testing/performance-results.md#12-0812-命令模块与类型契约)，本轮结果见[第 13 节](../testing/performance-results.md#13-0813-rust-生成的嵌套-dto-与返回契约)。
 
 ### 4.2 网站学习功能的本地整合（FR-13）
 
@@ -358,3 +362,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | 0.36 | 2026-10-17 | 记录可选词库故障隔离、数据库命令后台执行及逐词冻结事务；修正相关同步旧状态 |
 | 0.37 | 2026-10-17 | 记录听读正文／进度分离、旧记录事务转换、任务事件订阅与可见活跃状态下的补查，保持原技术栈 |
 | 0.38 | 2026-10-17 | 按 8 个业务域拆分桌面命令适配层，集中类型化命令表并明确跨语言检查的覆盖边界 |
+| 0.39 | 2026-10-17 | 由 Rust 签名、单一 catalog 与 Serde DTO 生成完整 IPC 类型，明确固定 JSON 投影校验和动态数据边界 |

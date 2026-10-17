@@ -6,13 +6,13 @@ use crate::{
 };
 use std::sync::Arc;
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn sources_list(app: AppState<'_>) -> Result<Vec<SourceSummary>, AppError> {
     let app = app.inner().clone();
     background(move || app.store.sources()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn import_start(
     app: AppState<'_>,
     paths: Vec<String>,
@@ -24,7 +24,7 @@ pub(crate) async fn import_start(
         .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn media_inspect(
     app: AppState<'_>,
     path: String,
@@ -37,7 +37,7 @@ pub(crate) async fn media_inspect(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn candidates_list(
     app: AppState<'_>,
@@ -66,7 +66,7 @@ pub(crate) async fn candidates_list(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn known_target_get(
     app: AppState<'_>,
     kind: String,
@@ -76,7 +76,7 @@ pub(crate) async fn known_target_get(
     background(move || app.store.is_known_target(&kind, &text)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn known_target_set(
     app: AppState<'_>,
     kind: String,
@@ -95,7 +95,7 @@ pub(crate) async fn known_target_set(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn known_targets_list(
     app: AppState<'_>,
     search: Option<String>,
@@ -113,7 +113,7 @@ pub(crate) async fn known_targets_list(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn candidate_examples(
     app: AppState<'_>,
     source_id: String,
@@ -123,7 +123,7 @@ pub(crate) async fn candidate_examples(
     background(move || app.store.candidate_examples(&source_id, &key)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn candidate_decide(
     app: AppState<'_>,
     source_id: String,
@@ -139,7 +139,7 @@ pub(crate) async fn candidate_decide(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn source_example_update(
     app: AppState<'_>,
     source_id: String,

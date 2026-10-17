@@ -22,6 +22,7 @@ use windows::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(default, rename_all = "camelCase")]
 pub struct ClipboardPreferences {
     pub debounce_ms: u64,
@@ -36,6 +37,7 @@ impl Default for ClipboardPreferences {
     }
 }
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ClipboardStatus {
     pub enabled: bool,

@@ -1,6 +1,6 @@
 {
   "name": "subtitle-vocabulary-list",
-  "version": "0.8.12",
+  "version": "0.8.13",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -8,6 +8,7 @@
     "dev": "node scripts/version.mjs check && vite --host 127.0.0.1",
     "build": "node scripts/version.mjs check && node scripts/check-commands.mjs && tsc --noEmit && vite build",
     "commands:check": "node scripts/check-commands.mjs",
+    "commands:generate": "node scripts/check-commands.mjs --write",
     "version:check": "node scripts/version.mjs check",
     "version:sync": "node scripts/version.mjs sync",
     "version:patch": "node scripts/version.mjs patch",

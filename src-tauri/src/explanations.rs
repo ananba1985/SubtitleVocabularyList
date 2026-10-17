@@ -4,6 +4,7 @@ use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedExplanation {
     #[serde(flatten)]
@@ -12,6 +13,7 @@ pub struct PreparedExplanation {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 pub struct Explanation {
     pub meaning: String,
     pub translation: String,

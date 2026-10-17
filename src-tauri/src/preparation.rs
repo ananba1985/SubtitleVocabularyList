@@ -62,12 +62,14 @@ pub struct PreparationInput {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PreparationReply {
     pub task: Option<TaskSnapshot>,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 pub struct PreparationStatus {
     pub state: &'static str,
 }

@@ -34,6 +34,7 @@ pub struct SourceInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ExampleInput {
     pub text: String,
@@ -49,6 +50,7 @@ pub struct ExampleInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionInput {
     pub operation_id: String,
@@ -73,6 +75,7 @@ pub struct CollectionResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Meaning {
     pub id: String,
@@ -81,6 +84,7 @@ pub struct Meaning {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AudioAsset {
     pub id: String,
@@ -91,6 +95,7 @@ pub struct AudioAsset {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Example {
     pub id: String,
@@ -104,6 +109,7 @@ pub struct Example {
     pub audio: Vec<AudioAsset>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ExampleContext {
     pub scope_key: String,
@@ -112,6 +118,7 @@ pub struct ExampleContext {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Entry {
     pub id: String,
@@ -128,12 +135,14 @@ pub struct Entry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MeaningUpdate {
     pub id: Option<String>,
     pub text: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EntryUpdate {
     pub id: String,

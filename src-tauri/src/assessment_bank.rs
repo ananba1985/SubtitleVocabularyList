@@ -23,6 +23,7 @@ pub const TYPES: [&str; 3] = ["recognition", "cloze", "listening"];
 const SETTINGS_KEY: &str = "assessment_v1";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", default)]
 pub struct AssessmentConfig {
     pub mode: String,
@@ -79,6 +80,7 @@ impl AssessmentConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentSettings {
     pub revision: i64,
@@ -94,6 +96,7 @@ impl Default for AssessmentSettings {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FrequencyCatalog {
     pub id: String,
@@ -122,6 +125,7 @@ pub struct FrequencyTarget {
     pub seed: Option<Value>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BankSummary {
     pub id: String,
@@ -135,6 +139,7 @@ pub struct BankSummary {
     pub policy_version: String,
 }
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogInventory {
     pub policy_version: &'static str,
@@ -143,12 +148,14 @@ pub struct CatalogInventory {
     pub index_ready: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Choice {
     pub id: String,
     pub text: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentAudio {
     pub kind: String,
@@ -160,6 +167,7 @@ pub struct AssessmentAudio {
     pub asset_id: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct QuestionDraft {
     pub target: String,
@@ -276,6 +284,7 @@ pub fn safe_audio_path(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BankItem {
     pub id: String,
@@ -294,6 +303,7 @@ pub struct BankItem {
     pub reviewed_at: Option<i64>,
 }
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BankPage {
     pub items: Vec<BankItem>,
@@ -301,6 +311,7 @@ pub struct BankPage {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PrepareBank {
     pub bank_id: Option<String>,
@@ -310,6 +321,7 @@ pub struct PrepareBank {
     pub operation_id: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewBank {
     pub operation_id: String,

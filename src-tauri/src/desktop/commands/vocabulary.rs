@@ -8,7 +8,7 @@ use crate::{
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn entries_list(
     app: AppState<'_>,
     search: Option<String>,
@@ -26,19 +26,19 @@ pub(crate) async fn entries_list(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn entry_get(app: AppState<'_>, entry_id: String) -> Result<Entry, AppError> {
     let app = app.inner().clone();
     background(move || app.store.get_entry(&entry_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn entry_update(app: AppState<'_>, input: EntryUpdate) -> Result<Entry, AppError> {
     let app = app.inner().clone();
     background(move || app.store.update_entry(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn collection_prepare(
     app: AppState<'_>,
     input: CollectionInput,
@@ -47,7 +47,7 @@ pub(crate) async fn collection_prepare(
     background(move || app.prepare(input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn collection_from_example(
     app: AppState<'_>,
     source_id: String,
@@ -73,7 +73,7 @@ pub(crate) async fn collection_from_example(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn collection_commit(
     app: AppState<'_>,
     draft_id: String,
@@ -85,7 +85,7 @@ pub(crate) async fn collection_commit(
     background(move || app.commit(draft_id, target_entry_id, expected_revision, save_audio)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn preview_start(
     app: AppState<'_>,
     source_id: String,
@@ -96,7 +96,7 @@ pub(crate) async fn preview_start(
     background(move || app.preview_start(source_id, example_id, operation_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn media_path(app: AppState<'_>, asset_id: String) -> Result<PathBuf, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.store.media_file(&asset_id)).await

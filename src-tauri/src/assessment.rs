@@ -31,6 +31,7 @@ pub struct SamplingSnapshot {
     pub repeated_targets: usize,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FrozenItem {
     pub bank_id: String,
@@ -59,6 +60,7 @@ pub struct Interaction {
     pub audio_error: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentQuestion {
     pub id: String,
@@ -74,6 +76,7 @@ pub struct AssessmentQuestion {
     pub draft_option: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentFeedback {
     pub answer_id: String,
@@ -92,6 +95,7 @@ pub struct AssessmentFeedback {
     pub hinted: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentSession {
     pub id: String,
@@ -109,6 +113,7 @@ pub struct AssessmentSession {
     pub policy_version: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StartAssessment {
     pub config: AssessmentConfig,
@@ -116,6 +121,7 @@ pub struct StartAssessment {
     pub operation_id: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentAnswerInput {
     pub session_id: String,
@@ -128,6 +134,7 @@ pub struct AssessmentAnswerInput {
     pub uncertain: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentAnswer {
     pub id: String,
@@ -145,6 +152,7 @@ pub struct AssessmentAnswer {
     pub created_at: i64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TransitionAssessment {
     pub session_id: String,
@@ -158,6 +166,7 @@ pub struct TransitionAssessment {
     pub draft_option: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CorrectAssessment {
     pub answer_id: String,
@@ -168,6 +177,7 @@ pub struct CorrectAssessment {
     pub reason: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentCorrection {
     pub id: String,
@@ -179,6 +189,7 @@ pub struct AssessmentCorrection {
     pub created_at: i64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentAudioStart {
     pub session_id: String,
@@ -187,6 +198,7 @@ pub struct AssessmentAudioStart {
     pub operation_id: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentPlayback {
     pub playback_id: String,
@@ -195,6 +207,7 @@ pub struct AssessmentPlayback {
     pub error: Option<AppError>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentAudioEvent {
     pub session_id: String,

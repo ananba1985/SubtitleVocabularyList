@@ -127,7 +127,7 @@ async function read(entry: Entry) {
   entry.reading = true;
   if (entry.snapshot.state === "idle") publish(entry, { state: "loading" });
   try {
-    let value = await call("explanation_get", {
+    let value: Explanation | null = await call("explanation_get", {
       text: entry.text,
       context: entry.context,
     });

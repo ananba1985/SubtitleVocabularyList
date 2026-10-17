@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Counts {
     pub planned: usize,
@@ -73,6 +74,7 @@ impl Counts {
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportGroup {
     pub key: String,
@@ -81,6 +83,7 @@ pub struct ReportGroup {
     pub insufficient_sample: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportItem {
     pub id: String,
@@ -450,6 +453,7 @@ impl Store {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PrepareAssessmentCollection {
     pub session_id: String,
@@ -457,6 +461,7 @@ pub struct PrepareAssessmentCollection {
     pub operation_id: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionCandidate {
     pub session_item_id: String,
@@ -471,6 +476,7 @@ pub struct CollectionCandidate {
     pub collected_entry_ids: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentCollectionDraft {
     pub draft_id: String,
@@ -479,6 +485,7 @@ pub struct AssessmentCollectionDraft {
     pub items: Vec<CollectionCandidate>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionSelection {
     pub session_item_id: String,
@@ -489,6 +496,7 @@ pub struct CollectionSelection {
     pub save_audio: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CommitAssessmentCollection {
     pub draft_id: String,

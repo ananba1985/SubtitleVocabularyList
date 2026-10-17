@@ -17,6 +17,7 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Clone, Default, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReplacementStatus {
     pub operation_id: String,

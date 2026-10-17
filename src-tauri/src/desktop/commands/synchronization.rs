@@ -1,15 +1,15 @@
-use super::{AppState, background};
+use super::{AppState, background, background_project};
 use crate::error::AppError;
 use crate::{site_connection::ConnectionStatus, tasks::TaskSnapshot};
 use std::sync::Arc;
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn connection_status(app: AppState<'_>) -> Result<ConnectionStatus, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.connection_status()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn connection_start(
     app: AppState<'_>,
     operation_id: String,
@@ -19,7 +19,7 @@ pub(crate) async fn connection_start(
     background(move || app.connection_start(operation_id, replace)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn connection_check(
     app: AppState<'_>,
     operation_id: String,
@@ -28,13 +28,13 @@ pub(crate) async fn connection_check(
     background(move || app.connection_check(operation_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn connection_open(app: AppState<'_>) -> Result<(), AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.connection_open()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn sync_status(
     app: AppState<'_>,
 ) -> Result<crate::synchronization::SyncStatus, AppError> {
@@ -42,15 +42,15 @@ pub(crate) async fn sync_status(
     background(move || app.sync_status()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn sync_conflicts(
     app: AppState<'_>,
-) -> Result<Vec<crate::synchronization::SyncConflict>, AppError> {
+) -> Result<Vec<crate::ipc_dto::SyncConflictView>, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || app.sync_conflicts()).await
+    background_project(move || app.sync_conflicts()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn sync_start(
     app: AppState<'_>,
     operation_id: String,
@@ -59,7 +59,7 @@ pub(crate) async fn sync_start(
     background(move || app.sync_start(operation_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn sync_resolve(
     app: AppState<'_>,
     input: crate::synchronization::ResolutionInput,

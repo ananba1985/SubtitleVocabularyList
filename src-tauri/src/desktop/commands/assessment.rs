@@ -1,16 +1,17 @@
-use super::{AppState, background};
+use super::{AppState, background, background_project};
 use crate::error::AppError;
 use crate::tasks::TaskSnapshot;
 use std::sync::Arc;
 
 #[derive(serde::Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssessmentBankAudioInput {
     content: crate::assessment_bank::QuestionDraft,
     operation_id: String,
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_preview(
     app: AppState<'_>,
     config: crate::assessment_bank::AssessmentConfig,
@@ -21,7 +22,7 @@ pub(crate) async fn assessment_preview(
         .map_err(|_| AppError::new("internal_error", "测试预览中断，请重试。"))?
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_start(
     app: AppState<'_>,
     input: crate::assessment::StartAssessment,
@@ -32,7 +33,7 @@ pub(crate) async fn assessment_start(
         .map_err(|_| AppError::new("internal_error", "测试启动中断，请重新读取未完成测试。"))?
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_session_get(
     app: AppState<'_>,
     session_id: String,
@@ -41,22 +42,22 @@ pub(crate) async fn assessment_session_get(
     background(move || app.store.assessment_session(&session_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_session_list(
     app: AppState<'_>,
     unfinished_only: bool,
     offset: usize,
     limit: usize,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::Page<crate::ipc_dto::AssessmentSessionSummary>, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || {
+    background_project(move || {
         app.store
             .assessment_session_list(unfinished_only, offset, limit)
     })
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_answer_submit(
     app: AppState<'_>,
     input: crate::assessment::AssessmentAnswerInput,
@@ -65,7 +66,7 @@ pub(crate) async fn assessment_answer_submit(
     background(move || app.store.assessment_answer_submit(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_session_transition(
     app: AppState<'_>,
     input: crate::assessment::TransitionAssessment,
@@ -74,7 +75,7 @@ pub(crate) async fn assessment_session_transition(
     background(move || app.store.assessment_transition(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_audio_start(
     app: AppState<'_>,
     input: crate::assessment::AssessmentAudioStart,
@@ -83,76 +84,76 @@ pub(crate) async fn assessment_audio_start(
     background(move || app.store.assessment_audio_start(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_audio_event(
     app: AppState<'_>,
     input: crate::assessment::AssessmentAudioEvent,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::AssessmentAudioReply, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || app.store.assessment_audio_event(&input)).await
+    background_project(move || app.store.assessment_audio_event(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_result_correct(
     app: AppState<'_>,
     input: crate::assessment::CorrectAssessment,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::AssessmentCorrectionReply, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || app.store.assessment_correct(&input)).await
+    background_project(move || app.store.assessment_correct(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_report_get(
     app: AppState<'_>,
     session_id: String,
     report_revision: Option<i64>,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::AssessmentReportReply, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || app.store.assessment_report(&session_id, report_revision)).await
+    background_project(move || app.store.assessment_report(&session_id, report_revision)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_report_items(
     app: AppState<'_>,
     session_id: String,
     report_revision: i64,
     offset: usize,
     limit: usize,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::Page<crate::assessment_reports::ReportItem>, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || {
+    background_project(move || {
         app.store
             .assessment_report_items(&session_id, report_revision, offset, limit)
     })
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_history_list(
     app: AppState<'_>,
     offset: usize,
     limit: usize,
     comparison_key: Option<String>,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::Page<crate::ipc_dto::AssessmentHistoryItem>, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || {
+    background_project(move || {
         app.store
             .assessment_history(offset, limit, comparison_key.as_deref())
     })
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_compare(
     app: AppState<'_>,
     first: String,
     second: String,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::AssessmentComparison, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || app.store.assessment_compare(&first, &second)).await
+    background_project(move || app.store.assessment_compare(&first, &second)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_collection_prepare(
     app: AppState<'_>,
     input: crate::assessment_reports::PrepareAssessmentCollection,
@@ -161,7 +162,7 @@ pub(crate) async fn assessment_collection_prepare(
     background(move || app.store.assessment_collection_prepare(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_collection_commit(
     app: AppState<'_>,
     input: crate::assessment_reports::CommitAssessmentCollection,
@@ -170,7 +171,7 @@ pub(crate) async fn assessment_collection_commit(
     background(move || app.assessment_collection_commit(input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_catalog_get(
     app: AppState<'_>,
 ) -> Result<crate::assessment_bank::CatalogInventory, AppError> {
@@ -178,7 +179,7 @@ pub(crate) async fn assessment_catalog_get(
     background(move || app.store.assessment_inventory()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_settings_get(
     app: AppState<'_>,
 ) -> Result<crate::assessment_bank::AssessmentSettings, AppError> {
@@ -186,7 +187,7 @@ pub(crate) async fn assessment_settings_get(
     background(move || app.store.assessment_settings()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_settings_update(
     app: AppState<'_>,
     settings: crate::assessment_bank::AssessmentSettings,
@@ -196,7 +197,7 @@ pub(crate) async fn assessment_settings_update(
     background(move || app.store.assessment_save_settings(settings, &operation_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_bank_prepare(
     app: AppState<'_>,
     input: crate::assessment_bank::PrepareBank,
@@ -205,16 +206,16 @@ pub(crate) async fn assessment_bank_prepare(
     background(move || app.assessment_bank_prepare(input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_bank_review(
     app: AppState<'_>,
     input: crate::assessment_bank::ReviewBank,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::BankReviewReply, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || app.store.assessment_bank_review(&input)).await
+    background_project(move || app.store.assessment_bank_review(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_bank_items(
     app: AppState<'_>,
     bank_id: String,
@@ -230,7 +231,7 @@ pub(crate) async fn assessment_bank_items(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_bank_audio_prepare(
     app: AppState<'_>,
     input: AssessmentBankAudioInput,
@@ -239,7 +240,7 @@ pub(crate) async fn assessment_bank_audio_prepare(
     background(move || app.assessment_bank_audio_prepare(input.content, input.operation_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_sync_status(
     app: AppState<'_>,
 ) -> Result<crate::assessment_sync::AssessmentSyncStatus, AppError> {
@@ -247,26 +248,28 @@ pub(crate) async fn assessment_sync_status(
     background(move || app.assessment_sync_status()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_sync_conflicts(
     app: AppState<'_>,
-) -> Result<Vec<serde_json::Value>, AppError> {
+) -> Result<Vec<crate::ipc_dto::AssessmentSyncConflict>, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || app.assessment_sync_conflicts()).await
+    background_project(move || app.assessment_sync_conflicts()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_sync_keep_both(
     app: AppState<'_>,
     input: crate::assessment_sync::KeepAssessmentBoth,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<crate::ipc_dto::AssessmentKeepBothReply, AppError> {
     let app = Arc::clone(app.inner());
-    tauri::async_runtime::spawn_blocking(move || app.assessment_sync_keep_both(&input))
-        .await
-        .map_err(|_| AppError::new("internal_error", "冲突处理未完成，请刷新记录。"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::ipc_dto::project(app.assessment_sync_keep_both(&input)?)
+    })
+    .await
+    .map_err(|_| AppError::new("internal_error", "冲突处理未完成，请刷新记录。"))?
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn assessment_audio_prepare(
     app: AppState<'_>,
     session_id: String,

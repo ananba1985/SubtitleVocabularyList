@@ -13,6 +13,7 @@ use std::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MediaTools {
     pub ffmpeg: PathBuf,
@@ -51,6 +52,7 @@ impl MediaTools {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportOptions {
     pub audio_stream: Option<usize>,
@@ -133,6 +135,7 @@ pub fn find_external_subtitle(input: &Path) -> Option<PathBuf> {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MediaInspection {
     pub audio_tracks: Vec<Stream>,
@@ -164,6 +167,7 @@ pub fn inspect(tools: &MediaTools, input: &Path) -> Result<MediaInspection, AppE
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 pub struct Stream {
     pub index: usize,
     pub codec_type: String,

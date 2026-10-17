@@ -5,12 +5,12 @@ use crate::{
 };
 use tauri::Manager;
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn native_status(handle: tauri::AppHandle) -> NativeStatus {
     handle.state::<NativeDesktop>().status()
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn replacement_status_get(
     handle: tauri::AppHandle,
 ) -> crate::desktop_replacement::ReplacementStatus {
@@ -19,7 +19,7 @@ pub(crate) fn replacement_status_get(
         .status()
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn replacement_cancel(handle: tauri::AppHandle, operation_id: String) {
     let native = handle.state::<crate::desktop_replacement::NativeReplacement>();
     if native.status().operation_id == operation_id {
@@ -27,46 +27,49 @@ pub(crate) fn replacement_cancel(handle: tauri::AppHandle, operation_id: String)
     }
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn replacement_result_open(handle: tauri::AppHandle) -> Result<(), AppError> {
     handle
         .state::<crate::desktop_replacement::NativeReplacement>()
         .open_result(&handle)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn replacement_clipboard_restore(handle: tauri::AppHandle) -> Result<(), AppError> {
     handle
         .state::<crate::desktop_replacement::NativeReplacement>()
         .restore_clipboard(&handle)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn capture_selection(handle: tauri::AppHandle) -> Result<TaskSnapshot, AppError> {
     handle.state::<NativeDesktop>().capture(&handle)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn capture_ocr(handle: tauri::AppHandle) -> Result<TaskSnapshot, AppError> {
     handle.state::<NativeDesktop>().ocr_start(&handle)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn capture_session_get(
     handle: tauri::AppHandle,
     session_id: String,
-) -> Result<serde_json::Value, AppError> {
-    handle.state::<NativeDesktop>().ocr_session(&session_id)
+) -> Result<crate::ipc_dto::ScreenSessionView, AppError> {
+    handle
+        .state::<NativeDesktop>()
+        .ocr_session(&session_id)
+        .and_then(crate::ipc_dto::project)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn capture_ocr_cancel(handle: tauri::AppHandle, session_id: String) {
     handle
         .state::<NativeDesktop>()
         .ocr_cancel(&handle, &session_id);
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn capture_ocr_submit(
     handle: tauri::AppHandle,
     session_id: String,

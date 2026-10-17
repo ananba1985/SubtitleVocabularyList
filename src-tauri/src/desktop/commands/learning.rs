@@ -8,7 +8,7 @@ use crate::{
 };
 use std::sync::Arc;
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn review_units(
     app: AppState<'_>,
     mode: String,
@@ -20,7 +20,7 @@ pub(crate) async fn review_units(
     background(move || app.store.review_units(&mode, &dimension, offset, limit)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn review_question(
     app: AppState<'_>,
     unit_id: String,
@@ -30,7 +30,7 @@ pub(crate) async fn review_question(
     background(move || app.store.review_question(&unit_id, expected_revision)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn review_hint(
     app: AppState<'_>,
     question_id: String,
@@ -39,7 +39,7 @@ pub(crate) async fn review_hint(
     background(move || app.store.review_hint(&question_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn review_submit(
     app: AppState<'_>,
     input: AnswerInput,
@@ -48,7 +48,7 @@ pub(crate) async fn review_submit(
     background(move || app.store.review_submit(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn review_correct(
     app: AppState<'_>,
     input: CorrectionInput,
@@ -57,7 +57,7 @@ pub(crate) async fn review_correct(
     background(move || app.store.review_correct(&input)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn review_history(
     app: AppState<'_>,
     unit_id: Option<String>,
@@ -68,7 +68,7 @@ pub(crate) async fn review_history(
     background(move || app.store.review_history(unit_id.as_deref(), offset, limit)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn review_audio_start(
     app: AppState<'_>,
     question_id: String,
@@ -78,7 +78,7 @@ pub(crate) async fn review_audio_start(
     background(move || app.review_audio_start(question_id, operation_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn practice_get(
     app: AppState<'_>,
 ) -> Result<Option<crate::practice::PracticeState>, AppError> {
@@ -86,7 +86,7 @@ pub(crate) async fn practice_get(
     background(move || app.store.practice_get()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn practice_import(
     app: AppState<'_>,
     document: crate::practice::PracticeDocument,
@@ -95,7 +95,7 @@ pub(crate) async fn practice_import(
     background(move || app.store.practice_import(document)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn practice_progress_save(
     app: AppState<'_>,
     document_id: String,
@@ -105,7 +105,7 @@ pub(crate) async fn practice_progress_save(
     background(move || app.store.practice_progress_save(&document_id, progress)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn practice_audio_save(
     app: AppState<'_>,
     request: tauri::ipc::Request<'_>,
@@ -118,7 +118,7 @@ pub(crate) async fn practice_audio_save(
     background(move || app.store.practice_audio_save(&bytes)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn practice_example(
     app: AppState<'_>,
     document_id: String,
@@ -129,12 +129,12 @@ pub(crate) async fn practice_example(
     background(move || app.store.practice_example(&document_id, chapter, sentence)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn speech_voices() -> Result<Vec<SystemVoice>, AppError> {
     background(crate::windows_native::system_voices).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn speech_start(
     app: AppState<'_>,
     text: String,

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentQuota {
     pub catalog_id: String,
@@ -25,6 +26,7 @@ pub struct AssessmentQuota {
     pub unfilled: usize,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentCoverage {
     pub catalog_id: String,
@@ -35,6 +37,7 @@ pub struct AssessmentCoverage {
     pub missing_targets: usize,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AssessmentPreview {
     pub inventory_revision: String,

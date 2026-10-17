@@ -12,6 +12,48 @@ use uuid::Uuid;
 fn op() -> String {
     Uuid::new_v4().to_string()
 }
+
+#[test]
+fn ipc_dto_normal_responses() {
+    use crate::ipc_dto::{self, AssessmentAudioReply, AssessmentHistoryItem,
+        AssessmentReportReply, AssessmentSessionSummary, Page};
+    use crate::assessment_reports::ReportItem;
+    let (_dir, store) = fixture();
+    let entry = store.list_entries("", 0, 1).unwrap().remove(0);
+    let bundle: ipc_dto::SyncBundleView = ipc_dto::project(store.sync_export(&entry.id).unwrap()).unwrap();
+    assert_eq!(bundle.entry.id, entry.id);
+    let config = AssessmentConfig {
+        word_top_n: 2000, question_count: 1, minimum_sample: 1,
+        question_types: vec!["recognition".into()], ..Default::default()
+    };
+    let preview = store.assessment_preview(&config).unwrap();
+    let session = store.assessment_start(&StartAssessment {
+        config, expected_inventory_revision: preview.inventory_revision, operation_id: op(),
+    }).unwrap();
+    let page: Page<AssessmentSessionSummary> = ipc_dto::project(store.assessment_session_list(true, 0, 10).unwrap()).unwrap();
+    assert_eq!(page.items[0].config.question_count, 1);
+    let pending: AssessmentReportReply = ipc_dto::project(store.assessment_report(&session.id, None).unwrap()).unwrap();
+    assert!(matches!(pending, AssessmentReportReply::Pending(_)));
+    let question = session.question.unwrap();
+    let completed = store.assessment_answer_submit(&AssessmentAnswerInput {
+        session_id: session.id.clone(), item_id: question.id, expected_revision: session.revision,
+        operation_id: op(), action: "unknown".into(), option_id: None,
+        text: String::new(), uncertain: false,
+    }).unwrap();
+    let reply: AssessmentReportReply = ipc_dto::project(store.assessment_report(&session.id, None).unwrap()).unwrap();
+    let AssessmentReportReply::Finished { report, .. } = reply else { panic!("Expected finished report") };
+    assert_eq!(report.counts.processed, 1);
+    assert_eq!(report.coverage[0].top_n, 2000);
+    let items: Page<ReportItem> = ipc_dto::project(store.assessment_report_items(&session.id, completed.revision, 0, 10).unwrap()).unwrap();
+    assert_eq!(items.items[0].answer.as_ref().unwrap().result, "unknown");
+    let history: Page<AssessmentHistoryItem> = ipc_dto::project(store.assessment_history(0, 10, None).unwrap()).unwrap();
+    assert_eq!(history.items[0].id, session.id);
+    let audio: AssessmentAudioReply = ipc_dto::project(json!({
+        "playbackId":"synthetic-playback", "played":true, "seconds":1.0, "error":null,
+    })).unwrap();
+    assert!(audio.error.is_none());
+}
+
 fn fixture() -> (tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("dictionaries")).unwrap();

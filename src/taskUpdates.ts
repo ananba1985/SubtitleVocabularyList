@@ -3,7 +3,8 @@ import type { TaskSnapshot } from "./types";
 export const terminal = (task: TaskSnapshot) =>
   ["succeeded", "failed", "cancelled"].includes(task.state);
 
-export type TaskUpdate = TaskSnapshot & { visibleInList: boolean };
+export type { TaskUpdate } from "./generated/ipc";
+import type { TaskUpdate } from "./generated/ipc";
 
 export function applyTaskUpdate(tasks: TaskSnapshot[], update: TaskUpdate) {
   const previous = tasks.find((task) => task.id === update.id);

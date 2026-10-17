@@ -4,7 +4,7 @@ use crate::{desktop_capture, tasks::TaskSnapshot};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn translation_session_open(
     app: AppState<'_>,
     input: crate::queries::QueryInput,
@@ -13,7 +13,7 @@ pub(crate) fn translation_session_open(
     app.queries.open(input, session_id.as_deref())
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn translation_session_get(
     app: AppState<'_>,
     session_id: Option<String>,
@@ -21,7 +21,7 @@ pub(crate) fn translation_session_get(
     app.queries.get(session_id.as_deref())
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn translation_query_start(
     app: AppState<'_>,
     session_id: String,
@@ -43,7 +43,7 @@ pub(crate) async fn translation_query_start(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn translation_query_cancel(
     app: AppState<'_>,
     session_id: String,
@@ -52,12 +52,12 @@ pub(crate) fn translation_query_cancel(
     app.queries.cancel(&session_id, query_id.as_deref())
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn translation_window_hide(handle: tauri::AppHandle) {
     crate::desktop_query::hide_query(&handle);
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn translation_window_pin(
     handle: tauri::AppHandle,
     pinned: bool,
@@ -69,12 +69,12 @@ pub(crate) fn translation_window_pin(
         .map_err(|_| AppError::new("internal_error", "无法固定查询窗口。"))
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn translation_open(handle: tauri::AppHandle) -> Result<(), AppError> {
     crate::desktop_query::open_input(&handle)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn translation_collect(
     app: AppState<'_>,
     handle: tauri::AppHandle,
@@ -95,14 +95,14 @@ pub(crate) async fn translation_collect(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn query_copy(handle: tauri::AppHandle, text: String) -> Result<(), AppError> {
     handle
         .state::<crate::desktop_query::ClipboardWatcher>()
         .copy(&text)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn clipboard_listener_get(
     handle: tauri::AppHandle,
 ) -> crate::desktop_query::ClipboardStatus {
@@ -111,7 +111,7 @@ pub(crate) fn clipboard_listener_get(
         .status()
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) fn clipboard_listener_set(
     handle: tauri::AppHandle,
     enabled: bool,
@@ -124,7 +124,7 @@ pub(crate) fn clipboard_listener_set(
     Ok(status)
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn providers_list(
     app: AppState<'_>,
 ) -> Result<Vec<crate::providers::Provider>, AppError> {
@@ -132,7 +132,7 @@ pub(crate) async fn providers_list(
     background(move || app.store.providers()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn providers_update(
     app: AppState<'_>,
     update: crate::providers::ProviderUpdate,
@@ -147,7 +147,7 @@ pub(crate) async fn providers_update(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn plugin_install(
     app: AppState<'_>,
     path: String,
@@ -170,7 +170,7 @@ pub(crate) async fn plugin_install(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn plugin_remove(
     app: AppState<'_>,
     plugin_id: String,
@@ -184,7 +184,7 @@ pub(crate) async fn plugin_remove(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn explanations_status(
     app: AppState<'_>,
 ) -> Result<crate::preparation::PreparationStatus, AppError> {
@@ -192,7 +192,7 @@ pub(crate) async fn explanations_status(
     background(move || app.preparation_status()).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn explanations_prepare(
     app: AppState<'_>,
     source_id: Option<String>,
@@ -201,7 +201,7 @@ pub(crate) async fn explanations_prepare(
     background(move || app.prepare_explanations(source_id, true)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn explanation_get(
     app: AppState<'_>,
     text: String,
@@ -211,7 +211,7 @@ pub(crate) async fn explanation_get(
     background(move || app.store.prepared_explanation(&text, &context)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn explanation_import(
     app: AppState<'_>,
     text: String,
@@ -228,7 +228,7 @@ pub(crate) async fn explanation_import(
     .await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn explain_start(
     app: AppState<'_>,
     text: String,
@@ -239,7 +239,7 @@ pub(crate) async fn explain_start(
     background(move || app.explain_start(text, context, operation_id)).await
 }
 
-#[tauri::command]
+#[svl_ipc_macros::command]
 pub(crate) async fn online_query_start(
     app: AppState<'_>,
     text: String,

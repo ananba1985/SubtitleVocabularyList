@@ -1,5 +1,8 @@
 mod commands;
 
+#[cfg(feature = "ipc-types")]
+pub(crate) fn export_ipc_types() -> String { commands::export_types() }
+
 use crate::{
     application::{Application, Settings},
     desktop_capture::{self, NativeDesktop},
@@ -14,7 +17,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
 
 fn tray_navigate(app: &tauri::AppHandle, action: &str) {
     if let Ok(mut pending) = app.state::<TrayAction>().0.lock() {
-        *pending = Some(action.to_owned());
+        *pending = serde_json::from_value(serde_json::Value::String(action.to_owned())).ok();
     }
     desktop_capture::show_main(app);
     let _ = app.emit_to("main", "tray_action", ());

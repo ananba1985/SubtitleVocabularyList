@@ -5,6 +5,7 @@ pub const POLICY_VERSION: &str = "svl-review-1";
 const MINUTE: i64 = 60_000;
 const DAY: i64 = 24 * 60 * MINUTE;
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
     Correct,
@@ -13,6 +14,7 @@ pub enum Outcome {
     NeedsConfirmation,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(default, rename_all = "camelCase")]
 pub struct ReviewState {
     pub level: String,

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{path::Path, sync::atomic::AtomicBool};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenBounds {
     pub x: i32,
@@ -11,6 +12,7 @@ pub struct ScreenBounds {
     pub height: u32,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PixelRect {
     pub x: u32,

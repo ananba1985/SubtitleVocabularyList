@@ -310,6 +310,7 @@ unsafe fn owned_string(value: PWSTR) -> String {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SystemVoice {
     pub id: String,

@@ -10,6 +10,7 @@ pub(crate) fn target_key(kind: &str, text: &str) -> String {
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct KnownTarget {
     pub kind: String,
@@ -19,6 +20,7 @@ pub struct KnownTarget {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 pub struct KnownTargetPage {
     pub items: Vec<KnownTarget>,
     pub total: usize,

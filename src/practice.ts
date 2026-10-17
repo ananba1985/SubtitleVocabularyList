@@ -1,28 +1,10 @@
+import type * as Native from "./generated/ipc";
 import JSZip from "jszip";
 
-export interface PracticeSentence {
-  text: string;
-  startMs: number | null;
-  endMs: number | null;
-}
-export interface PracticeDocument {
-  id: string;
-  title: string;
-  kind: string;
-  chapters: { title: string; sentences: PracticeSentence[] }[];
-  audioFile: string | null;
-}
-export interface PracticeProgress {
-  chapterIndex: number;
-  sentenceIndex: number;
-  copy: string;
-  speed: number;
-  audioMode: "original" | "voice";
-  voiceId: string;
-}
-export interface PracticeState extends PracticeProgress {
-  document: PracticeDocument;
-}
+export type PracticeSentence = Native.PracticeSentence;
+export type PracticeDocument = Native.PracticeDocument;
+export type PracticeProgress = Native.PracticeProgress;
+export type PracticeState = Native.PracticeState;
 export function practiceProgress(state: PracticeState): PracticeProgress {
   return {
     chapterIndex: state.chapterIndex,

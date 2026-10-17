@@ -21,6 +21,7 @@ use std::{
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(default, rename_all = "camelCase")]
 pub struct QueryOrigin {
     pub kind: String,
@@ -30,6 +31,7 @@ pub struct QueryOrigin {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryInput {
     pub target: String,
@@ -61,6 +63,7 @@ fn target_language() -> String {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryValue {
     pub meaning: String,
@@ -110,6 +113,7 @@ impl QueryValue {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderResult {
     pub provider_id: String,
@@ -121,6 +125,7 @@ pub struct ProviderResult {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct QuerySession {
     pub session_id: String,

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.28 |
+| 文档版本 | 0.29 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02；FR-20 至 FR-24 实施中 |
@@ -200,7 +200,17 @@ status 只重建标记已变化的完整会话，按原 packet_digest 比较待�
 
 词条 sync_outbox 的 payload_json 在 sent 或用户已处理完毕的 superseded 状态可改为 {}，保留原轻量回执字段；pending／conflict 仍保留完整请求。历史清理按账号分批执行，不删除业务历史或当前同步基准，不对数据库文件执行收缩。详细运行顺序见[同步设计 4.2](synchronization.md#42-同步增长控制0814)。
 
-## 13 修订记录
+## 13 站点历史存储（0.8.17）
+
+桌面 schema 仍为 10；此节仅定义站点 D1／R2 的内部编码，不改变完整词条／测试会话业务字段。共享字段见 [protocol/svl-history-1.json](../../protocol/svl-history-1.json)。svl_records／svl_assessment_records 与对应 changes 表的 payload_json 可保存带 history.version=1 的封装。外层保留词条 entry／deleted，或测试 protocol／sessionId，以及原列表 summary；列表筛选和分页无需还原历史。
+
+history 保存 revision、baseRevision、depth、bundleBytes，以及 checkpoint 和／或 delta／deltaRef。首次写入、从旧格式继续写入，或达到 16 个版本的检查点周期时，保存原完整格式的 checkpoint；其他有收益的变更只保存已校验差量。depth 范围为 0～15；depth=0 必须有 checkpoint，其余版本按同账号、同实体、baseRevision 引用上一条 changes，严格核对修订与递减深度。检查点上也可保留相邻差量，以免该版本下载重新比较历史。
+
+较大检查点沿用 R2 完整快照引用；较大差量沿用账号隔离、SHA256 寻址的 deltaRef。封装超过内联阈值时将较大部分移至 R2，避免把双份内联内容塞入一行。旧内联完整包和 packetRef 继续读取，旧行及原声对象不清理或改写。完整还原从最近检查点开始，最多应用 15 个差量；恢复流程原位应用已保存操作，不为链上每个版本再次克隆完整历史。
+
+站点迁移 0003_sync_history 仅新增 svl_changes(user_id,entry_id,revision) 和 svl_assessment_changes(user_id,session_id,revision) 非唯一索引，避免基准查找扫描账号全部变更；不增加业务实体或删除历史。当前记录、变更封装、完整内容摘要、回执及游标仍通过原 D1 batch 条件事务提交。完整包读取可按需派生原 packetRef 供旧设备使用；这种投影及旧完整快照仍可能占用存储，本轮不执行对象垃圾回收。
+
+## 14 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -234,3 +244,4 @@ status 只重建标记已变化的完整会话，按原 packet_digest 比较待�
 | 0.26 | 2026-10-15 | 接通 assessment-1 完整测试历史、版本 27 真实往返及独立同步状态；人工体验按用户要求延期 |
 | 0.27 | 2026-10-17 | 拆分听读正文和紧凑进度记录，定义旧合并记录的按需事务迁移，保持 schema 9 和既有收录／同步边界 |
 | 0.28 | 2026-10-17 | 增加 schema 10 会话变更计数、摘要缓存、远端修订与辅助索引，明确终态传输副本释放和完整历史保持 |
+| 0.29 | 2026-10-17 | 定义站点 history.version=1 检查点／差量、按账号实体修订索引与最多 15 步还原，保持全部旧资料 |

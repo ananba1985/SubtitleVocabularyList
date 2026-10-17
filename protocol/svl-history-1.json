@@ -1,0 +1,20 @@
+{
+  "format": "Server-internal checkpoint and delta storage; existing svl-sync-1, assessment-1 and json-delta-1 wire documents are unchanged.",
+  "envelope": "Keep entry/deleted or protocol/sessionId and the existing list summary; add history. Never return the internal history envelope as a client bundle.",
+  "historyFields": {
+    "version": 1,
+    "revision": "positive target revision",
+    "baseRevision": "revision minus one",
+    "depth": "zero for a checkpoint, otherwise previous depth plus one; range 0..15",
+    "bundleBytes": "UTF-8 bytes of the canonical complete business bundle",
+    "checkpoint": "optional legacy inline bundle or account-isolated complete packetRef envelope",
+    "delta": "optional accepted json-delta-1 change against baseRevision",
+    "deltaRef": "optional authenticated chunks-1 reference to that serialized change; used instead of inline delta"
+  },
+  "storage": "First revision, first write after a legacy snapshot, or a chain reaching 16 revisions creates a complete checkpoint. Other beneficial changes store only the delta plus summary/metadata. A checkpoint may retain its adjacent change for fast downloads. Larger envelope contents move to digest-addressed R2 objects.",
+  "restore": "Resolve previous revision through the same authenticated account and entity in the change table. Require matching revision and decreasing depth. Load a checkpoint and apply at most 15 stored deltas in order. Old snapshots and all business events remain available.",
+  "download": "For a matching adjacent base, return the accepted inline delta or deltaRef without loading a baseline or comparing complete snapshots. Legacy and non-adjacent requests keep the existing reconstruction/diff path.",
+  "commit": "Complete validation, canonical content hash/receipt and conditional D1 transaction remain authoritative. Reuse the reconstructed upload baseline once. Commit the same history envelope to current record and change row. No business deletion or bulk rewrite of old snapshots.",
+  "indexes": ["svl_changes(user_id,entry_id,revision)", "svl_assessment_changes(user_id,session_id,revision)"],
+  "limits": "Existing complete bundle and audio limits remain. This reduces duplicate snapshots; full validation and on-demand reconstruction still process complete business data."
+}

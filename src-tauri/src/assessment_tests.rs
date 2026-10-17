@@ -54,6 +54,96 @@ fn ipc_dto_normal_responses() {
     assert!(audio.error.is_none());
 }
 
+#[test]
+fn sync_growth_assessment_caches_changed_sessions_and_keeps_reports() {
+    let (_dir, store) = fixture();
+    let scope = "growth-account";
+    let config = AssessmentConfig {
+        word_top_n: 2000,
+        question_count: 1,
+        question_types: vec!["recognition".into()],
+        ..Default::default()
+    };
+    let preview = store.assessment_preview(&config).unwrap();
+    let session = store
+        .assessment_start(&StartAssessment {
+            config,
+            expected_inventory_revision: preview.inventory_revision,
+            operation_id: op(),
+        })
+        .unwrap();
+    assert_eq!(store.assessment_sync_status(scope).unwrap().pending, 1);
+    let initial = store.assessment_freeze_pushes(scope).unwrap().remove(0);
+    store.assessment_sync_saved(scope, &initial, 1).unwrap();
+    assert!(
+        store
+            .assessment_revision_known(scope, &session.id, 1)
+            .unwrap()
+    );
+    assert_eq!(store.assessment_sync_status(scope).unwrap().pending, 0);
+    store
+        .assessment_answer_submit(&AssessmentAnswerInput {
+            session_id: session.id.clone(),
+            item_id: session.question.unwrap().id,
+            expected_revision: session.revision,
+            operation_id: op(),
+            action: "unknown".into(),
+            option_id: None,
+            text: String::new(),
+            uncertain: false,
+        })
+        .unwrap();
+    let complete = store.assessment_freeze_pushes(scope).unwrap().remove(0);
+    assert_eq!(
+        serde_json::to_value(&complete.bundle.items).unwrap(),
+        serde_json::to_value(&initial.bundle.items).unwrap()
+    );
+    assert_eq!(complete.bundle.answers.len(), 1);
+    assert_eq!(complete.bundle.reports.len(), 1);
+    store.assessment_sync_saved(scope, &complete, 2).unwrap();
+    assert_eq!(store.assessment_sync_status(scope).unwrap().pending, 0);
+    let writes: i64 = store
+        .connection()
+        .unwrap()
+        .query_row("SELECT total_changes()", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(store.assessment_sync_status(scope).unwrap().pending, 0);
+    assert!(store.assessment_freeze_pushes(scope).unwrap().is_empty());
+    assert_eq!(
+        store
+            .connection()
+            .unwrap()
+            .query_row("SELECT total_changes()", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        writes
+    );
+    let answer = &complete.bundle.answers[0];
+    store
+        .assessment_correct(&CorrectAssessment {
+            answer_id: answer.answer.id.clone(),
+            expected_revision: answer.revision,
+            operation_id: op(),
+            result: "incorrect".into(),
+            add_hint: false,
+            reason: "合成核对记录".into(),
+        })
+        .unwrap();
+    let corrected = store.assessment_freeze_pushes(scope).unwrap().remove(0);
+    assert_eq!(corrected.bundle.answers.len(), 1);
+    assert_eq!(corrected.bundle.corrections.len(), 1);
+    assert_eq!(corrected.bundle.reports.len(), 2);
+    assert!(
+        corrected
+            .bundle
+            .reports
+            .iter()
+            .any(|r| r.digest == complete.bundle.reports[0].digest
+                && r.report_json == complete.bundle.reports[0].report_json)
+    );
+    store.assessment_sync_saved(scope, &corrected, 3).unwrap();
+    assert_eq!(store.assessment_sync_status(scope).unwrap().pending, 0);
+}
+
 fn fixture() -> (tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("dictionaries")).unwrap();

@@ -489,26 +489,18 @@ pub(crate) fn export_on(
         .collect::<Result<Vec<_>, AppError>>()?;
     let mut q=c.prepare("SELECT report_json,revision FROM assessment_report_versions WHERE session_id=? ORDER BY created_at,revision")?;
     let mut reports = BTreeMap::new();
+    let mut retained_by_slot = BTreeMap::new();
+    if let Some(base) = &base {
+        for report in &base.bundle.reports {
+            let slot: Option<String> = c.query_row("SELECT value_json FROM settings WHERE key=?",
+                [report_slot_key(id,&report.digest)], |r|r.get(0)).optional()?;
+            if let Some(slot) = slot { retained_by_slot.entry(slot).or_insert(report); }
+        }
+    }
     for row in q.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
         let (raw, slot) = row?;
-        let mut retained = false;
-        if let Some(base) = &base {
-            for report in &base.bundle.reports {
-                let mapped: Option<String> = c
-                    .query_row(
-                        "SELECT value_json FROM settings WHERE key=?",
-                        [report_slot_key(id, &report.digest)],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                if mapped.as_deref() == Some(&slot.to_string()) {
-                    reports.insert(report.digest.clone(), report.clone());
-                    retained = true;
-                    break;
-                }
-            }
-        }
-        if retained {
+        if let Some(report) = retained_by_slot.get(&slot.to_string()) {
+            reports.insert(report.digest.clone(), (*report).clone());
             continue;
         }
         let report: AssessmentReport = portable(&serde_json::from_str::<AssessmentReport>(&raw)?)?;
@@ -600,6 +592,34 @@ pub(crate) fn export_on(
     let _ = root;
     packet.validate()?;
     Ok(packet)
+}
+
+// Cached digests describe complete exported facts, never a truncated history or an acknowledgement.
+fn cache_packet(
+    c: &Connection,
+    root: &std::path::Path,
+    scope: &str,
+    id: &str,
+) -> Result<(AssessmentPacket, String), AppError> {
+    c.execute(
+        "INSERT OR IGNORE INTO assessment_sync_accounts(account_key,updated_at) VALUES (?,?)",
+        params![scope, chrono::Utc::now().timestamp_millis()],
+    )?;
+    let packet = export_on(c, root, scope, id)?;
+    let hash = packet_digest(&packet)?;
+    let mut references = 0usize;
+    for link in &packet.collection_links {
+        if entry_alias(c, scope, &link.entry_id, false)?.is_none() {
+            references += 1;
+        }
+    }
+    let epoch: i64 = c.query_row(
+        "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
+        [id],
+        |r| r.get(0),
+    )?;
+    c.execute("INSERT INTO assessment_sync_state(account_key,session_id,cached_epoch,cached_digest,cached_pending_references) VALUES (?,?,?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET cached_epoch=excluded.cached_epoch,cached_digest=excluded.cached_digest,cached_pending_references=excluded.cached_pending_references",params![scope,id,epoch,hash,references])?;
+    Ok((packet, hash))
 }
 
 fn equal<T: Serialize>(a: &T, b: &T) -> Result<bool, AppError> {
@@ -1019,6 +1039,19 @@ impl Store {
         account_on(&c, scope, capability)
     }
     pub fn assessment_sync_status(&self, scope: &str) -> Result<AssessmentSyncStatus, AppError> {
+        let ids = {
+            let c = self.connection()?;
+            let mut q = c.prepare("SELECT d.session_id FROM assessment_sync_dirty d LEFT JOIN assessment_sync_state s ON s.account_key=? AND s.session_id=d.session_id WHERE s.cached_digest IS NULL OR s.cached_epoch<>d.epoch ORDER BY d.session_id")?;
+            q.query_map([scope], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        // Refresh only changed sessions; release the business connection between complete packets.
+        for id in ids {
+            let mut c = self.connection()?;
+            let tx = c.transaction()?;
+            cache_packet(&tx, self.root(), scope, &id)?;
+            tx.commit()?;
+        }
         let c = self.connection()?;
         let row: Option<(Option<String>, Option<String>)> = c
             .query_row(
@@ -1027,85 +1060,78 @@ impl Store {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        let mut status = AssessmentSyncStatus {
+        Ok(AssessmentSyncStatus {
             capability: row.as_ref().and_then(|r| r.0.clone()),
-            cursor: row
-                .and_then(|r| r.1)
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0),
-            ..Default::default()
-        };
-        let mut q = c.prepare("SELECT id FROM assessment_sessions ORDER BY created_at,id")?;
-        let ids = q
-            .query_map([], |r| r.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
-        for id in ids {
-            let row:Option<(Option<String>,Option<String>,Option<String>)>=c.query_row("SELECT acknowledged_digest,conflict_json,base_json FROM assessment_sync_state WHERE account_key=? AND session_id=?",params![scope,id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
-            let packet = export_on(&c, self.root(), scope, &id)?;
-            if row.as_ref().is_some_and(|r| r.1.is_some()) {
-                status.conflicts += 1;
-            }
-            if row.as_ref().and_then(|r| r.0.as_ref()) != Some(&packet_digest(&packet)?) {
-                status.pending += 1;
-            }
-            for link in packet.collection_links {
-                if entry_alias(&c, scope, &link.entry_id, false)?.is_none() {
-                    status.pending_references += 1;
-                }
-            }
-        }
-        Ok(status)
+            cursor: row.and_then(|r| r.1).and_then(|v| v.parse().ok()).unwrap_or(0),
+            pending: c.query_row("SELECT COUNT(*) FROM assessment_sync_state WHERE account_key=? AND cached_digest IS NOT acknowledged_digest", [scope], |r| r.get(0))?,
+            conflicts: c.query_row("SELECT COUNT(*) FROM assessment_sync_state WHERE account_key=? AND conflict_json IS NOT NULL", [scope], |r| r.get(0))?,
+            pending_references: c.query_row("SELECT COALESCE(SUM(cached_pending_references),0) FROM assessment_sync_state WHERE account_key=?", [scope], |r| r.get(0))?,
+        })
     }
-    pub fn assessment_freeze_pushes(&self, scope: &str) -> Result<Vec<AssessmentPush>, AppError> {
+    pub fn assessment_push_candidates(&self, scope: &str) -> Result<Vec<String>, AppError> {
+        let c = self.connection()?;
+        let mut q = c.prepare("SELECT d.session_id FROM assessment_sync_dirty d JOIN assessment_sessions a ON a.id=d.session_id LEFT JOIN assessment_sync_state s ON s.account_key=? AND s.session_id=d.session_id WHERE s.conflict_json IS NULL AND (s.pending_json IS NOT NULL OR s.cached_digest IS NULL OR s.cached_epoch<>d.epoch OR s.cached_digest IS NOT s.acknowledged_digest) ORDER BY a.created_at,a.id")?;
+        Ok(q.query_map([scope], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+    pub fn assessment_freeze_push(
+        &self,
+        scope: &str,
+        id: &str,
+    ) -> Result<Option<AssessmentPush>, AppError> {
         let mut c = self.connection()?;
         let tx = c.transaction()?;
-        let mut q = tx.prepare("SELECT id FROM assessment_sessions ORDER BY created_at,id")?;
-        let ids = q
-            .query_map([], |r| r.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
-        drop(q);
-        let mut pushes = Vec::new();
-        for id in ids {
-            let saved:Option<(Option<String>,Option<String>,Option<String>,Option<String>)>=tx.query_row("SELECT base_json,pending_json,acknowledged_digest,conflict_json FROM assessment_sync_state WHERE account_key=? AND session_id=?",params![scope,id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
-            if saved.as_ref().is_some_and(|r| r.3.is_some()) {
-                continue;
-            }
-            if let Some(pending) = saved.as_ref().and_then(|r| r.1.as_ref()) {
-                pushes.push(serde_json::from_str(pending)?);
-                continue;
-            }
-            if matches!(
-                load_session(&tx, &id)?.state.as_str(),
-                "completed" | "ended_early"
-            ) {
-                report_on(&tx, &id)?;
-            }
-            let packet = export_on(&tx, self.root(), scope, &id)?;
-            let hash = packet_digest(&packet)?;
-            if saved.as_ref().and_then(|r| r.2.as_ref()) == Some(&hash) {
-                continue;
-            }
-            let base = saved
-                .and_then(|r| r.0)
-                .map(|r| serde_json::from_str::<AssessmentDocument>(&r))
-                .transpose()?
-                .map_or(0, |r| r.revision);
-            let push = AssessmentPush {
-                change_id: Uuid::new_v4().to_string(),
-                base_revision: base,
-                bundle: packet,
-            };
-            if serde_json::to_vec(&push)?.len() > 8 * 1024 * 1024 {
-                return Err(AppError::new(
-                    "capacity_exceeded",
-                    "完整水平测试资料超过单包能力，资料保持完整，未截断历史。",
-                ));
-            }
-            tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,pending_json,pending_change_id,pending_digest) VALUES (?,?,?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET pending_json=excluded.pending_json,pending_change_id=excluded.pending_change_id,pending_digest=excluded.pending_digest",params![scope,id,canonical(&push)?,push.change_id,hash])?;
-            pushes.push(push);
+        let saved: Option<(i64, Option<String>, Option<String>, bool)> = tx.query_row(
+            "SELECT remote_revision,pending_json,acknowledged_digest,conflict_json IS NOT NULL FROM assessment_sync_state WHERE account_key=? AND session_id=?",
+            params![scope,id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+        if saved.as_ref().is_some_and(|r| r.3) {
+            return Ok(None);
         }
+        if let Some(pending) = saved.as_ref().and_then(|r| r.1.as_ref()) {
+            return Ok(Some(serde_json::from_str(pending)?));
+        }
+        if matches!(
+            load_session(&tx, id)?.state.as_str(),
+            "completed" | "ended_early"
+        ) {
+            report_on(&tx, id)?;
+        }
+        let (packet, hash) = cache_packet(&tx, self.root(), scope, id)?;
+        if saved.as_ref().and_then(|r| r.2.as_ref()) == Some(&hash) {
+            tx.commit()?;
+            return Ok(None);
+        }
+        let push = AssessmentPush {
+            change_id: Uuid::new_v4().to_string(),
+            base_revision: saved.map_or(0, |r| r.0),
+            bundle: packet,
+        };
+        if serde_json::to_vec(&push)?.len() > 8 * 1024 * 1024 {
+            return Err(AppError::new(
+                "capacity_exceeded",
+                "完整水平测试资料超过单包能力，资料保持完整，未截断历史。",
+            ));
+        }
+        tx.execute("UPDATE assessment_sync_state SET pending_json=?,pending_change_id=?,pending_digest=? WHERE account_key=? AND session_id=?",params![canonical(&push)?,push.change_id,hash,scope,id])?;
         tx.commit()?;
+        Ok(Some(push))
+    }
+    pub fn assessment_freeze_pushes(&self, scope: &str) -> Result<Vec<AssessmentPush>, AppError> {
+        let mut pushes = Vec::new();
+        for id in self.assessment_push_candidates(scope)? {
+            if let Some(push) = self.assessment_freeze_push(scope, &id)? {
+                pushes.push(push);
+            }
+        }
         Ok(pushes)
+    }
+    pub fn assessment_revision_known(
+        &self,
+        scope: &str,
+        id: &str,
+        revision: i64,
+    ) -> Result<bool, AppError> {
+        Ok(self.connection()?.query_row("SELECT EXISTS(SELECT 1 FROM assessment_sync_state WHERE account_key=? AND session_id=? AND remote_revision>=?)",params![scope,id,revision],|r|r.get(0))?)
     }
     pub fn assessment_sync_saved(
         &self,
@@ -1175,7 +1201,7 @@ impl Store {
             Ok(packet) => {
                 apply_on(&tx, self.root(), scope, &packet)?;
                 tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,base_json) VALUES (?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET base_json=excluded.base_json,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL,conflict_json=NULL",params![scope,remote.session_id,canonical(remote)?])?;
-                let hash = packet_digest(&export_on(&tx, self.root(), scope, &remote.session_id)?)?;
+                let (_, hash) = cache_packet(&tx, self.root(), scope, &remote.session_id)?;
                 // A merged local append must still be pushed; a plain receive is acknowledged locally.
                 let merged = local.as_ref().is_some_and(|l| {
                     saved.as_ref().and_then(|r| r.1.as_ref()) != packet_digest(l).ok().as_ref()

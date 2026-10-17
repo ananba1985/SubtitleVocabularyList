@@ -40,7 +40,7 @@ fn tc53_upgrade_catalog_and_reviewed_bank() {
         INSERT INTO frequency_targets VALUES ('fixture',1,'bright','bright','bright','identity',NULL,1,NULL),('fixture',2,'without-chinese','without-chinese','without-chinese','identity',NULL,1,NULL),('fixture',3,'lights','lights','light','explicit-fixture-lemma',NULL,1,NULL);").unwrap();
     drop(dictionary);
     let store = Store::open(directory.path()).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 9);
+    assert_eq!(store.schema_version().unwrap(), 10);
     let targets = store.assessment_targets("fixture", 3).unwrap();
     assert_eq!(
         targets.iter().map(|t| t.rank).collect::<Vec<_>>(),

@@ -22,7 +22,7 @@ impl Store {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 9 {
+        if version > 10 {
             return Err(AppError::new(
                 "unsupported_schema",
                 "此词库由较新版本创建，请使用对应软件版本打开。",
@@ -82,6 +82,12 @@ impl Store {
             transaction.pragma_update(None, "user_version", 9)?;
             transaction.commit()?;
         }
+        if version < 10 {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/010_sync_growth.sql"))?;
+            transaction.pragma_update(None, "user_version", 10)?;
+            transaction.commit()?;
+        }
         Ok(Self {
             dictionary: crate::base_dictionary::BaseDictionary::load(&root),
             root,
@@ -118,10 +124,84 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sync_growth_version_nine_upgrade_keeps_learning_history() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(directory.path().join("media")).unwrap();
+        let connection = Connection::open(directory.path().join("vocabulary.sqlite3")).unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        for migration in [
+            include_str!("../migrations/001_initial.sql"),
+            include_str!("../migrations/002_imports.sql"),
+            include_str!("../migrations/003_reviews.sql"),
+            include_str!("../migrations/004_example_contexts.sql"),
+            include_str!("../migrations/005_sync.sql"),
+            include_str!("../migrations/006_explanations.sql"),
+            include_str!("../migrations/007_query_results.sql"),
+            include_str!("../migrations/008_sentence_translations.sql"),
+            include_str!("../migrations/009_assessments.sql"),
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        connection.pragma_update(None, "user_version", 9).unwrap();
+        let legacy = Store {
+            root: directory.path().into(),
+            connection: Mutex::new(connection),
+            dictionary: crate::base_dictionary::BaseDictionary::load(directory.path()),
+        };
+        let entry = legacy
+            .collect(&crate::vocabulary::CollectionInput {
+                operation_id: uuid::Uuid::new_v4().to_string(),
+                kind: "word".into(),
+                text: "growth".into(),
+                meaning: "增长".into(),
+                examples: vec![crate::vocabulary::ExampleInput {
+                    text: "Steady growth.".into(),
+                    ..Default::default()
+                }],
+                target_entry_id: None,
+                expected_revision: None,
+            })
+            .unwrap();
+        let unit = legacy
+            .review_units("all", "meaning", 0, 1)
+            .unwrap()
+            .remove(0);
+        let question = legacy.review_question(&unit.id, unit.revision).unwrap();
+        legacy
+            .review_submit(&crate::reviews::AnswerInput {
+                operation_id: uuid::Uuid::new_v4().to_string(),
+                question_id: question.id,
+                answer: "增长".into(),
+                unable: false,
+            })
+            .unwrap();
+        drop(legacy);
+        let upgraded = Store::open(directory.path()).unwrap();
+        assert_eq!(upgraded.schema_version().unwrap(), 10);
+        assert_eq!(
+            upgraded.get_entry(&entry.entry_id).unwrap().examples[0].text,
+            "Steady growth."
+        );
+        assert_eq!(
+            upgraded.sync_export(&entry.entry_id).unwrap().tables["review_attempts"].len(),
+            1
+        );
+        assert_eq!(
+            upgraded
+                .get_entry(&entry.entry_id)
+                .unwrap()
+                .collection_count,
+            1
+        );
+    }
+
+    #[test]
     fn database_migrates_once_and_enforces_relationships() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
         assert_eq!(
             store
                 .connection()
@@ -138,7 +218,7 @@ mod tests {
                 .unwrap()
                 .schema_version()
                 .unwrap(),
-            9
+            10
         );
     }
 
@@ -168,7 +248,7 @@ mod tests {
         connection.execute("INSERT INTO entries(id,kind,text,match_key,created_at,updated_at) VALUES ('existing','word','reluctant','reluctant',1,1)",[]).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
         assert_eq!(store.get_entry("existing").unwrap().text, "reluctant");
     }
 
@@ -192,7 +272,7 @@ mod tests {
         connection.pragma_update(None, "user_version", 2).unwrap();
         drop(connection);
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
         let entry = store.get_entry("e").unwrap();
         assert_eq!(entry.collection_count, 1);
         assert_eq!(entry.examples[0].text, "She was reluctant.");
@@ -241,7 +321,7 @@ mod tests {
         )
         .unwrap();
         let store = Store::open(directory.path()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
         let entry = store.get_entry("e").unwrap();
         assert_eq!(entry.collection_count, 1);
         assert_eq!(entry.examples[0].contexts[0].context_meaning, "早餐");

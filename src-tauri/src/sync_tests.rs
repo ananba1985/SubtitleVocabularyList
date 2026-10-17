@@ -16,6 +16,8 @@ struct Server {
     lost_reply: bool,
     received: Vec<String>,
     media: BTreeMap<String, Vec<u8>>,
+    fetched: usize,
+    uploads: usize,
 }
 impl Remote for Server {
     fn changes(&mut self, after: i64) -> Result<ChangePage, crate::error::AppError> {
@@ -36,6 +38,7 @@ impl Remote for Server {
         })
     }
     fn change(&mut self, cursor: i64) -> Result<RemoteDocument, crate::error::AppError> {
+        self.fetched += 1;
         Ok(self.events[(cursor - 1) as usize].clone())
     }
     fn push(&mut self, p: &Push) -> Result<PushReply, crate::error::AppError> {
@@ -83,6 +86,7 @@ impl Remote for Server {
         bytes: Vec<u8>,
     ) -> Result<(), crate::error::AppError> {
         assert_eq!(crate::vocabulary::digest(&bytes), hash);
+        self.uploads += 1;
         self.media.insert(hash.into(), bytes);
         Ok(())
     }
@@ -91,6 +95,113 @@ impl Remote for Server {
             crate::error::AppError::new("resource_missing", "synthetic missing media")
         })
     }
+}
+
+#[test]
+fn sync_growth_preserves_full_history_and_reuses_transport() {
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let first = Store::open(a.path()).unwrap();
+    let second = Store::open(b.path()).unwrap();
+    let bytes = b"RIFF synthetic original audio".to_vec();
+    let hash = crate::vocabulary::digest(&bytes);
+    let asset = Uuid::new_v4().to_string();
+    std::fs::write(a.path().join("media/growth.wav"), &bytes).unwrap();
+    first.connection().unwrap().execute("INSERT INTO media_assets(id,recipe_key,digest,relative_path,kind,format,duration_ms,state,created_at) VALUES (?,?,?,'media/growth.wav','original','wav',1000,'ready',1)",rusqlite::params![asset,hash,hash]).unwrap();
+    let mut entries = Vec::new();
+    for text in ["reluctant", "speaker"] {
+        entries.push(
+            first
+                .collect(&CollectionInput {
+                    operation_id: Uuid::new_v4().to_string(),
+                    kind: "word".into(),
+                    text: text.into(),
+                    meaning: "合成词义".into(),
+                    examples: vec![ExampleInput {
+                        text: "A reluctant speaker.".into(),
+                        media_asset_ids: vec![asset.clone()],
+                        ..Default::default()
+                    }],
+                    target_entry_id: None,
+                    expected_revision: None,
+                })
+                .unwrap()
+                .entry_id,
+        );
+    }
+    let unit = first
+        .review_units("all", "meaning", 0, 100)
+        .unwrap()
+        .into_iter()
+        .find(|u| u.entry_id == entries[0])
+        .unwrap();
+    let q = first.review_question(&unit.id, unit.revision).unwrap();
+    first
+        .review_submit(&AnswerInput {
+            operation_id: Uuid::new_v4().to_string(),
+            question_id: q.id,
+            answer: "合成词义".into(),
+            unable: false,
+        })
+        .unwrap();
+    let mut server = Server::default();
+    assert_eq!(sync(&first, &mut server).pushed, 2);
+    assert_eq!(server.uploads, 1);
+    sync(&first, &mut server);
+    assert_eq!(server.fetched, 0); // Own acknowledged changes need metadata only.
+    sync(&second, &mut server);
+    assert_eq!(server.fetched, 2);
+    let saved = second.get_entry(&entries[0]).unwrap();
+    assert_eq!(
+        std::fs::read(second.media_file(&saved.examples[0].audio[0].id).unwrap()).unwrap(),
+        bytes
+    );
+    let unit = second
+        .review_units("all", "meaning", 0, 100)
+        .unwrap()
+        .into_iter()
+        .find(|u| u.entry_id == entries[0])
+        .unwrap();
+    let q = second.review_question(&unit.id, unit.revision).unwrap();
+    second
+        .review_submit(&AnswerInput {
+            operation_id: Uuid::new_v4().to_string(),
+            question_id: q.id,
+            answer: "合成词义".into(),
+            unable: false,
+        })
+        .unwrap();
+    assert_eq!(sync(&second, &mut server).pushed, 1);
+    sync(&first, &mut server);
+    let bundle = first.sync_export(&entries[0]).unwrap();
+    assert_eq!(bundle.tables["review_attempts"].len(), 2);
+    assert_eq!(bundle.tables["examples"].len(), 1);
+    assert_eq!(bundle.tables["media_assets"].len(), 1);
+    assert_eq!(first.get_entry(&entries[0]).unwrap().collection_count, 1);
+    let legacy = Uuid::new_v4().to_string();
+    first.connection().unwrap().execute("INSERT INTO sync_outbox(change_id,entity_kind,entity_id,base_revision,payload_json,state,created_at,account_scope) VALUES (?,'entry',?,0,?,'sent',0,'fixture-account')",rusqlite::params![legacy,entries[0],server.received[0]]).unwrap();
+    sync(&first, &mut server);
+    let c = first.connection().unwrap();
+    assert_eq!(
+        c.query_row(
+            "SELECT payload_json FROM sync_outbox WHERE change_id=?",
+            [legacy],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "{}"
+    );
+    assert_eq!(
+        c.query_row(
+            "SELECT COUNT(*) FROM sync_outbox WHERE state='sent' AND payload_json<>'{}'",
+            [],
+            |r| r.get::<_, usize>(0)
+        )
+        .unwrap(),
+        0
+    );
+    drop(c);
+    assert_eq!(first.get_entry(&entries[1]).unwrap().examples.len(), 1);
 }
 #[test]
 fn original_audio_bytes_are_saved_once_and_a_corrupt_download_keeps_progress() {

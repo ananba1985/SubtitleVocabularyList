@@ -13,6 +13,7 @@ use crate::{
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeSet,
     io::Read,
     sync::{
         Arc,
@@ -28,6 +29,7 @@ struct HttpRemote {
     supports_chunks: bool,
     supports_assessments: bool,
     cancelled: Option<Arc<AtomicBool>>,
+    confirmed_media: BTreeSet<(String, String)>,
 }
 fn failure(code: &str, message: &str) -> AppError {
     AppError::new(code, message)
@@ -58,6 +60,7 @@ impl HttpRemote {
             })
             .ok_or_else(|| failure("auth_required", "请先由浏览器批准本机的站点账号连接。"))?;
         Ok(Self {
+            confirmed_media: BTreeSet::new(),
             app,
             site,
             credential,
@@ -179,6 +182,15 @@ impl HttpRemote {
                     .as_i64()
                     .filter(|v| *v > cursor)
                     .ok_or_else(|| failure("invalid_data", "测试历史游标没有推进。"))?;
+                let session_id = change["sessionId"].as_str()
+                    .ok_or_else(|| failure("invalid_data", "测试历史缺少会话标识。"))?;
+                let revision = change["revision"].as_i64().filter(|v| *v > 0)
+                    .ok_or_else(|| failure("invalid_data", "测试历史版本无效。"))?;
+                if self.app.store.assessment_revision_known(scope, session_id, revision)? {
+                    self.app.store.assessment_sync_cursor(scope, next)?;
+                    cursor = next;
+                    continue;
+                }
                 context.progress(
                     "assessment_pull",
                     cursor as usize,
@@ -203,12 +215,13 @@ impl HttpRemote {
         }
         // A confirmed version conflict may create one merged append. Unknown responses keep the same frozen push.
         for _ in 0..2 {
-            let pushes = self.app.store.assessment_freeze_pushes(scope)?;
-            if pushes.is_empty() {
+            let sessions = self.app.store.assessment_push_candidates(scope)?;
+            if sessions.is_empty() {
                 break;
             }
-            for push in pushes {
+            for session in sessions {
                 context.check_cancelled()?;
+                let Some(push) = self.app.store.assessment_freeze_push(scope, &session)? else { continue; };
                 context.progress(
                     "assessment_push",
                     0,
@@ -216,6 +229,9 @@ impl HttpRemote {
                     "正在发送完整水平测试会话、作答和报告",
                 );
                 for media in &push.bundle.media {
+                    if self.confirmed_media.contains(&(media.digest.clone(),media.format.clone())) {
+                        continue;
+                    }
                     let bytes = self
                         .app
                         .store
@@ -282,6 +298,8 @@ impl Remote for HttpRemote {
     }
     fn upload(&mut self, hash: &str, format: &str, bytes: Vec<u8>) -> Result<(), AppError> {
         self.check()?;
+        let key = (hash.to_owned(), format.to_owned());
+        if self.confirmed_media.contains(&key) { return Ok(()); }
         if bytes.len() > 20 * 1024 * 1024 || digest(&bytes) != hash {
             return Err(failure(
                 "capacity_exceeded",
@@ -305,6 +323,7 @@ impl Remote for HttpRemote {
                 return Err(failure("invalid_data", "已保存原声的格式不一致。"));
             }
             self.check()?;
+            self.confirmed_media.insert(key);
             return Ok(());
         }
         if head.status().as_u16() != 404 {
@@ -328,6 +347,7 @@ impl Remote for HttpRemote {
         {
             return Err(failure("invalid_data", "原声上传回执无效。"));
         }
+        self.confirmed_media.insert(key);
         Ok(())
     }
     fn download(&mut self, hash: &str, format: &str) -> Result<Vec<u8>, AppError> {

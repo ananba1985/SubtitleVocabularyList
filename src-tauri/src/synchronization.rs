@@ -432,14 +432,14 @@ fn outbound(
         r.get(0)
     })?;
     for (table, rows) in &current.tables {
+        let by_key = rows.iter().map(|row| (sync_merge::key(table, row), row))
+            .collect::<BTreeMap<_, _>>();
         let mut used = BTreeSet::new();
         let mut output = vec![];
         if let Some(base) = base {
             for original in &base.tables[table] {
                 let local_row = rewritten(table, original, &incoming)?;
-                if let Some(current_row) = rows
-                    .iter()
-                    .find(|r| sync_merge::key(table, r) == sync_merge::key(table, &local_row))
+                if let Some(&current_row) = by_key.get(&sync_merge::key(table, &local_row))
                 {
                     used.insert(sync_merge::key(table, current_row));
                     let mut value = rewritten(table, current_row, &reverse)?;
@@ -913,6 +913,7 @@ impl Store {
         remote: &mut R,
         cancel: &AtomicBool,
         result: &mut SyncResult,
+        uploaded: &mut BTreeSet<(String,String)>,
     ) -> Result<(), AppError> {
         loop {
             check_cancel(cancel)?;
@@ -926,10 +927,13 @@ impl Store {
             let request: Push = serde_json::from_str(&json)?;
             for asset in &request.bundle.tables["media_assets"] {
                 check_cancel(cancel)?;
+                let key = (id(asset,"digest").to_owned(),id(asset,"format").to_owned());
+                if uploaded.contains(&key) { continue; }
                 let bytes = std::fs::read(
                     self.media_file_for_digest(id(asset, "digest"), id(asset, "format"))?,
                 )?;
                 remote.upload(id(asset, "digest"), id(asset, "format"), bytes)?;
+                uploaded.insert(key);
             }
             check_cancel(cancel)?;
             let reply = remote.push(&request)?;
@@ -957,7 +961,7 @@ impl Store {
                         epoch,
                     )?;
                     tx.execute(
-                        "UPDATE sync_outbox SET state='sent' WHERE change_id=?",
+                        "UPDATE sync_outbox SET state='sent',payload_json='{}' WHERE change_id=?",
                         [change],
                     )?;
                     result.pushed += 1;
@@ -1008,8 +1012,15 @@ impl Store {
         cancel: &AtomicBool,
         progress: impl Fn(&str, usize),
     ) -> Result<SyncResult, AppError> {
+        // Retain receipt metadata, but release obsolete transport copies in small transactions.
+        loop {
+            check_cancel(cancel)?;
+            let cleared = self.connection()?.execute("UPDATE sync_outbox SET payload_json='{}' WHERE change_id IN (SELECT change_id FROM sync_outbox WHERE account_scope=? AND state IN ('sent','superseded') AND payload_json<>'{}' LIMIT 50)", [scope])?;
+            if cleared == 0 { break; }
+        }
         let mut result = SyncResult::default();
-        self.send_pending(scope, remote, cancel, &mut result)?;
+        let mut uploaded = BTreeSet::new();
+        self.send_pending(scope, remote, cancel, &mut result, &mut uploaded)?;
         let mut cursor = self.synchronization_status(scope)?.cursor;
         let mut caught_up = false;
         for _ in 0..10_000 {
@@ -1031,11 +1042,16 @@ impl Store {
                 {
                     return Err(AppError::new("invalid_data", "站点同步游标或标识无效。"));
                 }
-                let doc = remote.change(change.cursor)?;
-                if doc.entry_id != change.entry_id || doc.revision != change.revision {
-                    return Err(AppError::new("invalid_data", "站点变更与资料包不一致。"));
+                let known = self.connection()?.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sync_documents WHERE account_scope=? AND remote_id=? AND remote_revision>=?)",
+                    params![scope,change.entry_id,change.revision], |r| r.get::<_,bool>(0))?;
+                if !known {
+                    let doc = remote.change(change.cursor)?;
+                    if doc.entry_id != change.entry_id || doc.revision != change.revision {
+                        return Err(AppError::new("invalid_data", "站点变更与资料包不一致。"));
+                    }
+                    self.receive(scope, &doc, remote, cancel)?;
                 }
-                self.receive(scope, &doc, remote, cancel)?;
                 let c = self.connection()?;
                 c.execute("INSERT INTO sync_state(account_scope,state_json) VALUES (?,?) ON CONFLICT(account_scope) DO UPDATE SET state_json=excluded.state_json",params![scope,serde_json::to_string(&json!({"cursor":change.cursor}))?])?;
                 cursor = change.cursor;
@@ -1051,7 +1067,7 @@ impl Store {
         check_cancel(cancel)?;
         self.enqueue(scope, cancel)?;
         progress("push", result.pushed);
-        self.send_pending(scope, remote, cancel, &mut result)?;
+        self.send_pending(scope, remote, cancel, &mut result, &mut uploaded)?;
         let status = self.synchronization_status(scope)?;
         result.cursor = status.cursor;
         result.conflicts = status.conflicts;
@@ -1148,7 +1164,7 @@ impl Store {
             "DELETE FROM sync_conflicts WHERE id=? AND account_scope=?",
             params![conflict_id, scope],
         )?;
-        tx.execute("UPDATE sync_outbox SET state='superseded' WHERE account_scope=? AND entity_id=? AND state='conflict'",params![scope,saved.remote_id])?;
+        tx.execute("UPDATE sync_outbox SET state='superseded',payload_json='{}' WHERE account_scope=? AND entity_id=? AND state='conflict'",params![scope,saved.remote_id])?;
         tx.commit()?;
         Ok(())
     }

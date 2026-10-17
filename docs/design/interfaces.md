@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.51 |
+| 文档版本 | 0.52 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -154,6 +154,8 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 预习只调用 explanation_get，并按需迁移旧缓存；缺失时轮询本地资料和 explanations_status，不因页面打开而发起 explain_start。explanations_prepare 的参数为 `{sourceId?:string}`，返回 `{task:TaskSnapshot|null}`；null 表示请求范围没有缺失资料，指定来源可提高队列优先级，已有聚合任务被复用。status 返回 `{state:"running"|"paused"|"failed"|"idle"}`。没有新增 HTTP 入口，0.6.2 的本地缓存结构为 schema 8。
 
 explanation_batch 通过 task_get/list/history 查询进度与 result.preparation；通用词义或句子译文先保存再计入进度，不创建逐项成功任务。取消保存暂停偏好，退出停止当前运行，重开补齐。输入分别按词键、完整原句去重，已有值不覆盖，已掌握过滤与预习一致。CollectionSeed.meaning 仅为草稿初值，确认后走原收录接口；准备语料不自动收录或同步。
+
+0.8.25 的 result.preparation 固定结构由 preparation/progress.rs 的 PreparationProgress、SourceProgress、PreparationFailure 定义，并纳入同一个 Rust 类型导出工具。任务页引用生成类型，不再手写词／句／来源及失败明细结构；失败明细也由后端结构体序列化，source/text/message 字段保持。任务通用 result 仍是开放 JSON，各任务的其他固定结果与前端等待断言未因此全部类型化，旧历史和动态协议行也不改变；此边界与已完成的固定进度类型分别记录。
 
 0.6.2 的 current/total 为通用词义与句子译文项之和，包含生成、复用、跳过和未完成；sources[].current/total 为处理归属，failures 保留前 20 条原因。新任务分别显示词／句数量，不用分集候选总和代替全局词数。旧批次仍按旧词语语境口径显示，不重写历史。候选统计与任务轮询分开读取。
 
@@ -385,3 +387,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.49 | 2026-10-17 | 补充下载能力、基准请求头、内联／分片差量与完整响应回退，保持 IPC 和完整应用契约 |
 | 0.50 | 2026-10-17 | 明确站点内部检查点存储和已校验差量复用不改变线上或 IPC 字段，保持完整回退响应 |
 | 0.51 | 2026-10-17 | 明确报告按业务内容复用及本机查询位置语义，保持命令参数、DTO 字段和原报告 JSON |
+| 0.52 | 2026-10-17 | 准备进度、分来源统计与失败明细由 Rust 生成给任务页，保留通用动态结果与旧历史边界 |

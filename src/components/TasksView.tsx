@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { call, message, terminal } from "../api";
 import type { SourceSummary, TaskHistoryPage, TaskSnapshot } from "../types";
+import type { PreparationProgress } from "../generated/ipc";
 
 const PAGE_SIZE = 10;
 const kinds: Record<string, string> = {
@@ -53,24 +54,7 @@ type Result = {
   pushed?: number;
   pulled?: number;
   conflicts?: number;
-  preparation?: {
-    unit?: string;
-    wordsTotal: number;
-    wordsCurrent: number;
-    sentencesTotal: number;
-    sentencesCurrent: number;
-    generated: number;
-    reused: number;
-    skipped: number;
-    failed: number;
-    sources: {
-      sourceId: string;
-      title: string;
-      current: number;
-      total: number;
-    }[];
-    failures: { source: string; text: string; message: string }[];
-  };
+  preparation?: PreparationProgress;
 };
 
 function date(value: number) {

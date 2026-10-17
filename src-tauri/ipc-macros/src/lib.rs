@@ -142,6 +142,7 @@ pub fn catalog(input: TokenStream) -> TokenStream {
             #(#exports(&mut registry);)*
             registry.include::<crate::error::AppError>();
             registry.include::<crate::tasks::TaskUpdate<'static>>();
+            registry.include::<crate::preparation::PreparationProgress>();
             registry.include::<crate::synchronization::SyncResult>();
             registry.finish()
         }

@@ -162,6 +162,10 @@ export type PracticeSentence = { text: string, startMs: number | null, endMs: nu
 
 export type PracticeState = { document: PracticeDocument, chapterIndex: number, sentenceIndex: number, copy: string, speed: number, audioMode: string, voiceId: string, };
 
+export type PreparationFailure = { source: string, text: string, message: string, };
+
+export type PreparationProgress = { unit: string, wordsTotal: number, wordsCurrent: number, sentencesTotal: number, sentencesCurrent: number, generated: number, reused: number, skipped: number, failed: number, sources: Array<SourceProgress>, failures: Array<PreparationFailure>, concurrency: number, inFlight: number, waiting: number, batchesInFlight: number, batchSize: number, };
+
 export type PreparationReply = { task: TaskSnapshot | null, };
 
 export type PreparationStatus = { state: string, };
@@ -213,6 +217,8 @@ export type ScreenBounds = { x: number, y: number, width: number, height: number
 export type ScreenSessionView = { id: string, bounds: ScreenBounds, imagePath: string, };
 
 export type Settings = { modelUrl: string, modelName: string, modelConcurrency: number, modelBatchSize: number, offlineMode: boolean, selectionShortcut: string, ocrShortcut: string, inputShortcut: string, replacementShortcut: string, replacementProviderId: string, systemVoice: string, closeToTray: boolean, siteUrl: string, tools: MediaTools, };
+
+export type SourceProgress = { sourceId: string, title: string, current: number, total: number, };
 
 export type SourceSummary = { id: string, title: string, durationMs: number, textSource: string, exampleCount: number, candidateCount: number, importedAt: number, };
 

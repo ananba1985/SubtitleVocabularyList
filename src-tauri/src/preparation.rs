@@ -1,3 +1,10 @@
+mod progress;
+mod queue;
+mod worker;
+use progress::PreparationFailure;
+pub use progress::{PreparationProgress, SourceProgress};
+use queue::{PreparationBatch, group_batches};
+
 use crate::{
     application::Application,
     error::AppError,
@@ -5,7 +12,7 @@ use crate::{
     tasks::{TaskContext, TaskSnapshot},
 };
 use rusqlite::{OptionalExtension, params};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -17,35 +24,6 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
-
-const ENABLED_KEY: &str = "explanation_preparation_enabled";
-#[derive(Clone)]
-struct PreparationBatch {
-    inputs: Vec<PreparationInput>,
-}
-
-fn group_batches(inputs: Vec<PreparationInput>, batch_size: usize) -> VecDeque<PreparationBatch> {
-    let mut batches = Vec::<PreparationBatch>::new();
-    let mut indexes = HashMap::<(bool, String, String), usize>::new();
-    for input in inputs {
-        let key = (
-            input.kind == "sentence",
-            input.source_id.clone(),
-            input.context.clone(),
-        );
-        let index = match indexes.get(&key).copied() {
-            Some(index) if batches[index].inputs.len() < batch_size => index,
-            _ => {
-                let index = batches.len();
-                batches.push(PreparationBatch { inputs: Vec::new() });
-                indexes.insert(key, index);
-                index
-            }
-        };
-        batches[index].inputs.push(input);
-    }
-    batches.into()
-}
 
 fn retry_delay(attempt: u32) -> Duration {
     Duration::from_secs(2u64.pow(attempt.min(6)).min(60))
@@ -74,36 +52,6 @@ pub struct PreparationStatus {
     pub state: &'static str,
 }
 
-#[derive(Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SourceProgress {
-    source_id: String,
-    title: String,
-    current: usize,
-    total: usize,
-}
-
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PreparationProgress {
-    unit: &'static str,
-    words_total: usize,
-    words_current: usize,
-    sentences_total: usize,
-    sentences_current: usize,
-    generated: usize,
-    reused: usize,
-    skipped: usize,
-    failed: usize,
-    sources: Vec<SourceProgress>,
-    failures: Vec<serde_json::Value>,
-    concurrency: usize,
-    in_flight: usize,
-    waiting: usize,
-    batches_in_flight: usize,
-    batch_size: usize,
-}
-
 struct ActivePreparation {
     batch: PreparationBatch,
     stage: &'static str,
@@ -119,79 +67,6 @@ enum PreparationEvent {
         id: usize,
         result: Result<Vec<Result<Option<bool>, AppError>>, AppError>,
     },
-}
-
-impl Store {
-    pub fn preparation_enabled(&self) -> Result<bool, AppError> {
-        Ok(self
-            .connection()?
-            .query_row(
-                "SELECT value_json FROM settings WHERE key=?",
-                [ENABLED_KEY],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .as_deref()
-            != Some("false"))
-    }
-
-    pub fn set_preparation_enabled(&self, enabled: bool) -> Result<(), AppError> {
-        self.connection()?.execute("INSERT INTO settings(key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", params![ENABLED_KEY, enabled.to_string()])?;
-        Ok(())
-    }
-
-    pub fn explanation_work(
-        &self,
-        source_id: Option<&str>,
-    ) -> Result<Vec<PreparationInput>, AppError> {
-        if let Some(id) = source_id {
-            self.source(id)?;
-        }
-        let connection = self.connection()?;
-        let mut query = connection.prepare(
-            "WITH material AS (
-                SELECT DISTINCT o.source_id,s.title,s.imported_at,o.kind,o.candidate_key,trim(e.text) sentence
-                FROM occurrences o JOIN sources s ON s.id=o.source_id JOIN examples e ON e.id=o.example_id
-                LEFT JOIN settings k ON k.key=?3 || o.kind || ':' || o.candidate_key
-                WHERE (?1 IS NULL OR o.source_id=?2) AND s.corpus_path IS NOT NULL AND e.archived=0 AND k.key IS NULL
-             ), words AS (
-                SELECT *,ROW_NUMBER() OVER(PARTITION BY kind,candidate_key ORDER BY imported_at DESC,source_id) rank FROM material
-             ), sentences AS (
-                SELECT *,ROW_NUMBER() OVER(PARTITION BY sentence ORDER BY imported_at DESC,source_id) rank FROM material
-             ), work AS (
-                SELECT w.source_id,w.title,w.kind,w.candidate_key target,'' context,w.imported_at,0 phase,x.meaning cached_meaning FROM words w
-                LEFT JOIN explanations x ON x.target=w.candidate_key AND x.context=''
-                WHERE w.rank=1
-                UNION ALL
-                SELECT source_id,title,'sentence',sentence,'',imported_at,1,NULL FROM sentences
-                WHERE rank=1 AND sentence<>'' AND NOT EXISTS(SELECT 1 FROM sentence_translations x WHERE x.sentence=sentences.sentence)
-             ) SELECT source_id,title,kind,target,context,cached_meaning FROM work
-             ORDER BY imported_at DESC,source_id,phase,length(target) DESC,target")?;
-        let inputs = query
-            .query_map(
-                params![source_id, source_id, crate::known_targets::PREFIX],
-                |row| {
-                    Ok((PreparationInput {
-                        source_id: row.get(0)?,
-                        title: row.get(1)?,
-                        kind: row.get(2)?,
-                        text: row.get(3)?,
-                        context: row.get(4)?,
-                    }, row.get::<_, Option<String>>(5)?))
-                },
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut pending = Vec::new();
-        for (input, cached_meaning) in inputs {
-            if cached_meaning.as_deref().is_some_and(crate::explanations::Explanation::valid_meaning) {
-                continue;
-            }
-            if input.kind == "sentence" || self.dictionary.explanation(&input.text)?.is_none() {
-                pending.push(input);
-            }
-        }
-        Ok(pending)
-    }
 }
 
 impl Application {
@@ -327,232 +202,6 @@ impl Application {
             move |context| app.run_preparation(inputs, context),
         )?;
         Ok(PreparationReply { task: Some(task) })
-    }
-
-    fn wait_preparation_retry(
-        &self,
-        context: &TaskContext,
-        delay: Duration,
-        epoch: u64,
-    ) -> Result<(), AppError> {
-        let until = Instant::now() + delay;
-        loop {
-            context.check_cancelled()?;
-            if self.preparation_shutdown.load(Ordering::Relaxed) {
-                return Err(AppError::new("cancelled", "应用正在退出。"));
-            }
-            if self.preparation_retry_epoch.load(Ordering::Relaxed) != epoch {
-                break;
-            }
-            let remaining = until.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            std::thread::sleep(remaining.min(Duration::from_millis(100)));
-        }
-        Ok(())
-    }
-
-    fn explain_prepared(
-        &self,
-        input: &PreparationInput,
-        context: &TaskContext,
-        report: impl Fn(&'static str, String),
-    ) -> Result<Option<bool>, AppError> {
-        let mut connection_retries: u32 = 0;
-        let mut output_retried = false;
-        loop {
-            let epoch = self.preparation_retry_epoch.load(Ordering::Relaxed);
-            context.check_cancelled()?;
-            if self.preparation_shutdown.load(Ordering::Relaxed) {
-                return Err(AppError::new("cancelled", "应用正在退出。"));
-            }
-            if input.kind != "sentence" && self.store.is_known_target(&input.kind, &input.text)? {
-                return Ok(None);
-            }
-            report("translations", format!("{} · {}", input.title, input.text));
-            let result = if input.kind == "sentence" {
-                self.translate_many(&[input.text.clone()], context)
-                    .and_then(|mut values| {
-                        values
-                            .remove(&input.text)
-                            .ok_or_else(|| AppError::new("invalid_data", "句子译文缺失。"))?
-                    })
-            } else {
-                self.explain_value(&input.text, &input.context, context)
-                    .map(|(_, created)| created)
-            };
-            let error = match result {
-                Ok(created) => return Ok(Some(created)),
-                Err(error) => error,
-            };
-            let (delay, message) = if error.code == "provider_unavailable" && error.retryable {
-                connection_retries = connection_retries.saturating_add(1);
-                let delay = retry_delay(connection_retries);
-                (
-                    delay,
-                    format!(
-                        "{} · {} 秒后自动重试（第 {} 次），服务恢复后继续。{}",
-                        input.title,
-                        delay.as_secs(),
-                        connection_retries,
-                        error.message
-                    ),
-                )
-            } else if error.code == "invalid_data" && !output_retried {
-                output_retried = true;
-                connection_retries = 0;
-                (
-                    Duration::from_secs(1),
-                    format!(
-                        "{} · {} 的输出无效，1 秒后补试一次。{}",
-                        input.title, input.text, error.message
-                    ),
-                )
-            } else {
-                return Err(error);
-            };
-            report("retry_wait", message);
-            self.wait_preparation_retry(context, delay, epoch)?;
-        }
-    }
-
-    fn explain_prepared_batch(
-        &self,
-        batch: &PreparationBatch,
-        context: &TaskContext,
-        report: impl Fn(&'static str, String),
-    ) -> Result<Vec<Result<Option<bool>, AppError>>, AppError> {
-        if batch.inputs.len() == 1 {
-            return Ok(vec![self.explain_prepared(
-                &batch.inputs[0],
-                context,
-                report,
-            )]);
-        }
-        let first = &batch.inputs[0];
-        let mut outcomes = vec![None; batch.inputs.len()];
-        let mut connection_retries: u32 = 0;
-        let mut output_retried = false;
-        loop {
-            let epoch = self.preparation_retry_epoch.load(Ordering::Relaxed);
-            context.check_cancelled()?;
-            if self.preparation_shutdown.load(Ordering::Relaxed) {
-                return Err(AppError::new("cancelled", "应用正在退出。"));
-            }
-            let mut texts = Vec::new();
-            let mut unique = HashSet::new();
-            for (index, input) in batch.inputs.iter().enumerate() {
-                if outcomes[index].is_some() {
-                    continue;
-                }
-                if let Err(error) = crate::explanations::validate_input(&input.text, &input.context)
-                {
-                    outcomes[index] = Some(Err(error));
-                } else if input.kind != "sentence"
-                    && self.store.is_known_target(&input.kind, &input.text)?
-                {
-                    outcomes[index] = Some(Ok(None));
-                } else if unique.insert(input.text.trim().to_owned()) {
-                    texts.push(input.text.trim().to_owned());
-                }
-            }
-            if texts.is_empty() {
-                return Ok(outcomes.into_iter().map(Option::unwrap).collect());
-            }
-            report(
-                "translations",
-                format!(
-                    "{} · 准备 {} 个{}",
-                    first.title,
-                    texts.len(),
-                    if first.kind == "sentence" {
-                        "句子译文"
-                    } else {
-                        "通用词义"
-                    }
-                ),
-            );
-            let mut retry_error = None;
-            let result = if first.kind == "sentence" {
-                self.translate_many(&texts, context)
-            } else {
-                self.explain_many(&texts, &first.context, context)
-            };
-            match result {
-                Ok(mut values) => {
-                    for (index, input) in batch.inputs.iter().enumerate() {
-                        if outcomes[index].is_some() {
-                            continue;
-                        }
-                        let result = values.remove(input.text.trim()).unwrap_or_else(|| {
-                            let cached = if input.kind == "sentence" {
-                                self.store
-                                    .sentence_translation(&input.text)
-                                    .map(|v| v.is_some())
-                            } else {
-                                self.store
-                                    .explanation(&input.text, &input.context)
-                                    .map(|v| v.is_some())
-                            };
-                            cached.and_then(|available| {
-                                if available {
-                                    Ok(false)
-                                } else {
-                                    Err(AppError::new("invalid_data", "批量结果缺少当前词语解释。"))
-                                }
-                            })
-                        });
-                        match result {
-                            Err(error)
-                                if (error.code == "provider_unavailable" && error.retryable)
-                                    || (error.code == "invalid_data" && !output_retried) =>
-                            {
-                                retry_error = Some(error)
-                            }
-                            value => outcomes[index] = Some(value.map(Some)),
-                        }
-                    }
-                }
-                Err(error) => retry_error = Some(error),
-            }
-            let Some(error) = retry_error else {
-                return Ok(outcomes.into_iter().map(Option::unwrap).collect());
-            };
-            let (delay, message) = if error.code == "provider_unavailable" && error.retryable {
-                connection_retries = connection_retries.saturating_add(1);
-                let delay = retry_delay(connection_retries);
-                (
-                    delay,
-                    format!(
-                        "{} · {} 秒后自动重试缺失资料（第 {} 次）。{}",
-                        first.title,
-                        delay.as_secs(),
-                        connection_retries,
-                        error.message
-                    ),
-                )
-            } else if error.code == "invalid_data" && !output_retried {
-                output_retried = true;
-                connection_retries = 0;
-                (
-                    Duration::from_secs(1),
-                    format!(
-                        "{} · 1 秒后补试未完成的资料。{}",
-                        first.title, error.message
-                    ),
-                )
-            } else {
-                for value in &mut outcomes {
-                    if value.is_none() {
-                        *value = Some(Err(error.clone()));
-                    }
-                }
-                return Ok(outcomes.into_iter().map(Option::unwrap).collect());
-            };
-            report("retry_wait", message);
-            self.wait_preparation_retry(context, delay, epoch)?;
-        }
     }
 
     fn publish_preparation(
@@ -845,7 +494,11 @@ impl Application {
                                     {
                                         progress.failed += 1;
                                         if progress.failures.len() < 20 {
-                                            progress.failures.push(json!({"source":input.title,"text":input.text,"message":error.message}));
+                                            progress.failures.push(PreparationFailure {
+                                                source: input.title.clone(),
+                                                text: input.text.clone(),
+                                                message: error.message.clone(),
+                                            });
                                         }
                                     }
                                     Err(error) => {

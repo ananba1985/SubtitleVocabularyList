@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PERF-001 |
-| 文档版本 | 0.23 |
+| 文档版本 | 0.24 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 核心与实装 WebView 样本通过；版本总审计继续 |
 | 依据 | NFR-03、NFR-04；TC-20、TC-21、TC-39、TC-40、TC-41；OPEN-05 |
@@ -520,7 +520,26 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib assessment_tests:
 
 私有证据为 `.local/report-business-0.8.24/assessment-profile.json` 和 results.json，忽略于 Git。没有重跑基线、真实账号、GUI、压力／故障／并发或扩展验证，也未打包／部署。此运行时间不作为性能提升比例；输入指纹和原文摘要仍需读完整事实，实际新增报告、入站完整校验、整包摘要和必要写入仍有成本。统一版本和 Git 差异检查随本次交付执行。
 
-## 26 修订记录
+## 26 0.8.25 同步与准备模块边界及进度类型
+
+2026-10-17，NFR-02 至 NFR-04，涉及 FR-08、FR-12、FR-23。版本 **0.8.25**。水平测试同步拆分为资料／校验、纯合并、投影／缓存子模块；主入口保留同步协调、持久化、回执和音频适配。中文准备拆分队列选择／分批、服务执行／原重试策略和进度 DTO，主入口管理调度与汇总。原公开模块路径由再导出保持，schema 10、IPC 命令、任务 JSON 和网络协议不变。
+
+准备失败明细由 PreparationFailure 序列化，任务页 result.preparation 引用 Rust 生成的 PreparationProgress／SourceProgress／PreparationFailure；共增加 3 个类型声明，106 个命令保持。通用任务 result 仍保留开放 JSON，不能据此声称其他任务等待结果均已类型化。
+
+最小检查为两个既有正常流程各一次及必要类型检查：
+
+```text
+pnpm commands:generate
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib assessment_tests::reports_reuse_business_content_across_sync_and_keep_history -- --exact
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib preparation::tests::scheduler_prepares_existing_and_newly_imported_sources_without_opening_preview -- --exact
+pnpm exec tsc --noEmit
+pnpm commands:check
+pnpm version:check
+```
+
+首次类型导出发现拆分后的 equal 辅助函数不可见，修正可见性与无用导入后生成成功。两条正常流程分别 **1 passed、0 failed、111 filtered out**，运行 **0.40 秒／0.13 秒**，不含编译；前者继续确认完整例句、原声、原回答、修正、全部旧报告及缓存／提交约束，后者通过本机合成服务确认已有／新增来源无需打开预习页即被同一调度处理，退出后任务结束、已保存资料可复用。前端类型检查、生成文件过期核对、版本及 Git 差异检查通过。不增加新测试、不运行重试／故障／并发分支、真实账号、GUI 或打包，重试逻辑仅按原实现迁移，未扩大其验收结论。
+
+## 27 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -547,3 +566,4 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib assessment_tests:
 | 0.21 | 2026-10-17 | 记录新报告与派生状态原子发布、新报告路径写提交 2→1、最终 epoch／摘要一致及完整历史保持 |
 | 0.22 | 2026-10-17 | 记录未变题目与旧报告的转换／校验复用、确认前后刷新及新增修正的直接计数和完整资料保持，明确单次正常验证边界 |
 | 0.23 | 2026-10-17 | 记录报告业务输入与历史内容摘要复用、元数据刷新不重建及实际修正保留旧报告的最小正常验证 |
+| 0.24 | 2026-10-17 | 记录领域模块划分、准备进度 DTO 生成及两个受影响领域的最小正常验证，保留通用动态结果边界 |

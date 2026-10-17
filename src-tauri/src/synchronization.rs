@@ -865,6 +865,7 @@ impl Store {
         Ok(())
     }
     fn enqueue(&self, scope: &str, cancel: &AtomicBool) -> Result<(), AppError> {
+        let _operation = crate::local_profile::operation("entry.enqueue");
         // Keep only identifiers between transactions; each frozen word remains atomic.
         let ids = {
             let c = self.connection()?;

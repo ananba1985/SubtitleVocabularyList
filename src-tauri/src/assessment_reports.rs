@@ -200,6 +200,7 @@ fn remember_report(c: &Connection, id: &str, slot: i64) -> Result<(), AppError> 
 }
 
 pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, AppError> {
+    let _timing = crate::local_profile::phase("assessment.report");
     let s = load_session(c, id)?;
     if !matches!(s.state.as_str(), "completed" | "ended_early") {
         return Err(AppError::new(

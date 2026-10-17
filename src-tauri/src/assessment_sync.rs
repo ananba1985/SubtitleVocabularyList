@@ -14,6 +14,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,6 +90,14 @@ pub struct AssessmentDocument {
     pub session_id: String,
     pub revision: i64,
     pub bundle: AssessmentPacket,
+}
+pub(crate) struct PreparedPacket {
+    scope: String,
+    id: String,
+    epoch: i64,
+    packet: AssessmentPacket,
+    hash: String,
+    references: usize,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
@@ -196,6 +205,7 @@ fn canonical<T: Serialize>(v: &T) -> Result<String, AppError> {
     Ok(serde_json::to_string(&serde_json::to_value(v)?)?)
 }
 pub(crate) fn packet_digest(v: &AssessmentPacket) -> Result<String, AppError> {
+    let _timing = crate::local_profile::phase("assessment.digest");
     Ok(digest(canonical(v)?.as_bytes()))
 }
 // Physical cache addresses are local; the semantic and original recording descriptors are frozen.
@@ -404,6 +414,7 @@ pub(crate) fn export_on(
     scope: &str,
     id: &str,
 ) -> Result<AssessmentPacket, AppError> {
+    let _timing = crate::local_profile::phase("assessment.export");
     let s = load_session(c, id)?;
     let base: Option<String> = c
         .query_row(
@@ -881,6 +892,84 @@ fn apply_on(
     Ok(())
 }
 impl Store {
+    fn prepared_assessment(&self, scope: &str, id: &str) -> Result<Arc<PreparedPacket>, AppError> {
+        loop {
+            let (packet, epoch, references) = {
+                let mut c = self.connection()?;
+                let _transaction = crate::local_profile::phase("assessment.read_tx");
+                let tx = c.transaction()?;
+                tx.execute("INSERT OR IGNORE INTO assessment_sync_accounts(account_key,updated_at) VALUES (?,?)",params![scope,chrono::Utc::now().timestamp_millis()])?;
+                let epoch: i64 = tx.query_row(
+                    "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                let cached = self.assessment_packet.lock().ok().and_then(|v| {
+                    v.as_ref()
+                        .filter(|v| v.scope == scope && v.id == id && v.epoch == epoch)
+                        .cloned()
+                });
+                if let Some(cached) = cached {
+                    tx.commit()?;
+                    return Ok(cached);
+                }
+                if matches!(
+                    load_session(&tx, id)?.state.as_str(),
+                    "completed" | "ended_early"
+                ) {
+                    report_on(&tx, id)?;
+                }
+                let packet = export_on(&tx, self.root(), scope, id)?;
+                let epoch: i64 = tx.query_row(
+                    "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                let mut references = 0;
+                for link in &packet.collection_links {
+                    if entry_alias(&tx, scope, &link.entry_id, false)?.is_none() {
+                        references += 1;
+                    }
+                }
+                tx.commit()?;
+                (packet, epoch, references)
+            };
+            // Hashing the detached complete snapshot does not occupy the business connection.
+            let hash = packet_digest(&packet)?;
+            let prepared = Arc::new(PreparedPacket {
+                scope: scope.into(),
+                id: id.into(),
+                epoch,
+                packet,
+                hash,
+                references,
+            });
+            let stable = {
+                let mut c = self.connection()?;
+                let _transaction = crate::local_profile::phase("assessment.publish_tx");
+                let tx = c.transaction()?;
+                let current: i64 = tx.query_row(
+                    "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                if current != epoch {
+                    false
+                } else {
+                    tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,cached_epoch,cached_digest,cached_pending_references) VALUES (?,?,?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET cached_epoch=excluded.cached_epoch,cached_digest=excluded.cached_digest,cached_pending_references=excluded.cached_pending_references",params![scope,id,epoch,prepared.hash,prepared.references])?;
+                    tx.commit()?;
+                    true
+                }
+            };
+            if stable {
+                // Retain only the most recent complete packet, never one copy per historical session.
+                if let Ok(mut cached) = self.assessment_packet.lock() {
+                    *cached = Some(Arc::clone(&prepared));
+                }
+                return Ok(prepared);
+            }
+        }
+    }
     pub fn assessment_sync_conflicts(&self, scope: &str) -> Result<Vec<Value>, AppError> {
         let c = self.connection()?;
         let mut q=c.prepare("SELECT session_id,conflict_json FROM assessment_sync_state WHERE account_key=? AND conflict_json IS NOT NULL ORDER BY session_id")?;
@@ -1039,6 +1128,7 @@ impl Store {
         account_on(&c, scope, capability)
     }
     pub fn assessment_sync_status(&self, scope: &str) -> Result<AssessmentSyncStatus, AppError> {
+        let _operation = crate::local_profile::operation("assessment.status");
         let ids = {
             let c = self.connection()?;
             let mut q = c.prepare("SELECT d.session_id FROM assessment_sync_dirty d LEFT JOIN assessment_sync_state s ON s.account_key=? AND s.session_id=d.session_id WHERE s.cached_digest IS NULL OR s.cached_epoch<>d.epoch ORDER BY d.session_id")?;
@@ -1047,10 +1137,7 @@ impl Store {
         };
         // Refresh only changed sessions; release the business connection between complete packets.
         for id in ids {
-            let mut c = self.connection()?;
-            let tx = c.transaction()?;
-            cache_packet(&tx, self.root(), scope, &id)?;
-            tx.commit()?;
+            self.prepared_assessment(scope, &id)?;
         }
         let c = self.connection()?;
         let row: Option<(Option<String>, Option<String>)> = c
@@ -1079,42 +1166,62 @@ impl Store {
         scope: &str,
         id: &str,
     ) -> Result<Option<AssessmentPush>, AppError> {
-        let mut c = self.connection()?;
-        let tx = c.transaction()?;
-        let saved: Option<(i64, Option<String>, Option<String>, bool)> = tx.query_row(
-            "SELECT remote_revision,pending_json,acknowledged_digest,conflict_json IS NOT NULL FROM assessment_sync_state WHERE account_key=? AND session_id=?",
-            params![scope,id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
-        if saved.as_ref().is_some_and(|r| r.3) {
-            return Ok(None);
-        }
-        if let Some(pending) = saved.as_ref().and_then(|r| r.1.as_ref()) {
-            return Ok(Some(serde_json::from_str(pending)?));
-        }
-        if matches!(
-            load_session(&tx, id)?.state.as_str(),
-            "completed" | "ended_early"
-        ) {
-            report_on(&tx, id)?;
-        }
-        let (packet, hash) = cache_packet(&tx, self.root(), scope, id)?;
-        if saved.as_ref().and_then(|r| r.2.as_ref()) == Some(&hash) {
+        let _operation = crate::local_profile::operation("assessment.freeze");
+        loop {
+            let saved: Option<(i64, Option<String>, Option<String>, bool)> = {
+                let c = self.connection()?;
+                if c.query_row("SELECT EXISTS(SELECT 1 FROM assessment_sync_state s JOIN assessment_sync_dirty d ON d.session_id=s.session_id WHERE s.account_key=? AND s.session_id=? AND s.pending_json IS NULL AND s.conflict_json IS NULL AND s.cached_epoch=d.epoch AND s.cached_digest=s.acknowledged_digest)",params![scope,id],|r|r.get::<_,bool>(0))? {return Ok(None);}
+                c.query_row(
+                    "SELECT remote_revision,pending_json,acknowledged_digest,conflict_json IS NOT NULL FROM assessment_sync_state WHERE account_key=? AND session_id=?",
+                    params![scope,id],
+                    |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
+                ).optional()?
+            };
+            if saved.as_ref().is_some_and(|r| r.3) {
+                return Ok(None);
+            }
+            if let Some(pending) = saved.as_ref().and_then(|r| r.1.as_ref()) {
+                return Ok(Some(serde_json::from_str(pending)?));
+            }
+            let prepared = self.prepared_assessment(scope, id)?;
+            let acknowledged = saved.as_ref().and_then(|r| r.2.as_ref()) == Some(&prepared.hash);
+            let _encoding = crate::local_profile::phase("assessment.freeze_encode");
+            let push = (!acknowledged).then(|| AssessmentPush {
+                change_id: Uuid::new_v4().to_string(),
+                base_revision: saved.as_ref().map_or(0, |r| r.0),
+                bundle: prepared.packet.clone(),
+            });
+            let payload = push.as_ref().map(canonical).transpose()?;
+            drop(_encoding);
+            if payload.as_ref().is_some_and(|v| v.len() > 8 * 1024 * 1024) {
+                return Err(AppError::new(
+                    "capacity_exceeded",
+                    "完整水平测试资料超过单包能力，资料保持完整，未截断历史。",
+                ));
+            }
+            let mut c = self.connection()?;
+            let _transaction = crate::local_profile::phase("assessment.freeze_tx");
+            let tx = c.transaction()?;
+            let epoch: i64 = tx.query_row(
+                "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
+                [id],
+                |r| r.get(0),
+            )?;
+            let current:Option<(i64,Option<String>,Option<String>,bool)>=tx.query_row("SELECT remote_revision,pending_json,acknowledged_digest,conflict_json IS NOT NULL FROM assessment_sync_state WHERE account_key=? AND session_id=?",params![scope,id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+            // A first snapshot publishes its empty sync-state row before reaching this commit.
+            let expected = saved.unwrap_or((0, None, None, false));
+            if epoch != prepared.epoch || current.as_ref() != Some(&expected) {
+                continue;
+            }
+            if acknowledged {
+                tx.commit()?;
+                return Ok(None);
+            }
+            let push = push.unwrap();
+            tx.execute("UPDATE assessment_sync_state SET pending_json=?,pending_change_id=?,pending_digest=? WHERE account_key=? AND session_id=?",params![payload,push.change_id,prepared.hash,scope,id])?;
             tx.commit()?;
-            return Ok(None);
+            return Ok(Some(push));
         }
-        let push = AssessmentPush {
-            change_id: Uuid::new_v4().to_string(),
-            base_revision: saved.map_or(0, |r| r.0),
-            bundle: packet,
-        };
-        if serde_json::to_vec(&push)?.len() > 8 * 1024 * 1024 {
-            return Err(AppError::new(
-                "capacity_exceeded",
-                "完整水平测试资料超过单包能力，资料保持完整，未截断历史。",
-            ));
-        }
-        tx.execute("UPDATE assessment_sync_state SET pending_json=?,pending_change_id=?,pending_digest=? WHERE account_key=? AND session_id=?",params![canonical(&push)?,push.change_id,hash,scope,id])?;
-        tx.commit()?;
-        Ok(Some(push))
     }
     pub fn assessment_freeze_pushes(&self, scope: &str) -> Result<Vec<AssessmentPush>, AppError> {
         let mut pushes = Vec::new();
@@ -1142,13 +1249,17 @@ impl Store {
         if revision != push.base_revision + 1 {
             return Err(invalid("测试同步回执版本无效。"));
         }
-        let c = self.connection()?;
+        let _operation = crate::local_profile::operation("assessment.saved");
         let doc = AssessmentDocument {
             session_id: push.bundle.session.id.clone(),
             revision,
             bundle: push.bundle.clone(),
         };
-        c.execute("UPDATE assessment_sync_state SET base_json=?,acknowledged_digest=pending_digest,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL WHERE account_key=? AND session_id=? AND pending_change_id=?",params![canonical(&doc)?,scope,push.bundle.session.id,push.change_id])?;
+        let _encoding = crate::local_profile::phase("assessment.saved_encode");
+        let payload = canonical(&doc)?;
+        drop(_encoding);
+        let c = self.connection()?;
+        c.execute("UPDATE assessment_sync_state SET base_json=?,acknowledged_digest=pending_digest,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL WHERE account_key=? AND session_id=? AND pending_change_id=?",params![payload,scope,push.bundle.session.id,push.change_id])?;
         Ok(())
     }
     pub fn assessment_sync_receive(
@@ -1156,11 +1267,13 @@ impl Store {
         scope: &str,
         remote: &AssessmentDocument,
     ) -> Result<bool, AppError> {
+        let _operation = crate::local_profile::operation("assessment.receive");
         remote.bundle.validate()?;
         if remote.session_id != remote.bundle.session.id || remote.revision < 1 {
             return Err(invalid("测试变更关联无效。"));
         }
         let mut c = self.connection()?;
+        let _transaction = crate::local_profile::phase("assessment.receive_tx");
         let tx = c.transaction()?;
         let saved:Option<(Option<String>,Option<String>)>=tx.query_row("SELECT base_json,acknowledged_digest FROM assessment_sync_state WHERE account_key=? AND session_id=?",params![scope,remote.session_id],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
         let base = saved
@@ -1181,8 +1294,9 @@ impl Store {
         } else {
             None
         };
+        let local_hash = local.as_ref().map(packet_digest).transpose()?;
         let apply = if let Some(local) = &local {
-            if saved.as_ref().and_then(|r| r.1.as_ref()) == Some(&packet_digest(local)?) {
+            if saved.as_ref().and_then(|r| r.1.as_ref()) == local_hash.as_ref() {
                 Ok(remote.bundle.clone())
             } else if let Some(base) = &base {
                 merge(&base.bundle, local, &remote.bundle)
@@ -1203,9 +1317,9 @@ impl Store {
                 tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,base_json) VALUES (?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET base_json=excluded.base_json,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL,conflict_json=NULL",params![scope,remote.session_id,canonical(remote)?])?;
                 let (_, hash) = cache_packet(&tx, self.root(), scope, &remote.session_id)?;
                 // A merged local append must still be pushed; a plain receive is acknowledged locally.
-                let merged = local.as_ref().is_some_and(|l| {
-                    saved.as_ref().and_then(|r| r.1.as_ref()) != packet_digest(l).ok().as_ref()
-                }) && base.is_some();
+                let merged = local.is_some()
+                    && saved.as_ref().and_then(|r| r.1.as_ref()) != local_hash.as_ref()
+                    && base.is_some();
                 tx.execute("UPDATE assessment_sync_state SET acknowledged_digest=? WHERE account_key=? AND session_id=?",params![if merged{None}else{Some(hash)},scope,remote.session_id])?;
                 tx.commit()?;
                 Ok(true)

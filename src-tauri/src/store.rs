@@ -2,7 +2,8 @@ use crate::error::AppError;
 use rusqlite::Connection;
 use std::{
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard},
+    ops::{Deref, DerefMut},
+    sync::{Arc, Mutex, MutexGuard},
     time::Duration,
 };
 
@@ -10,6 +11,23 @@ pub struct Store {
     root: PathBuf,
     connection: Mutex<Connection>,
     pub(crate) dictionary: crate::base_dictionary::BaseDictionary,
+    pub(crate) assessment_packet: Mutex<Option<Arc<crate::assessment_sync::PreparedPacket>>>,
+}
+
+pub struct ConnectionGuard<'a> {
+    connection: MutexGuard<'a, Connection>,
+    _held: crate::local_profile::Timer,
+}
+impl Deref for ConnectionGuard<'_> {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        &self.connection
+    }
+}
+impl DerefMut for ConnectionGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Connection {
+        &mut self.connection
+    }
 }
 
 impl Store {
@@ -89,6 +107,7 @@ impl Store {
             transaction.commit()?;
         }
         Ok(Self {
+            assessment_packet: Mutex::new(None),
             dictionary: crate::base_dictionary::BaseDictionary::load(&root),
             root,
             connection: Mutex::new(connection),
@@ -103,12 +122,18 @@ impl Store {
         self.dictionary.warnings()
     }
 
-    pub fn connection(&self) -> Result<MutexGuard<'_, Connection>, AppError> {
-        self.connection.lock().map_err(|_| {
+    pub fn connection(&self) -> Result<ConnectionGuard<'_>, AppError> {
+        let waiting = crate::local_profile::phase("db.lock_wait");
+        let connection = self.connection.lock().map_err(|_| {
             AppError::new(
                 "database_unavailable",
                 "本地词库当前不可用，请重新打开应用。",
             )
+        })?;
+        drop(waiting);
+        Ok(ConnectionGuard {
+            connection,
+            _held: crate::local_profile::phase("db.hold"),
         })
     }
 
@@ -146,6 +171,7 @@ mod tests {
         }
         connection.pragma_update(None, "user_version", 9).unwrap();
         let legacy = Store {
+            assessment_packet: Mutex::new(None),
             root: directory.path().into(),
             connection: Mutex::new(connection),
             dictionary: crate::base_dictionary::BaseDictionary::load(directory.path()),

@@ -20,6 +20,7 @@ mod ipc_dto;
 #[cfg(feature = "ipc-types")]
 mod ipc_export;
 pub mod lookup;
+mod local_profile;
 pub mod media;
 mod model_gate;
 pub mod ocr;

@@ -75,6 +75,7 @@ fn query_rows(
 }
 
 pub(crate) fn export_on(connection: &Connection, entry_id: &str) -> Result<SyncBundle, AppError> {
+    let _timing = crate::local_profile::phase("entry.export");
     let schema = schema();
     let mut entries = query_rows(
         connection,

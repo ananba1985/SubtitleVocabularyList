@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.51 |
+| 文档版本 | 0.52 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -42,7 +42,7 @@
 | 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
-| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、数据库命令后台执行、任务事件、Rust 生成的嵌套 DTO、同步增长控制、逐词同步事务、本地处理与模型不可用 | 采样与源码契约检查不代替长期 SLO 或 GUI 响应 |
+| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、后台命令／任务事件、生成类型、同步增长控制、完整会话复用及可选操作／锁统计 | 分别记录重复构建、持锁区间和总耗时；单次正常采样不代替长期 SLO、真实竞争或 GUI 响应 |
 | 当前验收覆盖审计 | [testing/acceptance-status.md](testing/acceptance-status.md) | 0.1 基线需求、42 个历史计划场景、阶段门槛和缺失条件 | “增量已验证”不代表完整版本已达成 |
 | 媒体输入支持矩阵 | [testing/media-support-matrix.md](testing/media-support-matrix.md) | 已测容器/编码、字幕、目录与去重 | 后缀不是全部编码或保护内容的保证 |
 | 受限制网络验收 | [testing/restricted-network-results.md](testing/restricted-network-results.md) | 实际出站规则、冷启动、播放听辨、截图、服务失败及规则恢复 | 区分指定程序限制与整机断网、实际执行与缓存 |
@@ -191,3 +191,4 @@
 | 0.49 | 2026-10-17 | 索引服务端检查点／差量存储、相邻版本复用和最小正常轮换证据，区分内部格式与完整业务协议 |
 | 0.50 | 2026-10-17 | 索引真实账号差量往返、原声与真人六题资料保持，以及检查点正常还原的验收结果 |
 | 0.51 | 2026-10-17 | 索引 0.8.18 报告按业务内容复用、同步修订不增生及完整历史保持的最小正常验证 |
+| 0.52 | 2026-10-17 | 索引 0.8.19 本地计时、单连接互斥统计、完整会话复用及锁外编码的最小正常证据 |

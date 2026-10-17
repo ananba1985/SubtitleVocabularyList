@@ -146,10 +146,13 @@ fn sync_growth_assessment_caches_changed_sessions_and_keeps_reports() {
 
 #[test]
 fn reports_reuse_business_content_across_sync_and_keep_history() {
+    crate::local_profile::capture();
     use crate::assessment_sync::AssessmentDocument;
     let (_dir, source) = fixture_audio("original");
     let scope = "report-content-normal";
-    source.assessment_sync_capability(scope, Some("assessment-1")).unwrap();
+    source
+        .assessment_sync_capability(scope, Some("assessment-1"))
+        .unwrap();
     let config = AssessmentConfig {
         word_top_n: 2000,
         question_count: 1,
@@ -234,6 +237,7 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         )
         .unwrap();
     }
+    assert_eq!(source.assessment_sync_status(scope).unwrap().pending, 1);
     let first = source
         .assessment_freeze_push(scope, &session.id)
         .unwrap()
@@ -242,7 +246,8 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
     source.assessment_sync_saved(scope, &first, 1).unwrap();
     let peer_dir = tempfile::tempdir().unwrap();
     let peer = Store::open(peer_dir.path()).unwrap();
-    peer.assessment_sync_capability(scope, Some("assessment-1")).unwrap();
+    peer.assessment_sync_capability(scope, Some("assessment-1"))
+        .unwrap();
     let media = &first.bundle.media[0];
     let bytes = source
         .assessment_sync_media(&media.digest, &media.format)
@@ -266,6 +271,7 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
             [&session.id],
         )
         .unwrap();
+    assert_eq!(source.assessment_sync_status(scope).unwrap().pending, 1);
     let metadata = source
         .assessment_freeze_push(scope, &session.id)
         .unwrap()
@@ -309,6 +315,7 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         reason: "正常人工核对".into(),
     })
     .unwrap();
+    assert_eq!(peer.assessment_sync_status(scope).unwrap().pending, 1);
     let corrected = peer
         .assessment_freeze_push(scope, &session.id)
         .unwrap()
@@ -361,6 +368,27 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
             .unwrap(),
         bytes
     );
+    let samples = crate::local_profile::take_samples();
+    let freezes = samples
+        .iter()
+        .filter(|s| s.operation == "assessment.freeze")
+        .collect::<Vec<_>>();
+    assert_eq!(freezes.len(), 4);
+    assert!(freezes
+        .iter()
+        .all(|s| !s.timings.contains_key("assessment.export")
+            && !s.timings.contains_key("assessment.digest")));
+    assert_eq!(
+        samples
+            .iter()
+            .filter(|s| s.operation == "assessment.status")
+            .count(),
+        3
+    );
+    println!("local_profile={}", serde_json::to_string(&samples).unwrap());
+    if let Some(path) = std::env::var_os("SVL_PROFILE_RESULT") {
+        std::fs::write(path, serde_json::to_vec_pretty(&samples).unwrap()).unwrap();
+    }
 }
 
 fn fixture() -> (tempfile::TempDir, Store) {

@@ -33,73 +33,165 @@ async fn assessment_start(app: AppState<'_>, input: crate::assessment::StartAsse
     tauri::async_runtime::spawn_blocking(move||app.store.assessment_start(&input)).await.map_err(|_|AppError::new("internal_error","测试启动中断，请重新读取未完成测试。"))?
 }
 #[tauri::command]
-fn assessment_session_get(app: AppState<'_>, session_id: String) -> Result<crate::assessment::AssessmentSession, AppError> {app.store.assessment_session(&session_id)}
+async fn assessment_session_get(app: AppState<'_>, session_id: String) -> Result<crate::assessment::AssessmentSession, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_session(&session_id)
+    }).await
+}
 #[tauri::command]
-fn assessment_session_list(app: AppState<'_>, unfinished_only: bool, offset: usize, limit: usize) -> Result<serde_json::Value, AppError> {app.store.assessment_session_list(unfinished_only,offset,limit)}
+async fn assessment_session_list(app: AppState<'_>, unfinished_only: bool, offset: usize, limit: usize) -> Result<serde_json::Value, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_session_list(unfinished_only,offset,limit)
+    }).await
+}
 #[tauri::command]
-fn assessment_answer_submit(app: AppState<'_>, input: crate::assessment::AssessmentAnswerInput) -> Result<crate::assessment::AssessmentSession, AppError> {app.store.assessment_answer_submit(&input)}
+async fn assessment_answer_submit(app: AppState<'_>, input: crate::assessment::AssessmentAnswerInput) -> Result<crate::assessment::AssessmentSession, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_answer_submit(&input)
+    }).await
+}
 #[tauri::command]
-fn assessment_session_transition(app: AppState<'_>, input: crate::assessment::TransitionAssessment) -> Result<crate::assessment::AssessmentSession, AppError> {app.store.assessment_transition(&input)}
+async fn assessment_session_transition(app: AppState<'_>, input: crate::assessment::TransitionAssessment) -> Result<crate::assessment::AssessmentSession, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_transition(&input)
+    }).await
+}
 #[tauri::command]
-fn assessment_audio_start(app: AppState<'_>, input: crate::assessment::AssessmentAudioStart) -> Result<crate::assessment::AssessmentPlayback, AppError> {app.store.assessment_audio_start(&input)}
+async fn assessment_audio_start(app: AppState<'_>, input: crate::assessment::AssessmentAudioStart) -> Result<crate::assessment::AssessmentPlayback, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_audio_start(&input)
+    }).await
+}
 #[tauri::command]
-fn assessment_audio_event(app: AppState<'_>, input: crate::assessment::AssessmentAudioEvent) -> Result<serde_json::Value, AppError> {app.store.assessment_audio_event(&input)}
+async fn assessment_audio_event(app: AppState<'_>, input: crate::assessment::AssessmentAudioEvent) -> Result<serde_json::Value, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_audio_event(&input)
+    }).await
+}
 #[tauri::command]
-fn assessment_result_correct(app: AppState<'_>, input: crate::assessment::CorrectAssessment) -> Result<serde_json::Value, AppError> {app.store.assessment_correct(&input)}
+async fn assessment_result_correct(app: AppState<'_>, input: crate::assessment::CorrectAssessment) -> Result<serde_json::Value, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_correct(&input)
+    }).await
+}
 #[tauri::command]
-fn assessment_report_get(app: AppState<'_>, session_id:String, report_revision:Option<i64>)->Result<serde_json::Value,AppError>{app.store.assessment_report(&session_id,report_revision)}
+async fn assessment_report_get(app: AppState<'_>, session_id:String, report_revision:Option<i64>)->Result<serde_json::Value,AppError>{
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_report(&session_id,report_revision)
+    }).await
+}
 #[tauri::command]
-fn assessment_report_items(app: AppState<'_>, session_id:String, report_revision:i64, offset:usize, limit:usize)->Result<serde_json::Value,AppError>{app.store.assessment_report_items(&session_id,report_revision,offset,limit)}
+async fn assessment_report_items(app: AppState<'_>, session_id:String, report_revision:i64, offset:usize, limit:usize)->Result<serde_json::Value,AppError>{
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_report_items(&session_id,report_revision,offset,limit)
+    }).await
+}
 #[tauri::command]
-fn assessment_history_list(app: AppState<'_>, offset:usize, limit:usize, comparison_key:Option<String>)->Result<serde_json::Value,AppError>{app.store.assessment_history(offset,limit,comparison_key.as_deref())}
+async fn assessment_history_list(app: AppState<'_>, offset:usize, limit:usize, comparison_key:Option<String>)->Result<serde_json::Value,AppError>{
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_history(offset,limit,comparison_key.as_deref())
+    }).await
+}
 #[tauri::command]
-fn assessment_compare(app: AppState<'_>, first:String, second:String)->Result<serde_json::Value,AppError>{app.store.assessment_compare(&first,&second)}
+async fn assessment_compare(app: AppState<'_>, first:String, second:String)->Result<serde_json::Value,AppError>{
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_compare(&first,&second)
+    }).await
+}
 #[tauri::command]
-fn assessment_collection_prepare(app: AppState<'_>,input:crate::assessment_reports::PrepareAssessmentCollection)->Result<crate::assessment_reports::AssessmentCollectionDraft,AppError>{app.store.assessment_collection_prepare(&input)}
+async fn assessment_collection_prepare(app: AppState<'_>,input:crate::assessment_reports::PrepareAssessmentCollection)->Result<crate::assessment_reports::AssessmentCollectionDraft,AppError>{
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_collection_prepare(&input)
+    }).await
+}
 #[tauri::command]
-fn assessment_collection_commit(app: AppState<'_>,input:crate::assessment_reports::CommitAssessmentCollection)->Result<TaskSnapshot,AppError>{app.assessment_collection_commit(input)}
+async fn assessment_collection_commit(app: AppState<'_>,input:crate::assessment_reports::CommitAssessmentCollection)->Result<TaskSnapshot,AppError>{
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.assessment_collection_commit(input)
+    }).await
+}
 
 #[tauri::command]
-fn assessment_catalog_get(app: AppState<'_>) -> Result<crate::assessment_bank::CatalogInventory, AppError> {
-    app.store.assessment_inventory()
+async fn assessment_catalog_get(app: AppState<'_>) -> Result<crate::assessment_bank::CatalogInventory, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_inventory()
+    }).await
 }
 #[tauri::command]
-fn assessment_settings_get(app: AppState<'_>) -> Result<crate::assessment_bank::AssessmentSettings, AppError> {
-    app.store.assessment_settings()
+async fn assessment_settings_get(app: AppState<'_>) -> Result<crate::assessment_bank::AssessmentSettings, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_settings()
+    }).await
 }
 #[tauri::command]
-fn assessment_settings_update(app: AppState<'_>, settings: crate::assessment_bank::AssessmentSettings, operation_id: String) -> Result<crate::assessment_bank::AssessmentSettings, AppError> {
-    app.store.assessment_save_settings(settings, &operation_id)
+async fn assessment_settings_update(app: AppState<'_>, settings: crate::assessment_bank::AssessmentSettings, operation_id: String) -> Result<crate::assessment_bank::AssessmentSettings, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_save_settings(settings, &operation_id)
+    }).await
 }
 #[tauri::command]
-fn assessment_bank_prepare(app: AppState<'_>, input: crate::assessment_bank::PrepareBank) -> Result<TaskSnapshot, AppError> {
-    app.inner().assessment_bank_prepare(input)
+async fn assessment_bank_prepare(app: AppState<'_>, input: crate::assessment_bank::PrepareBank) -> Result<TaskSnapshot, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.assessment_bank_prepare(input)
+    }).await
 }
 #[tauri::command]
-fn assessment_bank_review(app: AppState<'_>, input: crate::assessment_bank::ReviewBank) -> Result<serde_json::Value, AppError> {
-    app.store.assessment_bank_review(&input)
+async fn assessment_bank_review(app: AppState<'_>, input: crate::assessment_bank::ReviewBank) -> Result<serde_json::Value, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_bank_review(&input)
+    }).await
 }
 #[tauri::command]
-fn assessment_bank_items(app: AppState<'_>, bank_id: String, state: Option<String>, offset: usize, limit: usize) -> Result<crate::assessment_bank::BankPage, AppError> {
-    app.store.assessment_bank_items(&bank_id, state.as_deref(), offset, limit)
+async fn assessment_bank_items(app: AppState<'_>, bank_id: String, state: Option<String>, offset: usize, limit: usize) -> Result<crate::assessment_bank::BankPage, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.assessment_bank_items(&bank_id, state.as_deref(), offset, limit)
+    }).await
 }
 #[tauri::command]
-fn assessment_bank_audio_prepare(app: AppState<'_>, input: AssessmentBankAudioInput) -> Result<TaskSnapshot, AppError> {
-    app.inner().assessment_bank_audio_prepare(input.content, input.operation_id)
+async fn assessment_bank_audio_prepare(app: AppState<'_>, input: AssessmentBankAudioInput) -> Result<TaskSnapshot, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.assessment_bank_audio_prepare(input.content, input.operation_id)
+    }).await
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all="camelCase")]
 struct AssessmentBankAudioInput {content: crate::assessment_bank::QuestionDraft, operation_id:String}
 
 #[tauri::command]
-fn assessment_sync_status(
+async fn assessment_sync_status(
     app: AppState<'_>,
 ) -> Result<crate::assessment_sync::AssessmentSyncStatus, AppError> {
-    app.assessment_sync_status()
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.assessment_sync_status()
+    }).await
 }
 #[tauri::command]
-fn assessment_sync_conflicts(app: AppState<'_>) -> Result<Vec<serde_json::Value>, AppError> {
-    app.assessment_sync_conflicts()
+async fn assessment_sync_conflicts(app: AppState<'_>) -> Result<Vec<serde_json::Value>, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.assessment_sync_conflicts()
+    }).await
 }
 #[tauri::command]
 async fn assessment_sync_keep_both(
@@ -112,13 +204,16 @@ async fn assessment_sync_keep_both(
         .map_err(|_| AppError::new("internal_error", "冲突处理未完成，请刷新记录。"))?
 }
 #[tauri::command]
-fn assessment_audio_prepare(
+async fn assessment_audio_prepare(
     app: AppState<'_>,
     session_id: String,
     item_id: String,
     operation_id: String,
 ) -> Result<TaskSnapshot, AppError> {
-    app.assessment_audio_prepare(session_id, item_id, operation_id)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.assessment_audio_prepare(session_id, item_id, operation_id)
+    }).await
 }
 
 #[derive(Default)]
@@ -157,7 +252,7 @@ fn translation_session_get(
     app.queries.get(session_id.as_deref())
 }
 #[tauri::command]
-fn translation_query_start(
+async fn translation_query_start(
     app: AppState<'_>,
     session_id: String,
     expected_input_revision: u64,
@@ -165,13 +260,16 @@ fn translation_query_start(
     automatic: bool,
     persist: bool,
 ) -> Result<crate::queries::QuerySession, AppError> {
-    app.inner().query_start(
-        session_id,
-        expected_input_revision,
-        provider_ids,
-        automatic,
-        persist,
-    )
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.query_start(
+            session_id,
+            expected_input_revision,
+            provider_ids,
+            automatic,
+            persist,
+        )
+    }).await
 }
 #[tauri::command]
 fn translation_query_cancel(
@@ -198,20 +296,23 @@ fn translation_open(handle: tauri::AppHandle) -> Result<(), AppError> {
     crate::desktop_query::open_input(&handle)
 }
 #[tauri::command]
-fn translation_collect(
+async fn translation_collect(
     app: AppState<'_>,
     handle: tauri::AppHandle,
     session_id: String,
     input_revision: u64,
     provider_id: String,
 ) -> Result<(), AppError> {
-    let seed = app.query_collection(&session_id, input_revision, &provider_id)?;
-    handle
-        .emit_to("main", "capture_completed", seed)
-        .map_err(|_| AppError::new("internal_error", "无法打开收录确认。"))?;
-    crate::desktop_query::hide_query(&handle);
-    desktop_capture::show_main(&handle);
-    Ok(())
+    let app = Arc::clone(app.inner());
+    background(move || {
+        let seed = app.query_collection(&session_id, input_revision, &provider_id)?;
+        handle
+            .emit_to("main", "capture_completed", seed)
+            .map_err(|_| AppError::new("internal_error", "无法打开收录确认。"))?;
+        crate::desktop_query::hide_query(&handle);
+        desktop_capture::show_main(&handle);
+        Ok(())
+    }).await
 }
 #[tauri::command]
 fn query_copy(handle: tauri::AppHandle, text: String) -> Result<(), AppError> {
@@ -238,8 +339,11 @@ fn clipboard_listener_set(
     Ok(status)
 }
 #[tauri::command]
-fn providers_list(app: AppState<'_>) -> Result<Vec<crate::providers::Provider>, AppError> {
-    app.store.providers()
+async fn providers_list(app: AppState<'_>) -> Result<Vec<crate::providers::Provider>, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.providers()
+    }).await
 }
 #[tauri::command]
 async fn providers_update(
@@ -300,6 +404,7 @@ struct AppInfo {
     entry_count: i64,
     source_count: i64,
     network_unavailable: bool,
+    dictionary_warnings: Vec<String>,
 }
 
 async fn background<T: Send + 'static>(
@@ -318,6 +423,7 @@ async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
         Ok(AppInfo {
             version: env!("CARGO_PKG_VERSION").into(),
             network_unavailable: app.network_unavailable(),
+            dictionary_warnings: app.store.dictionary_warnings(),
             data_directory: app.store.root().display().to_string(),
             schema_version: connection
                 .pragma_query_value(None, "user_version", |row| row.get(0))?,
@@ -342,37 +448,52 @@ async fn sources_list(app: AppState<'_>) -> Result<Vec<SourceSummary>, AppError>
     background(move || app.store.sources()).await
 }
 #[tauri::command]
-fn import_start(
+async fn import_start(
     app: AppState<'_>,
     paths: Vec<String>,
     operation_id: String,
     options: Option<crate::media::ImportOptions>,
 ) -> Result<TaskSnapshot, AppError> {
-    app.import_with_options(paths, operation_id, options.unwrap_or_default())
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.import_with_options(paths, operation_id, options.unwrap_or_default())
+    }).await
 }
 #[tauri::command]
 async fn media_inspect(
     app: AppState<'_>,
     path: String,
 ) -> Result<crate::media::MediaInspection, AppError> {
-    let tools = app.settings()?.tools;
-    background(move || crate::media::inspect(&tools, std::path::Path::new(&path))).await
+    let app = Arc::clone(app.inner());
+    background(move || {
+        let tools = app.settings()?.tools;
+        crate::media::inspect(&tools, std::path::Path::new(&path))
+    }).await
 }
 #[tauri::command]
-fn task_get(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
-    app.tasks.get(&task_id)
+async fn task_get(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.tasks.get(&task_id)
+    }).await
 }
 #[tauri::command]
-fn tasks_list(app: AppState<'_>) -> Result<Vec<TaskSnapshot>, AppError> {
-    app.tasks.list()
+async fn tasks_list(app: AppState<'_>) -> Result<Vec<TaskSnapshot>, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.tasks.list()
+    }).await
 }
 #[tauri::command]
-fn tasks_history(
+async fn tasks_history(
     app: AppState<'_>,
     offset: Option<u32>,
     limit: Option<u32>,
 ) -> Result<crate::tasks::TaskHistoryPage, AppError> {
-    app.tasks.history(offset.unwrap_or(0), limit.unwrap_or(10))
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.tasks.history(offset.unwrap_or(0), limit.unwrap_or(10))
+    }).await
 }
 #[tauri::command]
 async fn task_cancel(app: AppState<'_>, task_id: String) -> Result<TaskSnapshot, AppError> {
@@ -415,22 +536,28 @@ async fn candidates_list(
     .await
 }
 #[tauri::command]
-fn known_target_get(app: AppState<'_>, kind: String, text: String) -> Result<bool, AppError> {
-    app.store.is_known_target(&kind, &text)
+async fn known_target_get(app: AppState<'_>, kind: String, text: String) -> Result<bool, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.is_known_target(&kind, &text)
+    }).await
 }
 #[tauri::command]
-fn known_target_set(
+async fn known_target_set(
     app: AppState<'_>,
     kind: String,
     text: String,
     known: bool,
 ) -> Result<(), AppError> {
-    app.store.set_known_target(&kind, &text, known)?;
-    if !known {
-        app.preparation_requested
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-    Ok(())
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.set_known_target(&kind, &text, known)?;
+        if !known {
+            app.preparation_requested
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        Ok(())
+    }).await
 }
 #[tauri::command]
 async fn known_targets_list(
@@ -459,18 +586,21 @@ async fn candidate_examples(
     background(move || app.store.candidate_examples(&source_id, &key)).await
 }
 #[tauri::command]
-fn candidate_decide(
+async fn candidate_decide(
     app: AppState<'_>,
     source_id: String,
     key: String,
     example_id: String,
     decision: String,
 ) -> Result<(), AppError> {
-    app.store
-        .decide_candidate(&source_id, &key, &example_id, &decision)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store
+            .decide_candidate(&source_id, &key, &example_id, &decision)
+    }).await
 }
 #[tauri::command]
-fn source_example_update(
+async fn source_example_update(
     app: AppState<'_>,
     source_id: String,
     example_id: String,
@@ -479,17 +609,20 @@ fn source_example_update(
     start_ms: i64,
     end_ms: i64,
 ) -> Result<CandidateExample, AppError> {
-    let value = app.store.update_source_example(
-        &source_id,
-        &example_id,
-        revision,
-        &text,
-        start_ms,
-        end_ms,
-    )?;
-    app.preparation_requested
-        .store(true, std::sync::atomic::Ordering::Relaxed);
-    Ok(value)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        let value = app.store.update_source_example(
+            &source_id,
+            &example_id,
+            revision,
+            &text,
+            start_ms,
+            end_ms,
+        )?;
+        app.preparation_requested
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(value)
+    }).await
 }
 #[tauri::command]
 async fn entries_list(
@@ -539,8 +672,11 @@ async fn review_question(
     background(move || app.store.review_question(&unit_id, expected_revision)).await
 }
 #[tauri::command]
-fn review_hint(app: AppState<'_>, question_id: String) -> Result<String, AppError> {
-    app.store.review_hint(&question_id)
+async fn review_hint(app: AppState<'_>, question_id: String) -> Result<String, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.review_hint(&question_id)
+    }).await
 }
 #[tauri::command]
 async fn review_submit(app: AppState<'_>, input: AnswerInput) -> Result<Attempt, AppError> {
@@ -563,22 +699,28 @@ async fn review_history(
     background(move || app.store.review_history(unit_id.as_deref(), offset, limit)).await
 }
 #[tauri::command]
-fn review_audio_start(
+async fn review_audio_start(
     app: AppState<'_>,
     question_id: String,
     operation_id: String,
 ) -> Result<TaskSnapshot, AppError> {
-    app.review_audio_start(question_id, operation_id)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.review_audio_start(question_id, operation_id)
+    }).await
 }
 #[tauri::command]
-fn collection_prepare(
+async fn collection_prepare(
     app: AppState<'_>,
     input: CollectionInput,
 ) -> Result<PreparedCollection, AppError> {
-    app.prepare(input)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.prepare(input)
+    }).await
 }
 #[tauri::command]
-fn collection_from_example(
+async fn collection_from_example(
     app: AppState<'_>,
     source_id: String,
     example_id: String,
@@ -587,39 +729,51 @@ fn collection_from_example(
     meaning: String,
     operation_id: String,
 ) -> Result<PreparedCollection, AppError> {
-    let example = example_input_from_corpus(&app.store, &source_id, &example_id, &meaning)?;
-    app.prepare(CollectionInput {
-        operation_id,
-        kind,
-        text,
-        meaning,
-        examples: vec![example],
-        target_entry_id: None,
-        expected_revision: None,
-    })
+    let app = Arc::clone(app.inner());
+    background(move || {
+        let example = example_input_from_corpus(&app.store, &source_id, &example_id, &meaning)?;
+        app.prepare(CollectionInput {
+            operation_id,
+            kind,
+            text,
+            meaning,
+            examples: vec![example],
+            target_entry_id: None,
+            expected_revision: None,
+        })
+    }).await
 }
 #[tauri::command]
-fn collection_commit(
+async fn collection_commit(
     app: AppState<'_>,
     draft_id: String,
     target_entry_id: Option<String>,
     expected_revision: Option<i64>,
     save_audio: bool,
 ) -> Result<TaskSnapshot, AppError> {
-    app.commit(draft_id, target_entry_id, expected_revision, save_audio)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.commit(draft_id, target_entry_id, expected_revision, save_audio)
+    }).await
 }
 #[tauri::command]
-fn preview_start(
+async fn preview_start(
     app: AppState<'_>,
     source_id: String,
     example_id: String,
     operation_id: String,
 ) -> Result<TaskSnapshot, AppError> {
-    app.preview_start(source_id, example_id, operation_id)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.preview_start(source_id, example_id, operation_id)
+    }).await
 }
 #[tauri::command]
-fn media_path(app: AppState<'_>, asset_id: String) -> Result<PathBuf, AppError> {
-    app.store.media_file(&asset_id)
+async fn media_path(app: AppState<'_>, asset_id: String) -> Result<PathBuf, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.store.media_file(&asset_id)
+    }).await
 }
 #[tauri::command]
 async fn explanations_status(
@@ -662,30 +816,39 @@ async fn explanation_import(
     .await
 }
 #[tauri::command]
-fn explain_start(
+async fn explain_start(
     app: AppState<'_>,
     text: String,
     context: String,
     operation_id: String,
 ) -> Result<TaskSnapshot, AppError> {
-    app.explain_start(text, context, operation_id)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.explain_start(text, context, operation_id)
+    }).await
 }
 #[tauri::command]
-fn online_query_start(
+async fn online_query_start(
     app: AppState<'_>,
     text: String,
     provider: Option<String>,
     operation_id: String,
 ) -> Result<TaskSnapshot, AppError> {
-    app.online_query_start(
-        text,
-        provider.unwrap_or_else(|| "dictionary".into()),
-        operation_id,
-    )
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.online_query_start(
+            text,
+            provider.unwrap_or_else(|| "dictionary".into()),
+            operation_id,
+        )
+    }).await
 }
 #[tauri::command]
-fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
-    app.settings()
+async fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.settings()
+    }).await
 }
 #[tauri::command]
 async fn practice_get(
@@ -734,46 +897,70 @@ async fn practice_example(
     background(move || app.store.practice_example(&document_id, chapter, sentence)).await
 }
 #[tauri::command]
-fn connection_status(app: AppState<'_>) -> Result<ConnectionStatus, AppError> {
-    app.connection_status()
+async fn connection_status(app: AppState<'_>) -> Result<ConnectionStatus, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.connection_status()
+    }).await
 }
 #[tauri::command]
-fn connection_start(
+async fn connection_start(
     app: AppState<'_>,
     operation_id: String,
     replace: bool,
 ) -> Result<TaskSnapshot, AppError> {
-    app.connection_start(operation_id, replace)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.connection_start(operation_id, replace)
+    }).await
 }
 #[tauri::command]
-fn connection_check(app: AppState<'_>, operation_id: String) -> Result<TaskSnapshot, AppError> {
-    app.connection_check(operation_id)
+async fn connection_check(app: AppState<'_>, operation_id: String) -> Result<TaskSnapshot, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.connection_check(operation_id)
+    }).await
 }
 #[tauri::command]
-fn connection_open(app: AppState<'_>) -> Result<(), AppError> {
-    app.connection_open()
+async fn connection_open(app: AppState<'_>) -> Result<(), AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.connection_open()
+    }).await
 }
 #[tauri::command]
-fn sync_status(app: AppState<'_>) -> Result<crate::synchronization::SyncStatus, AppError> {
-    app.sync_status()
+async fn sync_status(app: AppState<'_>) -> Result<crate::synchronization::SyncStatus, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.sync_status()
+    }).await
 }
 #[tauri::command]
-fn sync_conflicts(
+async fn sync_conflicts(
     app: AppState<'_>,
 ) -> Result<Vec<crate::synchronization::SyncConflict>, AppError> {
-    app.sync_conflicts()
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.sync_conflicts()
+    }).await
 }
 #[tauri::command]
-fn sync_start(app: AppState<'_>, operation_id: String) -> Result<TaskSnapshot, AppError> {
-    app.inner().sync_start(operation_id)
+async fn sync_start(app: AppState<'_>, operation_id: String) -> Result<TaskSnapshot, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.sync_start(operation_id)
+    }).await
 }
 #[tauri::command]
-fn sync_resolve(
+async fn sync_resolve(
     app: AppState<'_>,
     input: crate::synchronization::ResolutionInput,
     operation_id: String,
 ) -> Result<TaskSnapshot, AppError> {
-    app.inner().sync_resolve(input, operation_id)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.sync_resolve(input, operation_id)
+    }).await
 }
 #[tauri::command]
 async fn settings_update(
@@ -823,13 +1010,16 @@ async fn speech_voices() -> Result<Vec<SystemVoice>, AppError> {
     background(crate::windows_native::system_voices).await
 }
 #[tauri::command]
-fn speech_start(
+async fn speech_start(
     app: AppState<'_>,
     text: String,
     operation_id: String,
     voice_id: Option<String>,
 ) -> Result<TaskSnapshot, AppError> {
-    app.speech_start(text, operation_id, voice_id)
+    let app = Arc::clone(app.inner());
+    background(move || {
+        app.speech_start(text, operation_id, voice_id)
+    }).await
 }
 #[tauri::command]
 fn native_status(handle: tauri::AppHandle) -> NativeStatus {

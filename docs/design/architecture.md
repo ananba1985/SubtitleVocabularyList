@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.35 |
+| 文档版本 | 0.36 |
 | 对应产品版本 | 0.1 基线；0.4.0 听读、0.5.0 Pot 替代、0.6.0 写作翻译及 0.7.0 底库增量 |
-| 更新日期 | 2026-10-15 |
+| 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
 | 需求依据 | [产品需求文档](../requirements/PRD.md) |
 | 管理规范 | [文档管理规范](../README.md) |
@@ -99,9 +99,13 @@ FR-19 的 [选区翻译并替换](selection-replacement.md) 已在 0.6.0 接通�
 
 explanations.rs 的 prepared_explanation 优先读取已有语境释义，其次空 context 的通用词义，配合 sentence_translations 返回独立译文；已有译文可先于词义显示。CMD-29 为只读拼装，不调用模型。008 从旧解释库迁入有效译文，不删旧语境释义；明确请求特殊语境时仍沿用原 explain_start。正常验证与当前资料队列口径见[去重记录](../testing/preparation-dedup-results.md)。
 
-上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 增量使用 `windows_native.rs` 隔离 UI Automation、SAPI 和 GDI 原生接口，`desktop_capture.rs` 管理全局触发、前台顺序和托盘生命周期，`desktop_ocr.rs` 管理截图会话与裁剪；采集结果通过统一收录核心保存。系统语音生成本地 WAV，播放沿用现有播放器。WPF 实际取词和语音证据见[Windows 记录](../testing/windows-capture-results.md)，截图证据见[OCR 记录](../testing/ocr-results.md)。`reviews.rs` 已接入私有题目快照、确定性判分和人工确认、同事务作答与修正、收录事件重放及专项列表，策略唯一来源为[策略设计](review-policy.md)。查询、同步及最终打包仍待完成。
+上述部分已有真实桌面证据，详见[桌面增量验证](../testing/desktop-import-results.md)。Windows 增量使用 `windows_native.rs` 隔离 UI Automation、SAPI 和 GDI 原生接口，`desktop_capture.rs` 管理全局触发、前台顺序和托盘生命周期，`desktop_ocr.rs` 管理截图会话与裁剪；采集结果通过统一收录核心保存。系统语音生成本地 WAV，播放沿用现有播放器。WPF 实际取词和语音证据见[Windows 记录](../testing/windows-capture-results.md)，截图证据见[OCR 记录](../testing/ocr-results.md)。`reviews.rs` 已接入私有题目快照、确定性判分和人工确认、同事务作答与修正、收录事件重放及专项列表，策略唯一来源为[策略设计](review-policy.md)。查询与完整同步的当前实现见下文及各自增量记录，发行与兼容验收保留实际范围。
 
-`sync_data.rs` 已按共享字段契约导出词条和 12 类关联资料，排除设置、凭据与素材路径；当前仅有只读导出和站点初版协议，桌面完整推拉、映射、队列和冲突仍待实施。004 迁移及浏览的 contexts 读取修正同句多语境，复用原句、音频和已有历史。当前停止点及恢复方法见[笔记本交接](../development/laptop-handoff.md)。
+`sync_data.rs` 已按共享字段契约导出词条和 12 类关联资料，排除设置、凭据与素材路径；桌面完整推拉、映射、冻结队列和冲突处理已接通，当前实现及实际验证范围以[同步设计](synchronization.md)和[同步验证](../testing/synchronization-results.md)为准。004 迁移及浏览的 contexts 读取修正同句多语境，复用原句、音频和已有历史。当前停止点及恢复方法见[笔记本交接](../development/laptop-handoff.md)。
+
+0.8.10 将数据库相关 IPC 命令统一转交既有 background／spawn_blocking 执行，覆盖水平测试、任务读取、收录、已掌握状态、媒体定位、设置及同步等；主线程不执行这些命令的 SQLite 锁等待。同步建立映射和冻结完整词条包时逐词提交事务，在词条之间释放业务连接；发送队列一次读取一份待发送包。单词包内部的基准、epoch 和 changeId 仍在同一事务冻结，重试继续使用原包。业务库仍为单连接互斥，不宣称已实现并行读写或通过新的性能指标。
+
+基础词库作为可选适配器分别初始化，资源异常转为 dictionaryWarnings，不传播为 Store::open 的失败；运行期 ECDICT 读取错误停用该资源，健康词典与个人资料继续使用，详见[基础词库故障隔离](base-dictionary.md#33-可选资源故障隔离0810)。
 
 ### 4.2 网站学习功能的本地整合（FR-13）
 
@@ -330,3 +334,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | 0.34 | 2026-10-15 | 对齐水平测试 M-17／18 实施与 TC-55 部分、TC-56／57 核心证据，M-19 继续实施 |
 
 | 0.35 | 2026-10-15 | 接通 assessment-1 完整测试历史、版本 27 真实往返及独立同步状态；人工体验按用户要求延期 |
+| 0.36 | 2026-10-17 | 记录可选词库故障隔离、数据库命令后台执行及逐词冻结事务；修正相关同步旧状态 |

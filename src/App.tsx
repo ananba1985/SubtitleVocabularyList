@@ -306,6 +306,11 @@ export default function App() {
             </button>
           </div>
         )}
+        {!!info?.dictionaryWarnings?.length && (
+          <div className="notice banner" role="status">
+            <span>{info.dictionaryWarnings.join(" ")}</span>
+          </div>
+        )}
         {skippedCapture && (
           <div className="notice banner" role="status">
             <span>已跳过已掌握内容：{skippedCapture.text.slice(0, 80)}</span>

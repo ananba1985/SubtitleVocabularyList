@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.42 |
+| 文档版本 | 0.43 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -13,6 +13,8 @@
 本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。下列目录保留完整 0.1 的逻辑契约；当前已实现参数另列，不把后续提案当作现有接口。站点认证与协议仍需按 OPEN-04、TECH-06 对齐。
 
 ## 1 命令与数据约定
+
+0.8.10 起数据库相关命令通过既有 background／spawn_blocking 执行：主线程不等待这些命令的业务连接互斥锁；命令名称、参数、结果与幂等语义保持。窗口／焦点操作和纯运行期查询会话不据此统一迁移线程。app_info.dictionaryWarnings 仅报告当前进程可选资源异常，健康资源和个人库仍可用，修复底库后重启重新加载。
 
 界面通过 Tauri 命令调用核心。命令接受类型明确的请求，Rust 成功返回数据，失败返回可序列化错误；前端统一处理 Promise 成功或拒绝。[Tauri 命令说明](https://v2.tauri.app/develop/calling-rust/)
 
@@ -81,7 +83,7 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 
 | 命令 | 当前请求与结果 |
 | --- | --- |
-| `app_info`、`sources_list` | app_info 返回 version（编译时应用版本字符串）、dataDirectory、schemaVersion 与词条/来源计数；应用版本独立于数据库版本。来源列表含文字来源、对白与候选数量 |
+| `app_info`、`sources_list` | app_info 返回 version（编译时应用版本字符串）、dataDirectory、schemaVersion、dictionaryWarnings（当前进程基础词库资源提示字符串数组）与词条/来源计数；应用版本独立于数据库版本。来源列表含文字来源、对白与候选数量 |
 | `import_start` | `{paths: string[], operationId, options?}` → TaskSnapshot；options 包含 audioStream、subtitleStream、subtitleMode（auto/embedded/external/speech）、externalSubtitle。目录递归扫描六个视频后缀、现有文件统一路径身份去重；显式坏文件独立报告，错误选择不静默改轨。具体样本见[媒体矩阵](../testing/media-support-matrix.md) |
 | `media_inspect` | `{path}` → 音轨、字幕轨的索引/语言/名称/编码及同名外置字幕；为选择提供数据，不直接收录 |
 | `online_query_start` | CMD-20：`{text,provider?,operationId}` → 任务；provider 为 dictionary（Wiktionary）或 translation（MyMemory），无参默认前者。只发送 text，拒绝手动离线，自动降级后允许重试；返回 query、source、sourceUrl、definitions，建议需人工采用 |
@@ -348,3 +350,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 
 | 0.41 | 2026-10-15 | 接通 assessment-1 完整测试历史、版本 27 真实往返及独立同步状态；人工体验按用户要求延期 |
 | 0.42 | 2026-10-17 | 明确 running 临时 QueryValue、流式事件快照及 ready 的完整结果契约 |
+| 0.43 | 2026-10-17 | 记录 dictionaryWarnings 可见资源状态和数据库相关 IPC 的后台执行边界，保持既有命令契约 |

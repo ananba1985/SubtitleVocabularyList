@@ -29,6 +29,26 @@ fn finish(app: &Application, task: TaskSnapshot) -> TaskSnapshot {
 }
 
 #[test]
+fn personal_vocabulary_works_without_external_dictionary_files() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path()).unwrap();
+    assert!(store.dictionary_warnings().is_empty());
+    let result = store.collect(&subtitle_vocabulary_list_core::vocabulary::CollectionInput {
+        operation_id: Uuid::new_v4().to_string(),
+        kind: "word".into(),
+        text: "reluctant".into(),
+        meaning: "不情愿的".into(),
+        examples: vec![],
+        target_entry_id: None,
+        expected_revision: None,
+    }).unwrap();
+    drop(store);
+    let reopened = Store::open(directory.path()).unwrap();
+    assert_eq!(reopened.get_entry(&result.entry_id).unwrap().meanings[0].text, "不情愿的");
+    assert_eq!(reopened.review_units("all", "meaning", 0, 10).unwrap().len(), 1);
+}
+
+#[test]
 fn local_dictionary_serves_words_and_only_missing_meanings_reach_the_model() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("dictionaries")).unwrap();
@@ -48,9 +68,10 @@ INSERT INTO dictionary_aliases VALUES ('murmured','murmur');").unwrap();
     drop(ecdict);
 
     let store = Arc::new(Store::open(directory.path()).unwrap());
+    assert!(store.dictionary_warnings().is_empty());
     let sentence = "The patient murmured and was reluctant to harvest apples.";
     store.connection().unwrap().execute("INSERT INTO sources(id,kind,title,fingerprint,duration_ms,corpus_path,imported_at,created_at) VALUES ('episode','video','Synthetic S01E01','fingerprint',1000,'fixture.json',1,1)", []).unwrap();
-    store.connection().unwrap().execute("INSERT INTO examples(id,source_id,location_key,identity_key,text,created_at) VALUES ('sentence','episode','sentence','sentence',?,1)", [sentence]).unwrap();
+    store.connection().unwrap().execute("INSERT INTO examples(id,source_id,location_key,identity_key,text,start_ms,end_ms,created_at) VALUES ('sentence','episode','sentence','sentence',?,0,1000,1)", [sentence]).unwrap();
     for word in ["patient", "apples", "harvest", "murmured", "can’t", "fishin", "hasn’t", "wouldnt", "they’d", "reluctant"] {
         store.connection().unwrap().execute("INSERT INTO occurrences(id,source_id,example_id,candidate_key,raw_text,token_start,token_end,kind) VALUES (?,'episode','sentence',?,?,0,1,'word')", params![word,word,word]).unwrap();
     }
@@ -103,12 +124,12 @@ INSERT INTO dictionary_aliases VALUES ('murmured','murmur');").unwrap();
                 if bytes.len() >= end + 4 + size { break; }
             }
         }
-        let request = String::from_utf8(bytes).unwrap();
-        assert!(request.contains("reluctant"));
-        assert!(!request.contains("patient"));
-        assert!(!request.contains("apples"));
-        assert!(!request.contains("harvest"));
-        assert!(!request.contains("murmured"));
+        let body_start = bytes.windows(4).position(|v| v == b"\r\n\r\n").unwrap() + 4;
+        let request: serde_json::Value = serde_json::from_slice(&bytes[body_start..]).unwrap();
+        let input: serde_json::Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(input["target"], "reluctant");
+        assert_eq!(input["context"], "");
+        assert_eq!(input["reference"], sentence);
         let content = json!({"meaning":"不情愿的","translation":"","notes":"通用释义"}).to_string();
         let body = json!({"choices":[{"message":{"content":content}}]}).to_string();
         write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
@@ -141,5 +162,6 @@ INSERT INTO dictionary_aliases VALUES ('murmured','murmur');").unwrap();
     assert!(store.explanation("apples", "").unwrap().is_none());
     assert_eq!(store.connection().unwrap().query_row("SELECT count(*) FROM entries", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
     let reopened = Store::open(directory.path()).unwrap();
+    assert!(reopened.dictionary_warnings().is_empty());
     assert_eq!(reopened.prepared_explanation("apples", sentence).unwrap().unwrap().value.meaning, "苹果");
 }

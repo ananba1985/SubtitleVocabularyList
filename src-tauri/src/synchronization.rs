@@ -861,33 +861,36 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
-    fn enqueue(&self, scope: &str) -> Result<(), AppError> {
-        let mut c = self.connection()?;
-        let tx = c.transaction()?;
-        let mut q=tx.prepare("SELECT id FROM entries WHERE NOT EXISTS(SELECT 1 FROM sync_documents WHERE account_scope=?1 AND local_id=entries.id) AND archived=0 AND NOT EXISTS(SELECT 1 FROM sync_conflicts f WHERE f.account_scope=?1 AND f.state='pending' AND (f.local_id=entries.id OR (json_extract(f.remote_json,'$.entry.kind')=entries.kind AND json_extract(f.remote_json,'$.entry.match_key')=entries.match_key)))")?;
-        let ids = q
-            .query_map([scope], |r| r.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
-        drop(q);
+    fn enqueue(&self, scope: &str, cancel: &AtomicBool) -> Result<(), AppError> {
+        // Keep only identifiers between transactions; each frozen word remains atomic.
+        let ids = {
+            let c = self.connection()?;
+            let mut q=c.prepare("SELECT id FROM entries WHERE NOT EXISTS(SELECT 1 FROM sync_documents WHERE account_scope=?1 AND local_id=entries.id) AND archived=0 AND NOT EXISTS(SELECT 1 FROM sync_conflicts f WHERE f.account_scope=?1 AND f.state='pending' AND (f.local_id=entries.id OR (json_extract(f.remote_json,'$.entry.kind')=entries.kind AND json_extract(f.remote_json,'$.entry.match_key')=entries.match_key)))")?;
+            q.query_map([scope], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
         for local in ids {
+            check_cancel(cancel)?;
+            let mut c = self.connection()?;
+            let tx = c.transaction()?;
             tx.execute(
                 "INSERT INTO sync_documents(account_scope,remote_id,local_id) VALUES (?,?,?)",
                 params![scope, local, local],
             )?;
             link(&tx, scope, "entries", &local, &local)?;
+            tx.commit()?;
         }
-        let mut q=tx.prepare("SELECT d.remote_id,d.local_id,e.epoch FROM sync_documents d JOIN sync_dirty_entries e ON e.entry_id=d.local_id WHERE d.account_scope=? AND e.epoch>d.acknowledged_epoch AND NOT EXISTS(SELECT 1 FROM sync_outbox o WHERE o.account_scope=d.account_scope AND o.entity_id=d.remote_id AND o.state IN ('pending','conflict')) AND NOT EXISTS(SELECT 1 FROM sync_conflicts f WHERE f.account_scope=d.account_scope AND f.state='pending' AND (f.remote_id=d.remote_id OR f.local_id=d.local_id))")?;
-        let rows = q
-            .query_map([scope], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        drop(q);
-        for (remote, local, epoch) in rows {
+        let rows = {
+            let c = self.connection()?;
+            let mut q=c.prepare("SELECT d.remote_id,d.local_id FROM sync_documents d JOIN sync_dirty_entries e ON e.entry_id=d.local_id WHERE d.account_scope=? AND e.epoch>d.acknowledged_epoch AND NOT EXISTS(SELECT 1 FROM sync_outbox o WHERE o.account_scope=d.account_scope AND o.entity_id=d.remote_id AND o.state IN ('pending','conflict')) AND NOT EXISTS(SELECT 1 FROM sync_conflicts f WHERE f.account_scope=d.account_scope AND f.state='pending' AND (f.remote_id=d.remote_id OR f.local_id=d.local_id))")?;
+            q.query_map([scope], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        for (remote, local) in rows {
+            check_cancel(cancel)?;
+            let mut c = self.connection()?;
+            let tx = c.transaction()?;
+            let epoch: i64 = tx.query_row("SELECT epoch FROM sync_dirty_entries WHERE entry_id=?", [&local], |r| r.get(0))?;
             let (_, revision, base, _) = document(&tx, scope, &remote)?.unwrap();
             let bundle = outbound(&tx, scope, &remote, &local, base.as_ref())?;
             let change_id = Uuid::new_v4().to_string();
@@ -897,8 +900,8 @@ impl Store {
                 bundle,
             };
             tx.execute("INSERT INTO sync_outbox(change_id,entity_kind,entity_id,base_revision,payload_json,created_at,account_scope,local_epoch) VALUES (?,'entry',?,?,?,?,?,?)",params![change_id,remote,revision,serde_json::to_string(&push)?,Utc::now().timestamp_millis(),scope,epoch])?;
+            tx.commit()?;
         }
-        tx.commit()?;
         Ok(())
     }
     fn send_pending<R: Remote>(
@@ -908,20 +911,15 @@ impl Store {
         cancel: &AtomicBool,
         result: &mut SyncResult,
     ) -> Result<(), AppError> {
-        let rows = {
-            let c = self.connection()?;
-            let mut q=c.prepare("SELECT change_id,payload_json,local_epoch FROM sync_outbox WHERE account_scope=? AND state='pending' ORDER BY created_at,change_id")?;
-            q.query_map([scope], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?
-        };
-        for (change, json, epoch) in rows {
+        loop {
             check_cancel(cancel)?;
+            let row = {
+                let c = self.connection()?;
+                c.query_row("SELECT change_id,payload_json,local_epoch FROM sync_outbox WHERE account_scope=? AND state='pending' ORDER BY created_at,change_id LIMIT 1", [scope], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+                }).optional()?
+            };
+            let Some((change, json, epoch)) = row else { break; };
             let request: Push = serde_json::from_str(&json)?;
             for asset in &request.bundle.tables["media_assets"] {
                 check_cancel(cancel)?;
@@ -1048,7 +1046,7 @@ impl Store {
             ));
         }
         check_cancel(cancel)?;
-        self.enqueue(scope)?;
+        self.enqueue(scope, cancel)?;
         progress("push", result.pushed);
         self.send_pending(scope, remote, cancel, &mut result)?;
         let status = self.synchronization_status(scope)?;

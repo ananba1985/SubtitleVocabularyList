@@ -3,10 +3,10 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-DICTIONARY-001 |
-| 文档版本 | 0.5 |
-| 更新日期 | 2026-10-15 |
+| 文档版本 | 0.6 |
+| 更新日期 | 2026-10-17 |
 | 状态 | 双词库及匹配优化实现、只读统计与最小正常流程通过；未打包 |
-| 对应版本 | 0.8.0 开发中；业务 schema 9，Google 底库 schema 2／ECDICT schema 1 |
+| 对应版本 | 0.8.10 开发中；业务 schema 9，Google 底库 schema 2／ECDICT schema 1 |
 | 需求依据 | FR-02、FR-08、FR-14；用户确认优先采用已有中文 Google 高频词表，底库命中不调用本地 AI |
 
 M-15 已在生成器中增加 frequency_catalogs/targets 完整排名索引，包括无中文单词及可追溯双词频次；仅经自然用法筛选的短语 eligible=1。dictionary_entries/aliases 及查询顺序不变，启动不加载整个频次索引。隔离生成实证见[水平测试记录](../testing/vocabulary-assessment-results.md)；未生成安装包、未更新日常 Data 中的既有底库。
@@ -27,7 +27,7 @@ M-15 已在生成器中增加 frequency_catalogs/targets 完整排名索引，�
 
 底库 schema 1：`dictionary_entries` 保存规范化词头、中文释义、英美音标、词性、频率排名；`dictionary_aliases` 保存表层词形到词头的映射；`metadata` 保存来源信息。只收录含中文释义的词条；一个词形对应多个词头时不自行猜义，不计为词形命中。精确词头优先于别名。
 
-Store 打开时只读加载 Google 小词表为内存索引；ECDICT 保留只读 SQLite 连接，使用词头和词形索引按需查询，不在启动时把全部大词典加载入内存。查询不产生模型请求，notes 标注命中的实际词典。没有外部底库时仍可读取内置基本缩写补充，其余词语保持原流程。更换或首次准备底库后重新打开程序加载。业务 schema 保持 8，不迁移或改写用户词条。`explanation_get.meaningScope` 使用 `dictionary`，小窗结果使用 `cacheSource=dictionary` 区分模型结果。
+Store 打开时只读加载 Google 小词表为内存索引；ECDICT 保留只读 SQLite 连接，使用词头和词形索引按需查询，不在启动时把全部大词典加载入内存。查询不产生模型请求，notes 标注命中的实际词典。没有外部底库时仍可读取内置基本缩写补充，其余词语保持原流程。更换或首次准备底库后重新打开程序加载。业务 schema 保持 9，不迁移或改写用户词条。`explanation_get.meaningScope` 使用 `dictionary`，小窗结果使用 `cacheSource=dictionary` 区分模型结果。
 
 ### 3.1 书写变体与基本缩写补充
 
@@ -44,6 +44,14 @@ Store 打开时只读加载 Google 小词表为内存索引；ECDICT 保留只�
 standalone 输出使用 `scripts/copy-release-dictionaries.ps1` 读取同一显式映射，更新列明的文件，不递归删除 Data。个人 `vocabulary.sqlite3`、词条例句、人工／缓存解释、学习历史、同步资料和原声均不进入打包输入，也不由底库更新覆盖。调试入口继续复用本机 Data，不通过本轮修改迁移或重建个人资料。
 
 资源映射采用 [Tauri bundled resources](https://v2.tauri.app/develop/resources/)；NSIS 安装前检查运行进程、按资源文件安装／删除，目录仅在空时移除，未添加删除 Data 的脚本。卸载和真实覆盖安装不在本轮执行，后续生成版本包时核对。来源说明保留上游原文；Google 表 README 声明中文释义与发音的来源，未标注独立开源许可证，不冒称其采用本项目 GPL 或 ECDICT 的 MIT。当前按用户要求准备本机使用流程，公开分发许可仍需单独核对。
+
+### 3.3 可选资源故障隔离（0.8.10）
+
+Google 和 ECDICT 分别只读加载；Google 的词头、映射及来源全部读取成功后才发布内存索引，ECDICT 在启动时预编译既有查询检查所需表和字段，不扫描完整大词典。任何一份资源的打开或结构读取错误仅停用该资源，不让可选资源错误中断个人业务库初始化。内置补充独立加载；外部底库不存在仍按既有可选资源方式运行。
+
+ECDICT 运行期查询失败时，本进程释放并停用该连接，记录一次可见原因，查询按未命中继续原有解释流程。健康的 Google、内置补充、已保存解释和个人资料继续使用。app_info.dictionaryWarnings 返回当前进程的资源提示，主窗口显示；该提示不写进词条或同步资料，不自动删除、下载或修复文件。资源修复后重开程序重新加载。
+
+此变更不修改个人数据库 schema 或底库文件。[最小正常验证及未执行边界](../testing/base-dictionary-results.md#6-0810-资源隔离与最小正常验证)分别记录，不以代码降级路径冒充损坏资源实测。
 
 ## 4 统计与最小验证
 
@@ -62,3 +70,4 @@ standalone 输出使用 `scripts/copy-release-dictionaries.ps1` 读取同一显�
 | 0.3 | 2026-10-14 | 复核未命中形态和对白，明确字形规范化、列明变体、基本缩写校订及不误改语义的边界 |
 | 0.4 | 2026-10-14 | 按授权加入独立发行暂存、显式安装映射和保留个人资料的底库升级流程 |
 | 0.5 | 2026-10-15 | Google 参考库增加独立词频索引，既有中文查词优先级保持 |
+| 0.6 | 2026-10-17 | 分别隔离 Google／ECDICT 加载与查询错误，公开资源提示并保留个人库可用；业务 schema 仍为 9 |

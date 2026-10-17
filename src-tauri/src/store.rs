@@ -83,7 +83,7 @@ impl Store {
             transaction.commit()?;
         }
         Ok(Self {
-            dictionary: crate::base_dictionary::BaseDictionary::load(&root)?,
+            dictionary: crate::base_dictionary::BaseDictionary::load(&root),
             root,
             connection: Mutex::new(connection),
         })
@@ -91,6 +91,10 @@ impl Store {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub fn dictionary_warnings(&self) -> Vec<String> {
+        self.dictionary.warnings()
     }
 
     pub fn connection(&self) -> Result<MutexGuard<'_, Connection>, AppError> {

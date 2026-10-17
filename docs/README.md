@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.41 |
-| 更新日期 | 2026-10-15 |
+| 文档版本 | 0.42 |
+| 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
 
@@ -42,7 +42,7 @@
 | 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
-| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、本地处理、进程计数与模型不可用 | 采样与核心调用不代替长期 SLO 或 GUI 响应 |
+| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、数据库命令后台执行、逐词同步事务、本地处理、进程计数与模型不可用 | 采样与核心调用不代替长期 SLO 或 GUI 响应 |
 | 当前验收覆盖审计 | [testing/acceptance-status.md](testing/acceptance-status.md) | 0.1 基线需求、42 个历史计划场景、阶段门槛和缺失条件 | “增量已验证”不代表完整版本已达成 |
 | 媒体输入支持矩阵 | [testing/media-support-matrix.md](testing/media-support-matrix.md) | 已测容器/编码、字幕、目录与去重 | 后缀不是全部编码或保护内容的保证 |
 | 受限制网络验收 | [testing/restricted-network-results.md](testing/restricted-network-results.md) | 实际出站规则、冷启动、播放听辨、截图、服务失败及规则恢复 | 区分指定程序限制与整机断网、实际执行与缓存 |
@@ -54,7 +54,7 @@
 | 资料目录与迁移 | [development/data-directory.md](development/data-directory.md)、[testing/data-directory-results.md](testing/data-directory-results.md) | 安装目录内 Data、本机测试默认、缓存、迁移与保留证据 | 本地迁移和 exe 验证不代替发行包实装 |
 | 后台词义去重修复 | [testing/preparation-dedup-results.md](testing/preparation-dedup-results.md) | 通用词义跨集缓存、句子译文独立保存、旧解释保持及正常验证 | 项数与 HTTP 数量区分，不宣称全量生成或性能验收 |
 | 后台准备内容诊断 | [testing/preparation-content-results.md](testing/preparation-content-results.md) | 原始 PGS 核对、缩写、专名线索、分词和诊断缓存修复 | 实际内容修复与发行包升级分别记录，不通过忽略失败项冒充完成 |
-| 离线基础词库 | [design/base-dictionary.md](design/base-dictionary.md)、[testing/base-dictionary-results.md](testing/base-dictionary-results.md) | 已翻译词表、明确词形映射、底库命中不调用模型及真实候选覆盖 | 底库与个人词库分离，词语覆盖与句子翻译分开，不捆绑未经核对的第三方数据 |
+| 离线基础词库及资源隔离 | [design/base-dictionary.md](design/base-dictionary.md)、[testing/base-dictionary-results.md](testing/base-dictionary-results.md) | 已翻译词表、明确词形映射、资源故障隔离、底库命中不调用模型及真实候选覆盖 | 底库与个人词库分离，词语覆盖与句子翻译分开，不捆绑未经核对的第三方数据 |
 | 未命中词复核与匹配优化 | [testing/unmatched-vocabulary-results.md](testing/unmatched-vocabulary-results.md) | 487 项原因初分、明确变体与缩写补充、覆盖增量和最小正常验证 | 疑似 OCR／专名不作为确定结论，不猜义、删词或改写对白 |
 | 基础词库安装资源 | [testing/dictionary-packaging-results.md](testing/dictionary-packaging-results.md) | 独立生成、首次落盘与更新、显式映射及个人库保持 | 本地资源流程不代替 NSIS 包生成和真实覆盖安装，第三方数据不提交源码仓库 |
 | 台式机交接与验证 | [本地任务目标](development/desktop-agent-goal.md)、[台式机记录](testing/desktop-machine-results.md) | 已有环境、当前证据、剩余范围与持续目标完成条件 | 机器切换不自动关闭未完成能力或未通过场景 |
@@ -181,3 +181,4 @@
 
 | 0.40 | 2026-10-15 | 按用户确认结束本轮验收，保留实际证据与未复核边界，后续问题按 bug 处理 |
 | 0.41 | 2026-10-15 | 索引中文准备真实内容诊断、原字幕修复及已补齐记录，保留源码与安装版边界 |
+| 0.42 | 2026-10-17 | 索引基础词库资源隔离、数据库命令后台执行及同步逐词事务的最小正常证据 |

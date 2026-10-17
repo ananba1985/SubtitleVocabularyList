@@ -7,6 +7,7 @@ export interface AppInfo {
   entryCount: number;
   sourceCount: number;
   networkUnavailable: boolean;
+  dictionaryWarnings: string[];
 }
 export interface TaskSnapshot {
   id: string;

@@ -200,16 +200,19 @@ fn bidirectional_full_history_roundtrip_and_replay_do_not_add_collections() {
             unable: false,
         })
         .unwrap();
+    let other = word(&first, "harvest", "收获", None);
     let mut server = Server::default();
-    assert_eq!(sync(&first, &mut server).pushed, 1);
-    assert_eq!(sync(&second, &mut server).pulled, 1);
+    assert_eq!(sync(&first, &mut server).pushed, 2);
+    assert_eq!(sync(&second, &mut server).pulled, 2);
+    assert_eq!(second.get_entry(&other).unwrap().meanings[0].text, "收获");
     assert_eq!(second.get_entry(&id).unwrap().collection_count, 1);
     assert_eq!(
         second.sync_export(&id).unwrap().tables["review_attempts"].len(),
         1
     );
     assert_eq!(
-        second.review_units("all", "meaning", 0, 100).unwrap()[0]
+        second.review_units("all", "meaning", 0, 100).unwrap().into_iter()
+            .find(|unit| unit.entry_id == id).unwrap()
             .state
             .streak,
         1

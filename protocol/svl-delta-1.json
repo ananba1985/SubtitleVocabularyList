@@ -1,7 +1,19 @@
 {
   "protocol": "json-delta-1",
   "capability": "GET /api/svl/v1/account: bundleDelta=json-delta-1",
-  "scope": "Optional upload encoding for svl-sync-1 and assessment-1; stored bundles and downloaded snapshots remain complete.",
+  "scope": "Optional upload/download encoding for svl-sync-1 and assessment-1; acknowledged baselines and stored business snapshots remain complete.",
+  "downloadCapability": "GET /api/svl/v1/account: bundleDeltaDownload=json-delta-1, with the existing chunks-1 parameters",
+  "downloadRequest": {
+    "routes": ["GET /api/svl/v1/changes/:cursor", "GET /api/svl/v1/entries/:id", "GET /api/svl/v1/assessments/changes/:cursor", "GET /api/svl/v1/assessments/:id"],
+    "headers": {"x-svl-delta": "json-delta-1", "x-svl-base-revision": "positive acknowledged revision of this account and entity"}
+  },
+  "downloadResponse": {
+    "metadata": "Keep entryId or sessionId, target revision, and the original cursor/changeId when present.",
+    "inline": "metadata + baseRevision + delta; no bundle field",
+    "chunked": "metadata + baseRevision + deltaRef={digest,size,parts}; authenticated chunks-1 endpoint returns the serialized delta object, verified by digest and size before applying it",
+    "fallback": "Keep the original complete bundle/packetRef response when no matching base snapshot exists, no capability was requested, or a delta would not be smaller.",
+    "apply": "Apply only to the complete acknowledged bundle with matching account/entity/baseRevision, not current locally edited business rows. Verify target identity and size, then run existing complete validation, media persistence and merge before committing baseline/cursor."
+  },
   "requestFields": ["changeId", "baseRevision", "entryId or sessionId", "delta"],
   "deltaFields": ["protocol", "ops"],
   "path": "RFC 6901 JSON Pointer into the acknowledged bundle; array indexes refer to the result of preceding operations.",

@@ -37,9 +37,9 @@ impl Remote for Server {
             backfill_pending: false,
         })
     }
-    fn change(&mut self, cursor: i64) -> Result<RemoteDocument, crate::error::AppError> {
+    fn change(&mut self, change: &RemoteChange) -> Result<RemoteDocument, crate::error::AppError> {
         self.fetched += 1;
-        Ok(self.events[(cursor - 1) as usize].clone())
+        Ok(self.events[(change.cursor - 1) as usize].clone())
     }
     fn push(&mut self, p: &Push) -> Result<PushReply, crate::error::AppError> {
         crate::sync_merge::validate(&p.bundle)?;

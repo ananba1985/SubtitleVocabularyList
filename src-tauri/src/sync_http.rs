@@ -5,7 +5,7 @@ use crate::{
     error::AppError,
     site_connection::site_origin,
     synchronization::{
-        ChangePage, Push, PushReply, Remote, RemoteDocument, SyncConflict, SyncStatus,
+        ChangePage, Push, PushReply, Remote, RemoteChange, RemoteDocument, SyncConflict, SyncStatus,
     },
     tasks::TaskSnapshot,
     vocabulary::digest,
@@ -29,6 +29,7 @@ struct HttpRemote {
     supports_chunks: bool,
     supports_assessments: bool,
     supports_delta: bool,
+    supports_delta_download: bool,
     cancelled: Option<Arc<AtomicBool>>,
     confirmed_media: BTreeSet<(String, String)>,
 }
@@ -69,6 +70,7 @@ impl HttpRemote {
             supports_chunks: false,
             supports_assessments: false,
             supports_delta: false,
+            supports_delta_download: false,
             cancelled: None,
         })
     }
@@ -134,6 +136,7 @@ impl HttpRemote {
             && v["maxPacketBytes"].as_u64() == Some(MAX_PACKET_BYTES as u64);
         self.supports_assessments = v["assessmentSync"].as_str() == Some("assessment-1");
         self.supports_delta = v["bundleDelta"].as_str() == Some(crate::sync_delta::PROTOCOL);
+        self.supports_delta_download = v["bundleDeltaDownload"].as_str() == Some(crate::sync_delta::PROTOCOL) && self.supports_chunks;
         self.app
             .store
             .assessment_sync_capability(&self.scope(), v["assessmentSync"].as_str())?;
@@ -142,6 +145,13 @@ impl HttpRemote {
     fn get(&mut self, path: &str) -> Result<Value, AppError> {
         Transport::new(&self.client, &self.site, &self.credential.token)
             .fetch(path, || self.check())
+    }
+    fn get_document(&mut self, path: &str, id: &str, assessment: bool) -> Result<Value, AppError> {
+        let base = if self.supports_delta_download {
+            self.app.store.sync_download_base(&self.scope(), id, assessment)?
+        } else { None };
+        Transport::new(&self.client, &self.site, &self.credential.token)
+            .fetch_since(path, base.as_ref().map(|(revision,bundle)|(*revision,bundle)), || self.check())
     }
     fn receive_assessment(
         &mut self,
@@ -201,7 +211,7 @@ impl HttpRemote {
                     "正在保存完整水平测试历史",
                 );
                 let document: crate::assessment_sync::AssessmentDocument = serde_json::from_value(
-                    self.get(&format!("/api/svl/v1/assessments/changes/{next}"))?,
+                    self.get_document(&format!("/api/svl/v1/assessments/changes/{next}"), session_id, true)?,
                 )?;
                 if change["sessionId"].as_str() != Some(document.session_id.as_str())
                     || change["revision"].as_i64() != Some(document.revision)
@@ -280,9 +290,9 @@ impl Remote for HttpRemote {
             self.get(&format!("/api/svl/v1/changes?after={after}"))?,
         )?)
     }
-    fn change(&mut self, cursor: i64) -> Result<RemoteDocument, AppError> {
+    fn change(&mut self, change: &RemoteChange) -> Result<RemoteDocument, AppError> {
         Ok(serde_json::from_value(
-            self.get(&format!("/api/svl/v1/changes/{cursor}"))?,
+            self.get_document(&format!("/api/svl/v1/changes/{}", change.cursor), &change.entry_id, false)?,
         )?)
     }
     fn push(&mut self, request: &Push) -> Result<PushReply, AppError> {
@@ -702,8 +712,8 @@ mod live_recovery_tests {
         fn changes(&mut self, after: i64) -> Result<ChangePage, AppError> {
             self.inner.changes(after)
         }
-        fn change(&mut self, cursor: i64) -> Result<RemoteDocument, AppError> {
-            self.inner.change(cursor)
+        fn change(&mut self, change: &RemoteChange) -> Result<RemoteDocument, AppError> {
+            self.inner.change(change)
         }
         fn upload(&mut self, hash: &str, format: &str, bytes: Vec<u8>) -> Result<(), AppError> {
             self.inner.upload(hash, format, bytes)

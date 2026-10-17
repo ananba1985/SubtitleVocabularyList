@@ -5,6 +5,76 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 pub(crate) const PROTOCOL: &str = "json-delta-1";
+pub(crate) const MAX_PACKET_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "op", rename_all = "lowercase", deny_unknown_fields)]
+enum Operation {
+    Set { path: String, value: Value },
+    Remove { path: String },
+    Splice { path: String, index: usize, #[serde(rename = "deleteCount")] delete_count: usize, items: Vec<Value> },
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Delta { protocol: String, ops: Vec<Operation> }
+
+fn invalid() -> AppError { AppError::new("invalid_data", "同步差量或确认基准无效，完整资料与游标保留。") }
+
+pub(crate) fn apply(base: &Value, delta: &Value) -> Result<Value, AppError> {
+    let delta: Delta = serde_json::from_value(delta.clone()).map_err(|_| invalid())?;
+    if delta.protocol != PROTOCOL { return Err(invalid()); }
+    let mut result = base.clone();
+    for op in delta.ops {
+        match op {
+            Operation::Splice { path, index, delete_count, items } => {
+                let array = result.pointer_mut(&path).and_then(Value::as_array_mut).ok_or_else(invalid)?;
+                if index > array.len() || delete_count > array.len() - index { return Err(invalid()); }
+                array.splice(index..index + delete_count, items);
+            }
+            Operation::Set { path, value } if path.is_empty() => result = value,
+            other => {
+                let (path, value) = match other {
+                    Operation::Set { path, value } => (path, Some(value)),
+                    Operation::Remove { path } => (path, None),
+                    _ => unreachable!(),
+                };
+                let (parent, key) = path.rsplit_once('/').ok_or_else(invalid)?;
+                let key = key.replace("~1", "/").replace("~0", "~");
+                let parent = result.pointer_mut(parent).ok_or_else(invalid)?;
+                match (parent, value) {
+                    (Value::Object(object), Some(value)) => { object.insert(key, value); }
+                    (Value::Object(object), None) => { object.remove(&key).ok_or_else(invalid)?; }
+                    (Value::Array(array), Some(value)) => {
+                        let index: usize = key.parse().map_err(|_| invalid())?;
+                        *array.get_mut(index).ok_or_else(invalid)? = value;
+                    }
+                    _ => return Err(invalid()),
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+pub(crate) fn restore_document(mut value: Value, base: Option<(i64, &Value)>) -> Result<Value, AppError> {
+    let Some(delta) = value.get("delta") else { return Ok(value); };
+    let (revision, base) = base.ok_or_else(invalid)?;
+    let (identity, root) = if base.get("session").is_some() { ("sessionId", "session") } else { ("entryId", "entry") };
+    if revision <= 0 || value["baseRevision"].as_i64() != Some(revision)
+        || value["revision"].as_i64().is_none_or(|v|v<=revision)
+        || value[identity] != base[root]["id"] || value.get("bundle").is_some() {
+        return Err(invalid());
+    }
+    let bundle = apply(base, delta)?;
+    if bundle[root]["id"] != value[identity] || serde_json::to_vec(&bundle)?.len() > MAX_PACKET_BYTES {
+        return Err(invalid());
+    }
+    let object = value.as_object_mut().ok_or_else(invalid)?;
+    object.remove("delta");
+    object.remove("baseRevision");
+    object.insert("bundle".into(), bundle);
+    Ok(value)
+}
 
 fn child(path: &str, key: &str) -> String {
     format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"))
@@ -67,18 +137,21 @@ pub(crate) fn request(full: &Value, base: Option<&Value>, identity: &str) -> Val
 impl Store {
     pub(crate) fn sync_upload_base(&self, scope: &str, id: &str, revision: i64, assessment: bool) -> Result<Option<Value>, AppError> {
         if revision <= 0 { return Ok(None); }
+        Ok(self.sync_download_base(scope,id,assessment)?.filter(|(rev,_)| *rev==revision).map(|(_,base)|base))
+    }
+    pub(crate) fn sync_download_base(&self, scope: &str, id: &str, assessment: bool) -> Result<Option<(i64, Value)>, AppError> {
         let c = self.connection()?;
-        let raw: Option<String> = if assessment {
-            c.query_row("SELECT base_json FROM assessment_sync_state WHERE account_key=? AND session_id=? AND remote_revision=?",
-                params![scope,id,revision], |r|r.get(0)).optional()?.flatten()
+        let raw: Option<(i64, String)> = if assessment {
+            c.query_row("SELECT remote_revision,base_json FROM assessment_sync_state WHERE account_key=? AND session_id=? AND remote_revision>0 AND base_json IS NOT NULL",
+                params![scope,id], |r|Ok((r.get(0)?,r.get(1)?))).optional()?
         } else {
-            c.query_row("SELECT base_json FROM sync_documents WHERE account_scope=? AND remote_id=? AND remote_revision=?",
-                params![scope,id,revision], |r|r.get(0)).optional()?.flatten()
+            c.query_row("SELECT remote_revision,base_json FROM sync_documents WHERE account_scope=? AND remote_id=? AND remote_revision>0 AND base_json IS NOT NULL",
+                params![scope,id], |r|Ok((r.get(0)?,r.get(1)?))).optional()?
         };
-        raw.map(|s| {
+        raw.map(|(revision,s)| {
             let mut v: Value = serde_json::from_str(&s)?;
             if assessment { v = v["bundle"].take(); }
-            Ok(v)
+            Ok((revision,v))
         }).transpose()
     }
 }

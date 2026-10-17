@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PERF-001 |
-| 文档版本 | 0.12 |
+| 文档版本 | 0.13 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 核心与实装 WebView 样本通过；版本总审计继续 |
 | 依据 | NFR-03、NFR-04；TC-20、TC-21、TC-39、TC-40、TC-41；OPEN-05 |
@@ -228,7 +228,34 @@ python scripts/measure-core-workflow.py --tools <安装目录/tools> --video <�
 
 未扩大异常、兼容、压力或业务回归，未启动个人资料、GUI 或生成桌面安装包。原生部署成功不代表真实账号已执行本轮差量往返；本轮功能证据限定为上述本地正常链路。
 
-## 16 修订记录
+## 16 0.8.16 已有确认基准的差量下载
+
+2026-10-17，FR-12、FR-23、NFR-02／NFR-03，对应 TC-31／TC-58 的正常下载子流程。复用 0.8.15 的合成完整首传、追加作答、追加修正资料，不读取个人词库。站点声明独立下载能力，按设备提供的同账号／同实体确认基准生成 json-delta-1；桌面还原完整包后执行原保存、媒体核对及合并流程。
+
+| 最小正常检查 | 实际结果 |
+| --- | --- |
+| 站点路由及跨语言响应 | `node scripts/test-sync-delta.mjs <normal-flow.json> <normal-responses.json>` 通过。隔离 SQLite 和内存媒体存储实际执行词条／会话首传、作答、修正；变更详情 GET 在有基准时返回 delta，完整 GET 与差量还原都等于原 Rust 完整包；原声 PUT／GET 字节一致 |
+| 桌面 HTTP、完整保存及游标 | 设置 SVL_DOWNLOAD_FIXTURE 为上一步响应文件，执行 `cargo test --locked --manifest-path src-tauri/Cargo.toml --lib sync_transport::tests::delta_download_normal_history_roundtrip -- --exact --ignored --nocapture`，1 条通过。通过本机 TCP HTTP 接收站点路由产生的响应，检查基准请求头，调用实际 fetch_since／差量还原；词条经 Store::synchronize、会话经原 receive／游标接口写入隔离业务库，每步完整基准与预期一致，最终游标为 3。原声音频文件字节保持，未产生新收录或上传 |
+| 构建及接口类型 | `pnpm build` 通过，包含版本、Rust IPC 生成契约、TypeScript 与 Vite；未改 IPC DTO 或数据库 schema |
+
+上述 Rust 用例依赖站点生成的响应，平常标记 ignored，本轮通过明确的 --ignored／--exact 参数执行且实际通过，不计作默认套件覆盖。站点业务路由在 Node 内以 Request／Response 调用，桌面 HTTP 阶段重放这些响应；没有将该证据描述为直连线上 D1／R2 或真实身份登录。
+
+| 合成响应 | 完整 JSON 字节 | 下载 JSON 字节 |
+| --- | ---: | ---: |
+| 词条首传 | 9,243 | 9,243 |
+| 词条新增作答 | 11,463 | 3,402 |
+| 词条追加修正 | 11,795 | 1,441 |
+| 水平测试首传 | 2,705 | 2,705 |
+| 水平测试新增作答 | 8,405 | 6,235 |
+| 水平测试追加修正 | 14,129 | 6,210 |
+
+这是本次正常样本的实际序列化长度，不是带宽、耗时、压力或长期指标。响应夹具保留在忽略目录 `.local/sync-download-validation-0.8.16/normal-responses.json`，不含用户资料或凭据。新报告仍完整传输，未变化的旧报告和例句等复用基准。大差量分片、完整回退已接入原传输路径，本轮正常验证限定为上述内联响应，没有扩大容量、异常或兼容性验证。
+
+`pnpm version:check` 通过，版本 **0.8.16**。站点原构建 `node scripts/build-site.mjs` 通过；Sites 工作流提交并推送源码 `6d890b887d0c09dd15e2ecf018a7a186b308f9b2`，版本 **29**，保存版本 ID `appgprj_6ab87c3ee6108191b323f7e065674509~appgver_fd1fcb1ec0f88191b9e10cab0198c574`，部署 ID `appgdep_6ad3bc789f548191ae5b795b457c19fb`，2026-10-17T18:20:46Z 原生部署结果 **succeeded**。地址：[English Practice](https://english-copy-practice.hxwjb.chatgpt.site)，原 public 访问范围及账号隔离保持，无数据库迁移。
+
+本轮不启动个人资料或 GUI，不重新执行真实账号往返，也不生成桌面安装包。原生部署成功不代替真实账号差量下载验收。服务端完整快照读取／比较和历史存储增长仍存在，不据本轮减少下载量宣称这些处理已消除。
+
+## 17 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -244,3 +271,4 @@ python scripts/measure-core-workflow.py --tools <安装目录/tools> --video <�
 | 0.10 | 2026-10-17 | 记录 Rust 单源生成 106 个命令及 121 个类型、固定 JSON 响应校验和一条离线正常 DTO 流程，保留动态载荷及真实运行边界 |
 | 0.11 | 2026-10-17 | 记录同步回声跳过、终态快照释放、会话缓存及 schema 10 升级的 3 条正常验证，保留完整包和真实网络边界 |
 | 0.12 | 2026-10-17 | 记录词条／会话首传、差量作答和修正的最小跨语言正常验证及实际请求大小，保持完整历史与验收边界 |
+| 0.13 | 2026-10-17 | 记录差量下载的站点正常响应、桌面 HTTP／完整保存／游标验证及响应大小，区分本地链路与线上验收 |

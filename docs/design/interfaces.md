@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.48 |
+| 文档版本 | 0.49 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -242,6 +242,8 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 
 0.8.15 保持 IPC 命令、嵌套 DTO 和既有同步结果不变。HTTP account 新增可选 bundleDelta=json-delta-1 能力；词条／会话 PUT 可发送 changeId、baseRevision、entryId／sessionId 和 delta，完整字段与顺序操作见[共享差量契约](../../protocol/svl-delta-1.json)。站点返回 412／delta_base_missing 时，以相同逻辑变更退回完整请求；成功回执和 409 完整冲突文档仍沿用原契约。不得把缺少 delta 中的字段解释为业务删除。
 
+0.8.16 保持原 IPC 返回字段。HTTP account 可声明 bundleDeltaDownload=json-delta-1；桌面在已有匹配基准且 chunks-1 参数匹配时，对变更详情 GET 发送 x-svl-delta 与 x-svl-base-revision。词条／会话详情 GET 同样支持该协商。响应保留原实体标识、目标 revision 及适用的 cursor／changeId，新增 baseRevision 与 delta 或 deltaRef；无匹配基准／差量不更小时沿用原 bundle／packetRef。deltaRef 描述符和分片端点沿用 chunks-1，内容是完整序列化的差量对象。桌面核对基准版本、实体和目标版本，校验分片长度／摘要，补回完整 bundle，再进入原持久化和冲突流程。契约唯一维护在[共享差量契约](../../protocol/svl-delta-1.json)。
+
 ## 4 任务与事件
 
 任务查询是当前执行状态和结果的权威入口。业务后台与失败诊断读取 SQLite，正常临时操作读取有限内存回执；事件建议采用以下最小结构：
@@ -376,3 +378,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.46 | 2026-10-17 | 以 Rust 自动生成请求及嵌套返回结构，记录固定 JSON 投影、字段补齐、空值与生成检查的真实边界 |
 | 0.47 | 2026-10-17 | 明确同步状态缓存与已确认版本复用的结果语义，保持命令及完整包协议不变 |
 | 0.48 | 2026-10-17 | 补充 json-delta-1 能力、词条／会话上传字段和基准缺失回退，保持 IPC 返回契约 |
+| 0.49 | 2026-10-17 | 补充下载能力、基准请求头、内联／分片差量与完整响应回退，保持 IPC 和完整应用契约 |

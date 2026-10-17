@@ -520,7 +520,7 @@ pub enum PushReply {
 }
 pub trait Remote {
     fn changes(&mut self, after: i64) -> Result<ChangePage, AppError>;
-    fn change(&mut self, cursor: i64) -> Result<RemoteDocument, AppError>;
+    fn change(&mut self, change: &RemoteChange) -> Result<RemoteDocument, AppError>;
     fn push(&mut self, request: &Push) -> Result<PushReply, AppError>;
     fn upload(&mut self, digest: &str, format: &str, bytes: Vec<u8>) -> Result<(), AppError>;
     fn download(&mut self, digest: &str, format: &str) -> Result<Vec<u8>, AppError>;
@@ -1046,7 +1046,7 @@ impl Store {
                     "SELECT EXISTS(SELECT 1 FROM sync_documents WHERE account_scope=? AND remote_id=? AND remote_revision>=?)",
                     params![scope,change.entry_id,change.revision], |r| r.get::<_,bool>(0))?;
                 if !known {
-                    let doc = remote.change(change.cursor)?;
+                    let doc = remote.change(&change)?;
                     if doc.entry_id != change.entry_id || doc.revision != change.revision {
                         return Err(AppError::new("invalid_data", "站点变更与资料包不一致。"));
                     }

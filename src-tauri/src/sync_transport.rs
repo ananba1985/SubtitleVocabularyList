@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::io::Read;
 
 pub(crate) const CHUNK_BYTES: usize = 500_000;
-pub(crate) const MAX_PACKET_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) use crate::sync_delta::MAX_PACKET_BYTES;
 const DIRECT_BYTES: usize = 996_000;
 
 fn failure(code: &str, message: impl Into<String>) -> AppError {
@@ -90,15 +90,26 @@ impl<'a> Transport<'a> {
         path: &str,
         check: impl Fn() -> Result<(), AppError>,
     ) -> Result<Value, AppError> {
+        self.fetch_since(path, None, check)
+    }
+    pub(crate) fn fetch_since(
+        &self,
+        path: &str,
+        base: Option<(i64, &Value)>,
+        check: impl Fn() -> Result<(), AppError>,
+    ) -> Result<Value, AppError> {
         check()?;
+        let mut request = self.client.get(format!("{}{path}", self.site)).bearer_auth(self.token);
+        if let Some((revision,_)) = base {
+            request = request.header("x-svl-delta", crate::sync_delta::PROTOCOL).header("x-svl-base-revision", revision.to_string());
+        }
         let (_, value) = read_json(
-            self.client
-                .get(format!("{}{path}", self.site))
-                .bearer_auth(self.token)
-                .send()
+            request.send()
                 .map_err(|_| failure("network_unavailable", "拉取未完成，本地资料与游标保留。"))?,
         )?;
-        self.hydrate(value, check)
+        let value = self.hydrate(value, &check)?;
+        check()?;
+        crate::sync_delta::restore_document(value, base)
     }
 
     fn hydrate(
@@ -107,7 +118,9 @@ impl<'a> Transport<'a> {
         check: impl Fn() -> Result<(), AppError>,
     ) -> Result<Value, AppError> {
         check()?;
-        let Some(reference) = value.get("packetRef") else {
+        let is_delta = value.get("deltaRef").is_some();
+        let field = if is_delta { "deltaRef" } else { "packetRef" };
+        let Some(reference) = value.get(field) else {
             return Ok(value);
         };
         let reference: PacketReference = serde_json::from_value(reference.clone())?;
@@ -157,16 +170,16 @@ impl<'a> Transport<'a> {
             return Err(failure("invalid_data", "完整资料摘要不匹配，游标保留。"));
         }
         let bundle: Value = serde_json::from_slice(&bytes)?;
-        if (value.get("sessionId").is_some() && bundle["session"]["id"] != value["sessionId"])
+        if !is_delta && ((value.get("sessionId").is_some() && bundle["session"]["id"] != value["sessionId"])
             || (value.get("sessionId").is_none() && bundle["entry"]["id"] != value["entryId"])
-        {
+        ) {
             return Err(failure("invalid_data", "资料分片关联的词条不一致。"));
         }
         value
             .as_object_mut()
             .ok_or_else(|| failure("invalid_data", "同步响应结构无效。"))?
-            .remove("packetRef");
-        value["bundle"] = bundle;
+            .remove(field);
+        value[if is_delta { "delta" } else { "bundle" }] = bundle;
         Ok(value)
     }
 
@@ -320,6 +333,75 @@ mod tests {
     use super::*;
     use crate::{store::Store, sync_test_fixture};
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    #[ignore = "Normal local cross-language integration; set SVL_DOWNLOAD_FIXTURE to the Site route output"]
+    fn delta_download_normal_history_roundtrip() {
+        use crate::synchronization::{Remote,RemoteChange,RemoteDocument,ChangePage,PushReply};
+        use std::{io::{Read,Write},net::TcpListener,sync::atomic::AtomicBool};
+        let fixture: Value = serde_json::from_slice(&std::fs::read(std::env::var("SVL_DOWNLOAD_FIXTURE").expect("Site-generated fixture path")).unwrap()).unwrap();
+        struct Received { events: Vec<RemoteDocument>, audio: Vec<u8> }
+        impl Remote for Received {
+            fn changes(&mut self, after:i64)->Result<ChangePage,AppError>{Ok(ChangePage{changes:self.events.iter().enumerate().filter(|(i,_)|*i as i64+1>after).map(|(i,d)|RemoteChange{cursor:i as i64+1,entry_id:d.entry_id.clone(),revision:d.revision,change_id:format!("synthetic-{i}")}).collect(),backfill_pending:false})}
+            fn change(&mut self, change:&RemoteChange)->Result<RemoteDocument,AppError>{Ok(self.events[change.cursor as usize-1].clone())}
+            fn push(&mut self, _: &Push)->Result<PushReply,AppError>{panic!("Receiving history must not create a new collection or upload")}
+            fn upload(&mut self,_:&str,_:&str,_:Vec<u8>)->Result<(),AppError>{panic!("Unchanged originals must not be uploaded")}
+            fn download(&mut self,_:&str,_:&str)->Result<Vec<u8>,AppError>{Ok(self.audio.clone())}
+        }
+        let audio:Vec<u8>=serde_json::from_value(fixture["audio"]["bytes"].clone()).unwrap();
+        let mut remote=Received{events:vec![],audio};
+        for scenario in fixture["cases"].as_array().unwrap() {
+            let dir=tempfile::tempdir().unwrap();
+            let store=Store::open(dir.path()).unwrap();
+            let assessment=scenario["kind"]=="assessment";
+            let id=scenario["id"].as_str().unwrap();
+            if assessment { store.assessment_sync_capability("download-fixture",Some("assessment-1")).unwrap(); }
+            for (index,step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+                let base=store.sync_download_base("download-fixture",id,assessment).unwrap();
+                let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+                let site=format!("http://{}",listener.local_addr().unwrap());
+                let body=serde_json::to_vec(&step["document"]).unwrap();
+                let server=std::thread::spawn(move||{
+                    let (mut socket,_)=listener.accept().unwrap();
+                    socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+                    let mut request=Vec::new();let mut part=[0u8;1024];
+                    while !request.windows(4).any(|v|v==b"\r\n\r\n") {
+                        let count=socket.read(&mut part).unwrap();assert!(count>0);request.extend_from_slice(&part[..count]);
+                    }
+                    let request=String::from_utf8(request).unwrap().to_lowercase();
+                    if index>0 {assert!(request.contains("x-svl-delta: json-delta-1"));assert!(request.contains(&format!("x-svl-base-revision: {index}\r\n")));}
+                    write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",body.len()).unwrap();
+                    socket.write_all(&body).unwrap();
+                });
+                let client=Client::builder().no_proxy().timeout(std::time::Duration::from_secs(10)).build().unwrap();
+                let document=Transport::new(&client,&site,"synthetic-token").fetch_since("/synthetic-change",base.as_ref().map(|(r,b)|(*r,b)),||Ok(())).unwrap();
+                server.join().unwrap();
+                assert_eq!(document["bundle"],step["expected"]);
+                if assessment {
+                    let doc:crate::assessment_sync::AssessmentDocument=serde_json::from_value(document).unwrap();
+                    doc.bundle.validate().unwrap();
+                    store.assessment_sync_receive("download-fixture",&doc).unwrap();
+                    store.assessment_sync_cursor("download-fixture",index as i64+1).unwrap();
+                } else {
+                    remote.events.push(serde_json::from_value(document).unwrap());
+                    let result=store.synchronize("download-fixture",&mut remote,&AtomicBool::new(false),|_,_|{}).unwrap();
+                    assert_eq!(result.cursor,index as i64+1);
+                }
+                let (revision,bundle)=store.sync_download_base("download-fixture",id,assessment).unwrap().unwrap();
+                assert_eq!(revision,index as i64+1);
+                assert_eq!(bundle,step["expected"]);
+            }
+            if assessment {
+                assert_eq!(store.assessment_sync_status("download-fixture").unwrap().cursor,3);
+            } else {
+                let c=store.connection().unwrap();
+                let asset:String=c.query_row("SELECT id FROM media_assets WHERE digest=?",[fixture["audio"]["digest"].as_str().unwrap()],|r|r.get(0)).unwrap();
+                drop(c);
+                assert_eq!(std::fs::read(store.media_file(&asset).unwrap()).unwrap(),remote.audio);
+                assert_eq!(store.list_entries("",0,10).unwrap().len(),1);
+            }
+        }
+    }
 
     #[test]
     #[ignore = "Requires the local synthetic serve-sync-fixture.mjs backend"]

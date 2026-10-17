@@ -2,6 +2,7 @@ param([string]$ResourcesDirectory='.tools\release-resources',[switch]$SkipToolBu
 $ErrorActionPreference='Stop'
 $svlWorkspace=$PSScriptRoot
 $svlScripts=Join-Path $svlWorkspace 'scripts'
+. (Join-Path $svlScripts 'build-preflight.ps1')
 Push-Location $svlWorkspace
 try {
 & node (Join-Path $svlScripts 'version.mjs') check
@@ -11,6 +12,7 @@ $svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.co
 $svlVersion=$svlConfig.version
 $svlDelivery=Join-Path $svlWorkspace ('release/'+$svlVersion)
 if($CheckOnly){
+    Write-Output 'Plan: verify no process is running from this Cargo build directory.'
     Write-Output 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
     Write-Output ('Plan: build NSIS installer and standalone executable into '+$svlDelivery)
     Write-Output ('Rebuild offline tools: '+(-not $SkipToolBuild))
@@ -22,6 +24,7 @@ if($CheckOnly){
 if(& git status --porcelain){throw 'Commit intended changes before packaging a source-matched release.'}
 $svlResources=if([IO.Path]::IsPathRooted($ResourcesDirectory)){[IO.Path]::GetFullPath($ResourcesDirectory)}else{[IO.Path]::GetFullPath((Join-Path $svlWorkspace $ResourcesDirectory))}
 if($svlResources -ne [IO.Path]::GetFullPath((Join-Path $svlWorkspace '.tools/release-resources'))){throw 'The installer configuration maps .tools/release-resources; use that resource directory.'}
+Assert-SvlCargoBuildIdle -Workspace $svlWorkspace
 $svlDictionaries=Join-Path $svlWorkspace '.tools/release-dictionaries'
 & python -X utf8 (Join-Path $svlScripts 'prepare-base-dictionary.py') --release-dir $svlDictionaries
 if($LASTEXITCODE -ne 0){throw 'Reference dictionary preparation failed; installer compilation was not started.'}

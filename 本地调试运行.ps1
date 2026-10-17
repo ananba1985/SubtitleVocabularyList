@@ -2,6 +2,7 @@ param([string]$DataDirectory = 'D:\SubtitleVocabularyList\Data', [switch]$CheckO
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
 . (Join-Path $PSScriptRoot 'scripts/development-cleanup.ps1')
+. (Join-Path $PSScriptRoot 'scripts/build-preflight.ps1')
 $svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory $DataDirectory
 $svlPreviousPath = $env:Path
 $svlPreviousData = $env:SVL_DATA_DIR
@@ -10,12 +11,14 @@ try {
     $env:Path = $svlEnvironment.Path
     $env:SVL_DATA_DIR = $svlEnvironment.DataDirectory
     Show-SvlDevelopmentEnvironment $svlEnvironment
+    if (-not $CheckOnly) { Assert-SvlCargoBuildIdle -Workspace $svlEnvironment.Workspace }
     try {
         Invoke-SvlDevelopmentCleanup -Workspace $svlEnvironment.Workspace -DataDirectory $svlEnvironment.DataDirectory -CheckOnly:$CheckOnly
     } catch {
         Write-Warning "Temporary cleanup deferred: $($_.Exception.Message)"
     }
     if ($CheckOnly) {
+        Write-Host 'Plan: verify no process is running from this Cargo build directory.'
         Write-Host 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
         Write-Host 'Plan: pnpm tauri dev --config src-tauri/tauri.development.conf.json'
         return

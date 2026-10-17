@@ -1,6 +1,7 @@
 param([string]$DataDirectory = 'D:\SubtitleVocabularyList\Data', [string]$OutputDirectory = '.local\build', [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
+. (Join-Path $PSScriptRoot 'scripts/build-preflight.ps1')
 $svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory $DataDirectory
 $svlOutput = if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) } else { [IO.Path]::GetFullPath((Join-Path $svlEnvironment.Workspace $OutputDirectory)) }
 $svlPreviousPath = $env:Path
@@ -12,10 +13,12 @@ try {
     Show-SvlDevelopmentEnvironment $svlEnvironment
     Write-Host "Local executable output: $svlOutput"
     if ($CheckOnly) {
+        Write-Host 'Plan: verify no process is running from this Cargo build directory.'
         Write-Host 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
         Write-Host 'Plan: pnpm tauri build --debug --no-bundle --config src-tauri/tauri.development.conf.json'
         return
     }
+    Assert-SvlCargoBuildIdle -Workspace $svlEnvironment.Workspace
     Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
     & cargo clean --manifest-path (Join-Path $svlEnvironment.Workspace 'src-tauri/Cargo.toml')
     if ($LASTEXITCODE -ne 0) { throw 'Cargo cleanup failed; local executable compilation was not started.' }

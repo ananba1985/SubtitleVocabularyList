@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.13 |
-| 更新日期 | 2026-10-15 |
+| 文档版本 | 0.14 |
+| 更新日期 | 2026-10-17 |
 | 状态 | 项目开发中；0.8.2 默认入口真实发行打包通过，本轮未安装 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
@@ -55,6 +55,10 @@ pnpm desktop:dev
 开发启动仍调用 `development-cleanup.ps1` 清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。这部分仅处理已定义的临时目录，媒体工具、正常 `node_modules/.vite` 和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后这部分清理。
 
 2026-10-12 起，根目录三个入口在各自编译命令前统一执行 `cargo clean --manifest-path src-tauri/Cargo.toml`，清理 Cargo 构建目录中的全部旧产物，包括 debug／release、增量缓存、依赖编译产物、探针和打包中间文件。随后按原流程开发运行、生成本地 debug exe 或生成安装包。清理失败即停止该入口，不继续编译；发行入口仍先检查工作区干净和资源目录。项目外的用户资料、Cargo 下载缓存、`.tools` 中的工具／模型及根目录 `release/<版本>` 交付物保持。
+
+0.8.9 修正运行中的调试 exe 阻止清理的问题：三个入口通过 `scripts/build-preflight.ps1`，先用 Cargo metadata 确定实际构建目录，再按可执行文件绝对路径检查该目录内仍在运行的进程。发现占用时列出 PID 和路径，提示保存输入、从托盘退出及结束调试终端，在清理／编译前停止；生成安装包入口在准备底库和编译离线工具之前检查，避免先处理资源再遇到锁定。检查不强制结束应用，不匹配其他目录的安装版。Windows 的“Access is denied”在本次场景来自运行中的 exe 文件锁，无需提升管理员权限。
+
+本次定位到上一轮保留的隔离调试客户端占用了 `src-tauri/target/debug/subtitle-vocabulary-list.exe`，已正常退出并核对该进程结束。Windows PowerShell 5.1 下四个脚本语法检查、真实 Cargo 目录空闲时的预检及三个入口 `-CheckOnly` 通过，记录保留在 `.local/build-preflight-0.8.9`。没有为验证创建额外占用进程，没有实际清理 Cargo、重新打包或安装；本次不宣称完成 0.8.9 安装包验证。
 
 三个入口的 `-CheckOnly` 会按执行顺序显示清理和编译计划，不执行清理、编译或启动。每次实际执行都会从清理后的 Cargo 构建目录重新编译，不能复用之前的编译产物，耗时将增加；同一次开发运行中的源码热更新和 Tauri 后续重编译保持原行为。`pnpm desktop:dev`、`pnpm desktop:build`、`pnpm desktop:package` 及调试 CMD 均继续调用这些根目录入口，无需另记手动清理步骤。
 
@@ -135,3 +139,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.11 | 2026-10-11 | 对齐 0.6.1 共享资料默认值、单实例标识、缓存位置及真实迁移与本地 exe 验证 |
 | 0.12 | 2026-10-12 | 三个根目录入口编译前完整清理 Cargo 旧构建产物，CheckOnly 保留只读计划；明确重新编译成本和检查边界 |
 | 0.13 | 2026-10-15 | 修正 Windows PowerShell 5.1 原生警告重定向误中断，记录无跳过参数的真实完整打包结果 |
+| 0.14 | 2026-10-17 | 增加三个构建入口的运行产物检查，提前提示 exe 占用及退出方法，保留完整 Cargo 清理规则 |

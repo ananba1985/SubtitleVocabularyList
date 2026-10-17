@@ -178,10 +178,26 @@ pub fn capture_screen(output: &Path) -> Result<crate::ocr::ScreenBounds, AppErro
         }
         data
     };
-    image::RgbaImage::from_raw(bounds.width, bounds.height, rgba)
-        .ok_or_else(|| AppError::new("invalid_data", "截图尺寸无效。"))?
-        .save(output)
+    // This full-screen image is short-lived. Avoid filtering and compression
+    // before showing the selector; the cropped OCR input is saved separately.
+    use image::{
+        ImageEncoder,
+        codecs::png::{CompressionType, FilterType, PngEncoder},
+    };
+    let file = std::fs::File::create(output)
         .map_err(|error| AppError::new("io_error", format!("无法保存本次截图：{error}")))?;
+    PngEncoder::new_with_quality(
+        std::io::BufWriter::new(file),
+        CompressionType::Uncompressed,
+        FilterType::NoFilter,
+    )
+    .write_image(
+        &rgba,
+        bounds.width,
+        bounds.height,
+        image::ExtendedColorType::Rgba8,
+    )
+    .map_err(|error| AppError::new("io_error", format!("无法保存本次截图：{error}")))?;
     Ok(bounds)
 }
 

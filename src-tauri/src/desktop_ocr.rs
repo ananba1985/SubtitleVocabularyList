@@ -97,6 +97,7 @@ impl NativeDesktop {
                         format!("capture-{id}"),
                         WebviewUrl::App(format!("index.html?capture={id}").into()),
                     )
+                    .data_directory(crate::app_paths::webview_directory(store.root()))
                     .title("选择截图区域")
                     .decorations(false)
                     .shadow(false)

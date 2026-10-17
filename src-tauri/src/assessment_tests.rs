@@ -454,6 +454,13 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
     }
     assert!(!statuses[1].timings.contains_key("assessment.report_project"));
     assert!(!statuses[1].timings.contains_key("assessment.report_validate"));
+    for status in &statuses[1..3] {
+        assert_eq!(status.timings["assessment.report_inputs_reuse"].calls, 1);
+        assert!(!status.timings.contains_key("assessment.report_build"));
+        assert!(!status.timings.contains_key("assessment.report_content_build"));
+    }
+    assert_eq!(statuses[3].timings["assessment.report_build"].calls, 1);
+    assert!(statuses[3].timings["assessment.report_content_reuse"].calls >= 1);
     assert_eq!(statuses[3].timings["assessment.report_project"].calls, 1);
     assert_eq!(statuses[3].timings["assessment.report_validate"].calls, 1);
     // Both reused and newly generated reports share one metadata publication commit.

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.57 |
+| 文档版本 | 0.58 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -21,6 +21,7 @@
 | 高频水平测试增量验证 | [testing/vocabulary-assessment-results.md](testing/vocabulary-assessment-results.md) | M-15 至 M-19、TC-53 至 TC-58、真实 Qwen、站点版本 27／30 和报告业务内容复用 | 核心、真实桌面和真实站点分别记录；0.8.20 真人六题正常往返、报告复用及回执缓存通过，原人工验收边界保留 |
 | 需求审查 | [requirements/review.md](requirements/review.md) | 审查对象、方法、结论、开放事项与后续成果 | 文档层核对不代表功能验收或新增范围已确认 |
 | 架构设计 | [design/architecture.md](design/architecture.md) | 需求依据、系统边界、技术决策、模块与依赖、数据流、集成约束、风险与追溯 | 解释如何组织系统；引用需求，不重新定义产品范围 |
+| 架构优化收尾清单 | [planning/architecture-optimization-plan.md](planning/architecture-optimization-plan.md) | 原始七项及后续优先级、当前证据、剩余模块／类型、对象回收和容量工作 | 明确完成条件，不把局部正常验证或必要保留成本写成所有优化已结束 |
 | 详细设计 | [数据模型](design/data-model.md)、[应用流程](design/application-flows.md)、[接口契约](design/interfaces.md) | 接口契约、数据结构、状态转换、异常处理、对应需求编号 | 补足实现所需细节；简单模块可在架构文档内完成，避免重复文件 |
 | 验证与验收 | [testing/test-plan.md](testing/test-plan.md)；实际记录随验证放入 `testing/` | 计划包含环境、需求、输入、步骤和预期；记录补充实际结果与证据 | 测试计划在设计阶段建立，执行记录在实际验证后形成 |
 | 原型验证记录 | [testing/prototype-results.md](testing/prototype-results.md) | 实际环境、工具、素材标识、结果和未覆盖项 | 只证明具体原型边界，不代替完整功能验收 |
@@ -42,7 +43,7 @@
 | 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
-| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、后台命令／任务事件、生成类型、同步增长控制、完整会话复用及操作／锁／写提交统计 | 记录未变行 UPDATE、原子提交及 0.8.23 题目／旧报告投影和验证复用；正常样本不代替长期 SLO、真实竞争或 GUI 响应 |
+| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、后台命令／任务事件、生成类型、同步增长控制、完整会话复用及操作／锁／写提交统计 | 记录未变行 UPDATE、原子提交、题目／旧报告投影及 0.8.24 业务指纹复用；正常样本不代替长期 SLO、真实竞争或 GUI 响应 |
 | 当前验收覆盖审计 | [testing/acceptance-status.md](testing/acceptance-status.md) | 0.1 基线需求、42 个历史计划场景、阶段门槛和缺失条件 | “增量已验证”不代表完整版本已达成 |
 | 媒体输入支持矩阵 | [testing/media-support-matrix.md](testing/media-support-matrix.md) | 已测容器/编码、字幕、目录与去重 | 后缀不是全部编码或保护内容的保证 |
 | 受限制网络验收 | [testing/restricted-network-results.md](testing/restricted-network-results.md) | 实际出站规则、冷启动、播放听辨、截图、服务失败及规则恢复 | 区分指定程序限制与整机断网、实际执行与缓存 |
@@ -197,3 +198,4 @@
 | 0.55 | 2026-10-17 | 索引 0.8.21 词条及水平测试接收跳过未变行 UPDATE、触发器计数与完整历史保持的正常验证 |
 | 0.56 | 2026-10-17 | 索引 0.8.22 新报告与派生状态一次提交、最终变更计数及完整历史保持的正常验证 |
 | 0.57 | 2026-10-17 | 索引 0.8.23 未变题目、旧报告投影和验证结果复用及完整资料保持的最小正常验证 |
+| 0.58 | 2026-10-17 | 索引原始审查与剩余优化清单、当前能力表及 0.8.24 报告业务输入／历史内容摘要复用 |

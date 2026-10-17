@@ -1,4 +1,5 @@
 //! Versioned projections and explicit collection of frozen assessment content.
+mod cache;
 use crate::{
     assessment::{
         AssessmentAnswer, AssessmentCorrection, FrozenItem, effective_answer, load_item,
@@ -9,6 +10,7 @@ use crate::{
     store::Store,
     vocabulary::{self, CollectionInput, CollectionResult, Entry, ExampleInput, digest},
 };
+use cache::{Content, ReportCache};
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -168,31 +170,6 @@ fn summary(report: &AssessmentReport) -> Result<Value, AppError> {
     Ok(value)
 }
 
-fn report_content(c: &Connection, report: &AssessmentReport) -> Result<Value, AppError> {
-    let mut content = report.clone();
-    content.revision = 0;
-    content.generated_at = 0;
-    for row in &mut content.items {
-        // Cache locations and local media IDs are not frozen learning facts.
-        if let Some(audio) = row.item.content.audio.as_mut() {
-            audio.relative_path.clear();
-            audio.asset_id = None;
-        }
-        for entry in &mut row.collected_entry_ids {
-            let mut q = c.prepare("SELECT DISTINCT local_id FROM sync_links WHERE entity_kind='entries' AND remote_id=? AND local_id IN (SELECT entry_id FROM assessment_collection_links WHERE session_item_id=?)")?;
-            let aliases = q
-                .query_map(params![entry.as_str(), row.id], |r| r.get::<_, String>(0))?
-                .collect::<Result<Vec<_>, _>>()?;
-            if aliases.len() == 1 {
-                *entry = aliases[0].clone();
-            }
-        }
-        row.collected_entry_ids.sort();
-        row.collected_entry_ids.dedup();
-    }
-    Ok(serde_json::to_value(content)?)
-}
-
 fn remember_report(c: &Connection, id: &str, slot: i64) -> Result<(), AppError> {
     // Use the existing counter for every changed fact, including linked entries.
     c.execute("INSERT INTO settings(key,value_json) SELECT 'assessment_current_report:'||?1,json_array(epoch,?2) FROM assessment_sync_dirty WHERE session_id=?1 ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",params![id,slot])?;
@@ -203,6 +180,7 @@ pub(crate) struct PreparedReport {
     pub report: AssessmentReport,
     pub new_json: Option<String>,
     refresh_index: bool,
+    business_cache: Option<String>,
 }
 
 impl PreparedReport {
@@ -221,6 +199,9 @@ impl PreparedReport {
         if self.refresh_index {
             // A newly inserted report has already advanced the fact counter.
             remember_report(c, &self.report.session_id, self.report.revision)?;
+        }
+        if let Some(raw) = &self.business_cache {
+            ReportCache::persist(c, &self.report.session_id, raw)?;
         }
         Ok(())
     }
@@ -256,8 +237,22 @@ pub(crate) fn prepare_report(c: &Connection, id: &str) -> Result<PreparedReport,
             report,
             new_json: None,
             refresh_index: false,
+            business_cache: None,
         });
     }
+    let mut cache = ReportCache::load(c, id)?;
+    let inputs = ReportCache::inputs(c, id)?;
+    if let Some((slot, raw)) = cache.current(c, id, &inputs)? {
+        let mut report: AssessmentReport = serde_json::from_str(&raw)?;
+        report.revision = slot;
+        return Ok(PreparedReport {
+            report,
+            new_json: None,
+            refresh_index: true,
+            business_cache: None,
+        });
+    }
+    let _build = crate::local_profile::phase("assessment.report_build");
     let mut q = c.prepare(
         "SELECT id,position FROM assessment_session_items WHERE session_id=? ORDER BY position",
     )?;
@@ -413,26 +408,30 @@ pub(crate) fn prepare_report(c: &Connection, id: &str) -> Result<PreparedReport,
         warnings,
         items,
     };
-    let content = report_content(c, &report)?;
+    let content = Content::build(c, &report)?;
     let mut q = c.prepare("SELECT revision,report_json FROM assessment_report_versions WHERE session_id=? ORDER BY revision DESC")?;
     for saved in q.query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))? {
         let (slot, raw) = saved?;
-        let mut prior: AssessmentReport = serde_json::from_str(&raw)?;
-        if report_content(c, &prior)? == content {
+        if let Some(mut prior) = cache.matching(c, slot, &raw, &content)? {
             prior.revision = slot;
+            let business_cache = cache.publish(c, id, inputs, slot, None)?;
             return Ok(PreparedReport {
                 report: prior,
                 new_json: None,
                 refresh_index: true,
+                business_cache: Some(business_cache),
             });
         }
     }
     drop(q);
     report.revision = c.query_row("SELECT MAX(?1,COALESCE(MAX(revision)+1,?1)) FROM assessment_report_versions WHERE session_id=?2",params![s.revision,id],|r|r.get(0))?;
+    let raw = serde_json::to_string(&report)?;
+    let business_cache = cache.publish(c, id, inputs, report.revision, Some((&raw, content)))?;
     Ok(PreparedReport {
-        new_json: Some(serde_json::to_string(&report)?),
+        new_json: Some(raw),
         report,
         refresh_index: true,
+        business_cache: Some(business_cache),
     })
 }
 impl Store {

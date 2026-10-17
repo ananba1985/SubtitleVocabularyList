@@ -7,7 +7,6 @@ import type {
 import { assessmentStateNames } from "../assessmentTypes";
 import type {
   ConnectionStatus,
-  TaskSnapshot,
   SyncStatus,
   SyncConflict,
   SyncResult,
@@ -42,11 +41,11 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
   const refresh = useCallback(async () => {
     const [next, progress, pending, assessmentStatus, assessmentPending] =
       await Promise.all([
-        call<ConnectionStatus>("connection_status"),
-        call<SyncStatus>("sync_status"),
-        call<SyncConflict[]>("sync_conflicts"),
-        call<AssessmentSyncStatus>("assessment_sync_status"),
-        call<AssessmentSyncConflict[]>("assessment_sync_conflicts"),
+        call("connection_status"),
+        call("sync_status"),
+        call("sync_conflicts"),
+        call("assessment_sync_status"),
+        call("assessment_sync_conflicts"),
       ]);
     setConnection(next);
     setStatus(progress);
@@ -57,14 +56,18 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
   useEffect(() => {
     refresh().catch((e) => setError(message(e)));
   }, [refresh]);
-  async function run(command: string, replace = false) {
+  async function run(
+    command: "connection_start" | "connection_check",
+    replace = false,
+  ) {
     setBusy(true);
     setError("");
     try {
-      const task = await call<TaskSnapshot>(command, {
-        operationId: uid(),
-        replace,
-      });
+      const operationId = uid();
+      const task =
+        command === "connection_start"
+          ? await call(command, { operationId, replace })
+          : await call(command, { operationId });
       setTaskId(task.id);
       await waitTask<ConnectionStatus>(task);
       await refresh();
@@ -80,7 +83,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
     setError("");
     setNotice("");
     try {
-      const task = await call<TaskSnapshot>("sync_start", {
+      const task = await call("sync_start", {
         operationId: uid(),
       });
       setTaskId(task.id);
@@ -103,7 +106,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
     setBusy(true);
     setError("");
     try {
-      const task = await call<TaskSnapshot>("sync_resolve", {
+      const task = await call("sync_resolve", {
         input: {
           conflictId: conflict.id,
           choice,

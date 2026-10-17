@@ -20,7 +20,7 @@ export function EntryEditor({
     setBusy(true);
     setError("");
     try {
-      const updated = await call<Entry>("entry_update", {
+      const updated = await call("entry_update", {
         input: {
           id: entry.id,
           expectedRevision: entry.revision,

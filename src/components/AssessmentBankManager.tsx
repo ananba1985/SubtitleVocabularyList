@@ -69,7 +69,7 @@ export function AssessmentBankManager({
     }
     let disposed = false;
     setError("");
-    call<AssessmentBankPage>("assessment_bank_items", {
+    call("assessment_bank_items", {
       bankId,
       state: filter || null,
       offset: page * PAGE,
@@ -98,7 +98,7 @@ export function AssessmentBankManager({
         ]),
     );
     try {
-      const task = await mutate<TaskSnapshot>("assessment_bank_prepare", {
+      const task = await mutate("assessment_bank_prepare", {
         bankId: continueDraft ? bankId : null,
         ranges,
         questionTypes: config.questionTypes,
@@ -163,7 +163,7 @@ export function AssessmentBankManager({
     setError("");
     setPlay(false);
     try {
-      const task = await mutate<TaskSnapshot>("assessment_bank_audio_prepare", {
+      const task = await mutate("assessment_bank_audio_prepare", {
         content: draft,
       });
       setDraft(await waitTask<AssessmentDraft>(task));

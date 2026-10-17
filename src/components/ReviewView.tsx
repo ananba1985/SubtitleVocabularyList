@@ -6,7 +6,6 @@ import type {
   ReviewOutcome,
   ReviewQuestion,
   ReviewUnit,
-  TaskSnapshot,
 } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
 
@@ -52,7 +51,7 @@ export function ReviewView({
   const refresh = useCallback(async () => {
     if (mode === "history" && !special)
       setHistory(
-        await call<ReviewAttempt[]>("review_history", {
+        await call("review_history", {
           unitId: null,
           offset,
           limit: 30,
@@ -60,7 +59,7 @@ export function ReviewView({
       );
     else
       setUnits(
-        await call<ReviewUnit[]>("review_units", {
+        await call("review_units", {
           mode: special ? "leech" : mode,
           dimension,
           offset,
@@ -96,7 +95,7 @@ export function ReviewView({
     setBusy(true);
     setError("");
     try {
-      const q = await call<ReviewQuestion>("review_question", {
+      const q = await call("review_question", {
         unitId: unit.id,
         expectedRevision: unit.revision,
       });
@@ -118,7 +117,7 @@ export function ReviewView({
     setBusy(true);
     setError("");
     try {
-      const task = await call<TaskSnapshot>("review_audio_start", {
+      const task = await call("review_audio_start", {
         questionId: question.id,
         operationId: uid(),
       });
@@ -143,7 +142,7 @@ export function ReviewView({
       submitReceipt.current = { signature, id: uid() };
     try {
       setResult(
-        await call<ReviewAttempt>("review_submit", {
+        await call("review_submit", {
           input: {
             operationId: submitReceipt.current.id,
             questionId: question.id,
@@ -170,7 +169,7 @@ export function ReviewView({
     if (correctionReceipt.current?.signature !== signature)
       correctionReceipt.current = { signature, id: uid() };
     try {
-      const next = await call<ReviewAttempt>("review_correct", {
+      const next = await call("review_correct", {
         input: {
           operationId: correctionReceipt.current.id,
           attemptId: attempt.id,
@@ -191,7 +190,7 @@ export function ReviewView({
     setBusy(true);
     setError("");
     try {
-      const task = await call<TaskSnapshot>("explain_start", {
+      const task = await call("explain_start", {
         text: attempt.question.target,
         context: attempt.question.context,
         operationId: uid(),
@@ -268,7 +267,7 @@ export function ReviewView({
                     setBusy(true);
                     try {
                       setHint(
-                        await call<string>("review_hint", {
+                        await call("review_hint", {
                           questionId: question.id,
                         }),
                       );

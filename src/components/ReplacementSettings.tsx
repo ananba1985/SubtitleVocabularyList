@@ -2,17 +2,8 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { call, message } from "../api";
 import type { NativeStatus, Settings } from "../types";
-import type { Provider } from "../queryTypes";
+import type { Provider, ReplacementStatus } from "../queryTypes";
 
-interface ReplacementStatus {
-  operationId: string;
-  state: string;
-  originalText: string;
-  translation: string;
-  providerId: string;
-  error: string | null;
-  clipboardPending: boolean;
-}
 const labels: Record<string, string> = { capturing: "读取选句", translating: "正在翻译", validating: "核对选区", applying: "正在替换", replaced: "已替换", result_only: "译文可查看", unverified: "请核对原输入", cancelled: "已取消", failed: "失败" };
 export function ReplacementSettings({ settings, native, onChange }: { settings: Settings; native: NativeStatus | null; onChange: (settings: Settings) => void }) {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -20,14 +11,32 @@ export function ReplacementSettings({ settings, native, onChange }: { settings: 
   const [error, setError] = useState("");
   useEffect(() => {
     let disposed = false;
-    const refresh = () => call<ReplacementStatus>("replacement_status_get").then(v => { if (!disposed) setStatus(v); }).catch(e => { if (!disposed) setError(message(e)); });
-    call<Provider[]>("providers_list").then(v => { if (!disposed) setProviders(v); }).catch(e => { if (!disposed) setError(message(e)); });
+    const refresh = () => call("replacement_status_get").then(v => { if (!disposed) setStatus(v); }).catch(e => { if (!disposed) setError(message(e)); });
+    call("providers_list").then(v => { if (!disposed) setProviders(v); }).catch(e => { if (!disposed) setError(message(e)); });
     refresh();
     const stop = listen("replacement_updated", refresh);
     return () => { disposed = true; stop.then(f => f()); };
   }, []);
   const available = providers.filter(p => p.enabled && (p.kind === "qwen" || p.kind === "translation" || p.manifest?.capabilities.includes("translation")));
-  const perform = async (command: string) => { try { await call(command, command === "replacement_cancel" ? { operationId: status?.operationId } : undefined); setStatus(await call<ReplacementStatus>("replacement_status_get")); setError(""); } catch (e) { setError(message(e)); } };
+  const perform = async (
+    command:
+      | "replacement_cancel"
+      | "replacement_result_open"
+      | "replacement_clipboard_restore",
+  ) => {
+    try {
+      if (command === "replacement_cancel") {
+        if (!status?.operationId) return;
+        await call(command, { operationId: status.operationId });
+      } else {
+        await call(command);
+      }
+      setStatus(await call("replacement_status_get"));
+      setError("");
+    } catch (e) {
+      setError(message(e));
+    }
+  };
   return <>
     <label>选句翻译并替换快捷键
       <input value={settings.replacementShortcut} onChange={e => onChange({ ...settings, replacementShortcut: e.target.value })} />

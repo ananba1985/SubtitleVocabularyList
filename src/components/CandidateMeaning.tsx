@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocalExplanation } from "../localExplanations";
 import { call } from "../api";
-import type { Candidate, CandidateExample } from "../types";
+import type { Candidate } from "../types";
 
 export function CandidateMeaning({
   candidate,
@@ -27,7 +27,7 @@ export function CandidateMeaning({
   useEffect(() => {
     if (!active) return;
     let disposed = false;
-    call<CandidateExample[]>("candidate_examples", {
+    call("candidate_examples", {
       sourceId,
       key: candidate.key,
     })

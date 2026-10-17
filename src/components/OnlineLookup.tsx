@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call, message, uid, waitTask } from "../api";
-import type { TaskSnapshot } from "../types";
+
 interface Result {
   query: string;
   source: string;
@@ -23,7 +23,7 @@ export function OnlineLookup({
     setError("");
     setResult(null);
     try {
-      const task = await call<TaskSnapshot>("online_query_start", {
+      const task = await call("online_query_start", {
         text,
         provider,
         operationId: uid(),

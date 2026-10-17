@@ -111,7 +111,7 @@ async function preparationState() {
   if (runtime.status && runtime.status.expires > Date.now())
     return runtime.status.state;
   if (!runtime.statusPromise) {
-    runtime.statusPromise = call<{ state: string }>("explanations_status")
+    runtime.statusPromise = call("explanations_status")
       .then((value) => {
         runtime.status = { state: value.state, expires: Date.now() + 1000 };
         return value.state;
@@ -127,13 +127,13 @@ async function read(entry: Entry) {
   entry.reading = true;
   if (entry.snapshot.state === "idle") publish(entry, { state: "loading" });
   try {
-    let value = await call<Explanation | null>("explanation_get", {
+    let value = await call("explanation_get", {
       text: entry.text,
       context: entry.context,
     });
     const record = legacy.get(entry.key);
     if (!value?.meaning && record)
-      value = await call<Explanation>("explanation_import", {
+      value = await call("explanation_import", {
         text: entry.text,
         context: entry.context,
         value: record.value,

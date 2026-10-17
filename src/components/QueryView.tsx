@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { call, message, uid, waitTask, audioUrl } from "../api";
-import type { TaskSnapshot } from "../types";
+
 import type {
   QuerySession,
   QueryInput,
@@ -65,7 +65,7 @@ export function QueryView() {
       audio.current?.play().catch(() => setNotice("请点击播放器开始朗读。"));
   }, [speechPath]);
   async function refresh(id?: string) {
-    const value = await call<QuerySession | null>("translation_session_get", {
+    const value = await call("translation_session_get", {
       sessionId: id ?? null,
     });
     if (!value) return;
@@ -108,10 +108,8 @@ export function QueryView() {
     const stops: (() => void)[] = [];
     const keep = (stop: () => void) => (disposed ? stop() : stops.push(stop));
     const ready = () => refresh().catch(report);
-    call<Provider[]>("providers_list").then(setProviders).catch(report);
-    call<ClipboardStatus>("clipboard_listener_get")
-      .then(setClipboard)
-      .catch(report);
+    call("providers_list").then(setProviders).catch(report);
+    call("clipboard_listener_get").then(setClipboard).catch(report);
     listen<{ sessionId: string; origin: string; inputRevision: number }>(
       "query_updated",
       (e) => {
@@ -122,7 +120,10 @@ export function QueryView() {
         refresh().catch(report);
       },
     )
-      .then((stop) => { keep(stop); if (!disposed) ready(); })
+      .then((stop) => {
+        keep(stop);
+        if (!disposed) ready();
+      })
       .catch(report);
     listen("translation_hidden", () => {
       setWindowVisible(false);
@@ -133,9 +134,7 @@ export function QueryView() {
       .then(keep)
       .catch(report);
     listen("clipboard_changed", () =>
-      call<ClipboardStatus>("clipboard_listener_get")
-        .then(setClipboard)
-        .catch(report),
+      call("clipboard_listener_get").then(setClipboard).catch(report),
     )
       .then(keep)
       .catch(report);
@@ -198,7 +197,7 @@ export function QueryView() {
       setError("");
       setNotice("");
       await stopSpeech();
-      const opened = await call<QuerySession>("translation_session_open", {
+      const opened = await call("translation_session_open", {
         input:
           draft.origin.kind === "clipboard"
             ? { ...draft, origin: { ...draft.origin, kind: "input" } }
@@ -212,7 +211,7 @@ export function QueryView() {
       setDirty(false);
       setSession(opened);
       current.current = opened;
-      const started = await call<QuerySession>("translation_query_start", {
+      const started = await call("translation_query_start", {
         sessionId: opened.sessionId,
         expectedInputRevision: opened.inputRevision,
         providerIds: [],
@@ -243,7 +242,7 @@ export function QueryView() {
   }
   async function listener(enabled: boolean) {
     try {
-      const status = await call<ClipboardStatus>("clipboard_listener_set", {
+      const status = await call("clipboard_listener_set", {
         enabled,
         preferences: {
           debounceMs: clipboard.debounceMs,
@@ -283,7 +282,7 @@ export function QueryView() {
     setError("");
     setSpeechPath("");
     try {
-      const task = await call<TaskSnapshot>("speech_start", {
+      const task = await call("speech_start", {
         text: draft.target,
         operationId: uid(),
       });

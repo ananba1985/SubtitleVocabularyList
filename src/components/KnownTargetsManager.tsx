@@ -26,7 +26,7 @@ export function KnownTargetsManager({
     setLoading(true);
     setError("");
     setData(null);
-    call<KnownTargetPage>("known_targets_list", {
+    call("known_targets_list", {
       search,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,

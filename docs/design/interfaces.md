@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.44 |
+| 文档版本 | 0.45 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -13,6 +13,12 @@
 本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。下列目录保留完整 0.1 的逻辑契约；当前已实现参数另列，不把后续提案当作现有接口。站点认证与协议仍需按 OPEN-04、TECH-06 对齐。
 
 ## 1 命令与数据约定
+
+0.8.12 起，所有 106 个已注册命令的前端请求与成功结果统一由 `src/commands.ts` 的 CommandMap 定义，`src/api.ts` 的 call 按命令名推导参数和结果，不接受由界面指定的任意返回类型。无参命令可直接调用，必填参数必须提供，Option 参数按表中可选字段传递；路径结果在前端为字符串。`practice_audio_save` 直接传 Uint8Array，保持原生 Raw 请求体，不包成 JSON。
+
+例如 `call("task_get", { taskId })` 的结果为 TaskSnapshot，`call("practice_progress_save", { documentId, progress })` 的结果为 void。useAssessmentMutation 按命令约束不含 operationId 的输入，再补回稳定回执标识；同步和翻译替换的动态操作只接受明确的命令联合。`assessment_report_get` 的实际结果包括已完成报告及进行中状态两种形状；界面核对 report 字段后展示报告，进行中时提示完成或提前结束后查看。
+
+Rust 命令统一注册在 `desktop/commands/mod.rs`，命令实现按[架构 4.1.1](architecture.md#411-桌面命令适配层与类型表0812)划分。新增或调整命令时同步维护注册、CommandMap 与领域 DTO；`pnpm commands:check`（亦由 pnpm build 执行）核对注册集合、顶层参数名／可选性和原始二进制入口。该检查不自动核对嵌套 DTO 或返回字段的 Rust／TypeScript 等价性；成功结果仍依赖核心序列化，AppError 拒绝契约保持，TaskSnapshot.result 仍为随任务类型变化的数据。
 
 0.8.11 的 task_updated 事件保留原 TaskSnapshot 顶层字段，并增加 visibleInList:boolean，由原生临时／业务任务规则计算；该字段仅用于事件展示，不写 tasks 记录，不改变 tasks_list／task_get 结果和持久化 schema。主窗口按事件维护任务展示，快照读取期间收到的事件在读取结束后重放；单项等待先订阅再查询 task_get，终态释放监听。仅可见的未结束操作保留无事件 10 秒后的补查。
 
@@ -356,3 +362,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.42 | 2026-10-17 | 明确 running 临时 QueryValue、流式事件快照及 ready 的完整结果契约 |
 | 0.43 | 2026-10-17 | 记录 dictionaryWarnings 可见资源状态和数据库相关 IPC 的后台执行边界，保持既有命令契约 |
 | 0.44 | 2026-10-17 | 记录 task_updated 的 visibleInList、订阅与快照顺序、按需补查，保持听读命令外部结构 |
+| 0.45 | 2026-10-17 | 统一已注册命令的参数／结果类型与调用入口，记录二进制音频、报告联合结果及跨语言目录检查边界 |

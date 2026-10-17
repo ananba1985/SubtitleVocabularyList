@@ -37,7 +37,7 @@ export function CollectionModal({
     let disposed = false;
     setAlreadyKnown(false);
     if (text.trim())
-      call<boolean>("known_target_get", { kind, text })
+      call("known_target_get", { kind, text })
         .then((known) => {
           if (!disposed) setAlreadyKnown(known);
         })
@@ -75,7 +75,7 @@ export function CollectionModal({
     setBusy(true);
     setError("");
     try {
-      const started = await call<TaskSnapshot>("explain_start", {
+      const started = await call("explain_start", {
         text,
         context,
         operationId: uid(),
@@ -93,7 +93,7 @@ export function CollectionModal({
     try {
       let result: PreparedCollection;
       if (seed.sourceId && seed.example)
-        result = await call<PreparedCollection>("collection_from_example", {
+        result = await call("collection_from_example", {
           sourceId: seed.sourceId,
           exampleId: seed.example.id,
           text,
@@ -123,7 +123,7 @@ export function CollectionModal({
           targetEntryId: null,
           expectedRevision: null,
         };
-        result = await call<PreparedCollection>("collection_prepare", {
+        result = await call("collection_prepare", {
           input,
         });
       }
@@ -155,11 +155,11 @@ export function CollectionModal({
       if (submitted.current?.signature === signature)
         current = submitted.current.prepared;
       else if (submitted.current)
-        current = await call<PreparedCollection>("collection_prepare", {
+        current = await call("collection_prepare", {
           input: { ...prepared.input, operationId: uid() },
         });
       submitted.current = { signature, prepared: current };
-      const started = await call<TaskSnapshot>("collection_commit", {
+      const started = await call("collection_commit", {
         draftId: current.draftId,
         targetEntryId: match?.id ?? null,
         expectedRevision: match?.revision ?? null,

@@ -40,6 +40,15 @@ export interface ClipboardStatus {
   persistResults: boolean;
   error: string | null;
 }
+export interface ReplacementStatus {
+  operationId: string;
+  state: string;
+  originalText: string;
+  translation: string;
+  providerId: string;
+  error: string | null;
+  clipboardPending: boolean;
+}
 export interface PluginField {
   id: string;
   label: string;

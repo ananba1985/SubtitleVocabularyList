@@ -114,7 +114,7 @@ export function TasksView({
     let disposed = false;
     setSourceError("");
     setSources(null);
-    call<SourceSummary[]>("sources_list")
+    call("sources_list")
       .then((value) => {
         if (!disposed) setSources(value);
       })
@@ -134,7 +134,7 @@ export function TasksView({
     setLoading(true);
     setError("");
     setHistory(null);
-    call<TaskHistoryPage>("tasks_history", {
+    call("tasks_history", {
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
     })
@@ -266,7 +266,7 @@ function TaskCard({
   async function prepare() {
     setPreparing(true);
     try {
-      const value = await call<{ task: TaskSnapshot | null }>(
+      const value = await call(
         "explanations_prepare",
       );
       setPreparationNotice(

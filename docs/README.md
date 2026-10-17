@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.43 |
+| 文档版本 | 0.44 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -42,7 +42,7 @@
 | 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
 | 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
-| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、数据库命令后台执行、任务事件与按需补查、逐词同步事务、本地处理、进程计数与模型不可用 | 采样与核心调用不代替长期 SLO 或 GUI 响应 |
+| 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、核心读取延迟、数据库命令后台执行、任务事件、命令模块与类型契约、逐词同步事务、本地处理与模型不可用 | 采样与源码契约检查不代替长期 SLO 或 GUI 响应 |
 | 当前验收覆盖审计 | [testing/acceptance-status.md](testing/acceptance-status.md) | 0.1 基线需求、42 个历史计划场景、阶段门槛和缺失条件 | “增量已验证”不代表完整版本已达成 |
 | 媒体输入支持矩阵 | [testing/media-support-matrix.md](testing/media-support-matrix.md) | 已测容器/编码、字幕、目录与去重 | 后缀不是全部编码或保护内容的保证 |
 | 受限制网络验收 | [testing/restricted-network-results.md](testing/restricted-network-results.md) | 实际出站规则、冷启动、播放听辨、截图、服务失败及规则恢复 | 区分指定程序限制与整机断网、实际执行与缓存 |
@@ -183,3 +183,4 @@
 | 0.41 | 2026-10-15 | 索引中文准备真实内容诊断、原字幕修复及已补齐记录，保留源码与安装版边界 |
 | 0.42 | 2026-10-17 | 索引基础词库资源隔离、数据库命令后台执行及同步逐词事务的最小正常证据 |
 | 0.43 | 2026-10-17 | 索引听读正文／进度分离、旧记录迁移及任务事件订阅和按需补查的最小正常证据 |
+| 0.44 | 2026-10-17 | 索引桌面命令分层、统一类型契约与编译检查范围，保持产品需求基线 |

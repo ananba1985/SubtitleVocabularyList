@@ -63,8 +63,8 @@ export default function App() {
     taskBuffer.current = updates;
     try {
       const [nextInfo, nextTasks] = await Promise.all([
-        call<AppInfo>("app_info"),
-        call<TaskSnapshot[]>("tasks_list"),
+        call("app_info"),
+        call("tasks_list"),
       ]);
       if (taskBuffer.current !== updates) return;
       setInfo(nextInfo);
@@ -77,17 +77,17 @@ export default function App() {
   }, []);
   useEffect(() => {
     setNotice("");
-    call<Settings>("settings_get")
+    call("settings_get")
       .then(setSettings)
       .catch((error) => setError(message(error)));
-    call<NativeStatus>("native_status")
+    call("native_status")
       .then(setNative)
       .catch((error) => setError(message(error)));
   }, [refresh]);
   useEffect(() => {
     if (tab !== "settings") return;
     let disposed = false;
-    call<SystemVoice[]>("speech_voices")
+    call("speech_voices")
       .then((value) => {
         if (!disposed) setVoices(value);
       })
@@ -122,9 +122,7 @@ export default function App() {
       .catch((error) => setError(message(error)));
     const receiveTrayAction = async () => {
       try {
-        const action = await call<Tab | "collect" | "import" | null>(
-          "tray_action_get",
-        );
+        const action = await call("tray_action_get");
         if (disposed || !action) return;
         setError("");
         setNotice("");
@@ -168,7 +166,7 @@ export default function App() {
       if (terminal(task) && !infoTimer) {
         infoTimer = setTimeout(() => {
           infoTimer = undefined;
-          call<AppInfo>("app_info").then((value) => {
+          call("app_info").then((value) => {
             if (!disposed) setInfo(value);
           }).catch(() => {});
         }, 300);
@@ -661,11 +659,11 @@ export default function App() {
             <button
               className="primary"
               onClick={() =>
-                call<Settings>("settings_update", { settings })
+                call("settings_update", { settings })
                   .then((value) => {
                     setSettings(value);
                     setNotice("本地设置已保存。");
-                    call<NativeStatus>("native_status")
+                    call("native_status")
                       .then(setNative)
                       .catch(report);
                   })

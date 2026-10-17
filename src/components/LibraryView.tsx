@@ -31,7 +31,7 @@ export function LibraryView({
   }, [entry?.id]);
   useEffect(() => {
     let cancelled = false;
-    call<Entry[]>("entries_list", { search, offset, limit: 40 })
+    call("entries_list", { search, offset, limit: 40 })
       .then((value) => {
         if (!cancelled) {
           setEntries(value);
@@ -49,7 +49,7 @@ export function LibraryView({
   async function play(asset: AudioAsset) {
     const selectedEntryId = activeEntryId.current;
     try {
-      const path = await call<string>("media_path", { assetId: asset.id });
+      const path = await call("media_path", { assetId: asset.id });
       if (selectedEntryId !== activeEntryId.current) return;
       setAudioPath(path);
       setPlaybackKey((value) => value + 1);

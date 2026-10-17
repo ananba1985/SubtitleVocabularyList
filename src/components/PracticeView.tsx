@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { audioUrl, call, message, uid, waitTask } from "../api";
 import {
   adjacentSentence,
@@ -14,13 +13,7 @@ import type {
   PracticeProgress,
   PracticeState,
 } from "../practice";
-import type {
-  CandidateExample,
-  CollectionSeed,
-  Explanation,
-  SystemVoice,
-  TaskSnapshot,
-} from "../types";
+import type { CollectionSeed, Explanation, SystemVoice } from "../types";
 import { OnlineLookup } from "./OnlineLookup";
 
 export type PracticePanel =
@@ -81,7 +74,7 @@ export function PracticeView({
     const progress = practiceProgress(value);
     saveQueue.current = saveQueue.current
       .then(() =>
-        call<void>("practice_progress_save", {
+        call("practice_progress_save", {
           documentId,
           progress,
         }),
@@ -143,7 +136,7 @@ export function PracticeView({
         path = dataDirectory + "/" + value.document.audioFile;
       } else {
         setStatus("正在准备 Windows 本地英语语音…");
-        const task = await call<TaskSnapshot>("speech_start", {
+        const task = await call("speech_start", {
           text: line.text,
           operationId: uid(),
           voiceId: value.voiceId,
@@ -241,11 +234,11 @@ export function PracticeView({
   useEffect(() => {
     mounted.current = true;
     let disposed = false;
-    call<PracticeState | null>("practice_get")
+    call("practice_get")
       .then(
         async (saved) =>
           saved ??
-          call<PracticeState>("practice_import", {
+          call("practice_import", {
             document: pastedDocument(
               "从一句话开始",
               "I can practice one sentence at a time. Every small step helps me improve.",
@@ -261,7 +254,7 @@ export function PracticeView({
       .catch((error) => {
         if (!disposed) setError(message(error));
       });
-    call<SystemVoice[]>("speech_voices")
+    call("speech_voices")
       .then((value) => {
         if (!disposed) setVoices(value);
       })
@@ -323,9 +316,8 @@ export function PracticeView({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (current.current) save(current.current);
     await saveQueue.current;
-    if (bytes)
-      document.audioFile = await invoke<string>("practice_audio_save", bytes);
-    const value = await call<PracticeState>("practice_import", { document });
+    if (bytes) document.audioFile = await call("practice_audio_save", bytes);
+    const value = await call("practice_import", { document });
     update(value, false);
     onPanelChange(null);
     setStatus("已保存到本机，可离线练习并在下次打开时继续。");
@@ -374,7 +366,7 @@ export function PracticeView({
     setExplaining(true);
     setError("");
     try {
-      const task = await call<TaskSnapshot>("explain_start", {
+      const task = await call("explain_start", {
         text: target,
         context: sentence.text,
         operationId: uid(),
@@ -395,7 +387,7 @@ export function PracticeView({
     try {
       const example =
         state.document.audioFile && sentence.startMs !== null
-          ? await call<CandidateExample>("practice_example", {
+          ? await call("practice_example", {
               documentId: state.document.id,
               chapter: state.chapterIndex,
               sentence: state.sentenceIndex,

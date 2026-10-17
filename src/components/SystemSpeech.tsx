@@ -25,7 +25,7 @@ export function SystemSpeech({
     setResult(null);
     setTask(null);
     try {
-      const started = await call<TaskSnapshot>("speech_start", {
+      const started = await call("speech_start", {
         text,
         operationId: uid(),
       });

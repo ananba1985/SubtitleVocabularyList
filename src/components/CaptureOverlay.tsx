@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { call, message } from "../api";
-import type { ScreenSession, TaskSnapshot } from "../types";
+import type { ScreenSession } from "../types";
 import { pixelRect, type Point } from "../selection";
 
 export function CaptureOverlay({ sessionId }: { sessionId: string }) {
@@ -20,7 +20,7 @@ export function CaptureOverlay({ sessionId }: { sessionId: string }) {
     }
   }
   useEffect(() => {
-    call<ScreenSession>("capture_session_get", { sessionId })
+    call("capture_session_get", { sessionId })
       .then(setSession)
       .catch((error) => setError(message(error)));
   }, [sessionId]);
@@ -60,7 +60,7 @@ export function CaptureOverlay({ sessionId }: { sessionId: string }) {
     setBusy(true);
     setError("");
     try {
-      await call<TaskSnapshot>("capture_ocr_submit", { sessionId, rect });
+      await call("capture_ocr_submit", { sessionId, rect });
     } catch (error) {
       setError(message(error));
       setBusy(false);

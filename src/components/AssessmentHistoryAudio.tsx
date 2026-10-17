@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call, message, uid, waitTask } from "../api";
-import type { TaskSnapshot } from "../types";
+
 import { AudioPlayer } from "./AudioPlayer";
 export function AssessmentHistoryAudio({
   sessionId,
@@ -18,7 +18,7 @@ export function AssessmentHistoryAudio({
     setBusy(true);
     setError("");
     try {
-      const task = await call<TaskSnapshot>("assessment_audio_prepare", {
+      const task = await call("assessment_audio_prepare", {
         sessionId,
         itemId,
         operationId: uid(),

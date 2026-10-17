@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { call, message, waitTask } from "../api";
+import { message, waitTask } from "../api";
 import { useAssessmentMutation } from "../assessmentApi";
 import type { AssessmentCollectionDraft } from "../assessmentTypes";
-import type { TaskSnapshot } from "../types";
 
 interface Selection {
   sessionItemId: string;
@@ -53,7 +52,7 @@ export function AssessmentCollectionPanel({
     setBusy(true);
     setError("");
     try {
-      const task = await mutate<TaskSnapshot>("assessment_collection_commit", {
+      const task = await mutate("assessment_collection_commit", {
         draftId: draft.draftId,
         items: selections.filter((s) => !done.has(s.sessionItemId)),
       });

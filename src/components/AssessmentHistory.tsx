@@ -23,10 +23,11 @@ export function AssessmentHistory({
     if (!open) return;
     let disposed = false;
     setError("");
-    void call<{ items: AssessmentHistoryItem[]; total: number }>(
-      "assessment_history_list",
-      { offset: page * 20, limit: 20, comparisonKey: null },
-    )
+    void call("assessment_history_list", {
+      offset: page * 20,
+      limit: 20,
+      comparisonKey: null,
+    })
       .then((v) => {
         if (!disposed) {
           setItems(v.items);
@@ -43,7 +44,7 @@ export function AssessmentHistory({
   async function compare() {
     try {
       setComparison(
-        await call<AssessmentComparison>("assessment_compare", {
+        await call("assessment_compare", {
           first: selected[0],
           second: selected[1],
         }),

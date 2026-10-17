@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { call, message } from "../api";
+import { call } from "../api";
 import type { Provider } from "../queryTypes";
 
 export function ProviderSettings({
@@ -22,7 +22,7 @@ export function ProviderSettings({
       if (typeof path !== "string") return;
       setBusy(true);
       await call("plugin_install", { path });
-      onChange(await call<Provider[]>("providers_list"));
+      onChange(await call("providers_list"));
     } catch (error) {
       report(error);
     } finally {
@@ -68,7 +68,7 @@ function ProviderEditor({
     try {
       setBusy(true);
       setNotice("");
-      const updated = await call<Provider[]>("providers_update", {
+      const updated = await call("providers_update", {
         update: {
           id: draft.id,
           enabled: draft.enabled,
@@ -93,9 +93,7 @@ function ProviderEditor({
   async function remove() {
     try {
       setBusy(true);
-      onChange(
-        await call<Provider[]>("plugin_remove", { pluginId: provider.id }),
-      );
+      onChange(await call("plugin_remove", { pluginId: provider.id }));
     } catch (error) {
       report(error);
     } finally {

@@ -86,10 +86,12 @@ export function AssessmentReportPanel({
   const mutate = useAssessmentMutation();
   const refresh = useCallback(
     async (requested: number | null = null) => {
-      const value = await call<{
-        report: AssessmentReport;
-        revisions: number[];
-      }>("assessment_report_get", { sessionId, reportRevision: requested });
+      const value = await call("assessment_report_get", {
+        sessionId,
+        reportRevision: requested,
+      });
+      if (!("report" in value))
+        throw new Error("测试尚未结束，完成或提前结束后可查看报告。");
       setReport(value.report);
       setRevisions(value.revisions);
       setItemRefresh((v) => v + 1);
@@ -99,11 +101,10 @@ export function AssessmentReportPanel({
   useEffect(() => {
     let disposed = false;
     setError("");
-    void call<{ report: AssessmentReport; revisions: number[] }>(
-      "assessment_report_get",
-      { sessionId, reportRevision: revision },
-    )
+    void call("assessment_report_get", { sessionId, reportRevision: revision })
       .then((v) => {
+        if (!("report" in v))
+          throw new Error("测试尚未结束，完成或提前结束后可查看报告。");
         if (!disposed) {
           setReport(v.report);
           setRevisions(v.revisions);
@@ -121,7 +122,7 @@ export function AssessmentReportPanel({
     if (!detailsOpen || !report) return;
     let disposed = false;
     setItems([]);
-    void call<{ items: AssessmentReportItem[] }>("assessment_report_items", {
+    void call("assessment_report_items", {
       sessionId,
       reportRevision: report.revision,
       offset: page * 20,
@@ -142,10 +143,10 @@ export function AssessmentReportPanel({
     setError("");
     try {
       setDraft(
-        await mutate<AssessmentCollectionDraft>(
-          "assessment_collection_prepare",
-          { sessionId, itemIds: selected },
-        ),
+        await mutate("assessment_collection_prepare", {
+          sessionId,
+          itemIds: selected,
+        }),
       );
     } catch (e) {
       setError(message(e));

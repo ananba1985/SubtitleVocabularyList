@@ -1,10 +1,27 @@
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TaskSnapshot } from "./types";
 import { waitForTask } from "./taskUpdates";
+import type {
+  CommandArgs,
+  CommandName,
+  CommandResult,
+  OptionalArgsCommand,
+} from "./commands";
 export { terminal } from "./taskUpdates";
-export const call = <T>(command: string, args?: Record<string, unknown>) =>
-  invoke<T>(command, args);
+export function call<K extends OptionalArgsCommand>(
+  command: K,
+): Promise<CommandResult<K>>;
+export function call<K extends CommandName>(
+  command: K,
+  args: CommandArgs<K>,
+): Promise<CommandResult<K>>;
+export function call(
+  command: CommandName,
+  args?: InvokeArgs,
+): Promise<unknown> {
+  return invoke(command, args);
+}
 export function message(error: unknown): string {
   if (error && typeof error === "object" && "message" in error)
     return String(error.message);
@@ -20,8 +37,11 @@ export async function waitTask<T>(
   task: TaskSnapshot,
   onProgress?: (task: TaskSnapshot) => void,
 ): Promise<T> {
-  return waitForTask<T>(task,
-    () => call<TaskSnapshot>("task_get", { taskId: task.id }),
-    (receive) => listen<TaskSnapshot>("task_updated", (event) => receive(event.payload)),
-    onProgress);
+  return waitForTask<T>(
+    task,
+    () => call("task_get", { taskId: task.id }),
+    (receive) =>
+      listen<TaskSnapshot>("task_updated", (event) => receive(event.payload)),
+    onProgress,
+  );
 }

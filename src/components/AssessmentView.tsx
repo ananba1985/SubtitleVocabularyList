@@ -41,8 +41,8 @@ export function AssessmentView({
   const mutate = useAssessmentMutation();
   const refresh = useCallback(async () => {
     const [catalog, sessions] = await Promise.all([
-      call<AssessmentInventory>("assessment_catalog_get"),
-      call<{ items: AssessmentSessionSummary[] }>("assessment_session_list", {
+      call("assessment_catalog_get"),
+      call("assessment_session_list", {
         unfinishedOnly: true,
         offset: 0,
         limit: 20,
@@ -54,10 +54,7 @@ export function AssessmentView({
   }, []);
   useEffect(() => {
     let disposed = false;
-    Promise.all([
-      call<AssessmentSettings>("assessment_settings_get"),
-      refresh(),
-    ])
+    Promise.all([call("assessment_settings_get"), refresh()])
       .then(([saved]) => {
         if (!disposed) {
           setSettings(saved);
@@ -84,7 +81,7 @@ export function AssessmentView({
     setPreviewBusy(true);
     setPreview(null);
     const timer = setTimeout(() => {
-      call<AssessmentPreview>("assessment_preview", { config })
+      call("assessment_preview", { config })
         .then((next) => {
           if (!disposed) {
             setPreview(next);
@@ -117,7 +114,7 @@ export function AssessmentView({
     setError("");
     try {
       setSession(
-        await mutate<AssessmentSession>("assessment_start", {
+        await mutate("assessment_start", {
           config,
           expectedInventoryRevision: preview.inventoryRevision,
         }),
@@ -134,7 +131,7 @@ export function AssessmentView({
     setError("");
     try {
       setSession(
-        await call<AssessmentSession>("assessment_session_get", {
+        await call("assessment_session_get", {
           sessionId: id,
         }),
       );
@@ -150,7 +147,7 @@ export function AssessmentView({
     setError("");
     try {
       setSettings(
-        await call<AssessmentSettings>("assessment_settings_update", {
+        await call("assessment_settings_update", {
           settings: { revision: settings.revision, config },
           operationId: crypto.randomUUID(),
         }),

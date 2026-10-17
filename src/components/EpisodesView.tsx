@@ -7,10 +7,8 @@ import type {
   CandidateExample,
   CollectionSeed,
   SourceSummary,
-  TaskSnapshot,
   ImportOptions,
   MediaInspection,
-  Settings,
 } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
 import { OnlineLookup } from "./OnlineLookup";
@@ -47,7 +45,7 @@ export function EpisodesView({
   const [model, setModel] = useState("");
   useEffect(() => {
     let disposed = false;
-    call<Settings>("settings_get")
+    call("settings_get")
       .then((value) => {
         if (!disposed)
           setModel(JSON.stringify([value.modelUrl, value.modelName]));
@@ -114,7 +112,7 @@ export function EpisodesView({
     setAudioPath("");
   }
   const reloadCandidates = () =>
-    call<Candidate[]>("candidates_list", {
+    call("candidates_list", {
       sourceId,
       search,
       kind,
@@ -139,10 +137,7 @@ export function EpisodesView({
     const version = selectionVersion.current;
     setBusy(true);
     try {
-      const value = await call<{ task: TaskSnapshot | null }>(
-        "explanations_prepare",
-        { sourceId },
-      );
+      const value = await call("explanations_prepare", { sourceId });
       if (version === selectionVersion.current)
         setImportNotice(
           value.task
@@ -156,7 +151,7 @@ export function EpisodesView({
     }
   }
   useEffect(() => {
-    call<SourceSummary[]>("sources_list")
+    call("sources_list")
       .then((value) => {
         setSources(value);
         if (!sourceId && value.length) setSourceId(value[0].id);
@@ -166,7 +161,7 @@ export function EpisodesView({
   useEffect(() => {
     let cancelled = false;
     if (sourceId)
-      call<Candidate[]>("candidates_list", {
+      call("candidates_list", {
         sourceId,
         search,
         kind,
@@ -202,7 +197,7 @@ export function EpisodesView({
     let cancelled = false;
     const version = selectionVersion.current;
     if (candidate && sourceId)
-      call<CandidateExample[]>("candidate_examples", {
+      call("candidate_examples", {
         sourceId,
         key: candidate.key,
       })
@@ -223,7 +218,7 @@ export function EpisodesView({
     if (!candidate) return;
     let disposed = false;
     const version = selectionVersion.current;
-    call<boolean>("known_target_get", {
+    call("known_target_get", {
       kind: candidate.kind,
       text: candidate.text,
     })
@@ -248,7 +243,7 @@ export function EpisodesView({
     setBusy(true);
     setImportNotice("");
     try {
-      await call<TaskSnapshot>("import_start", {
+      await call("import_start", {
         paths,
         options: choice,
         operationId: uid(),
@@ -265,7 +260,7 @@ export function EpisodesView({
     setInspection(null);
     setOptions(defaultOptions);
     try {
-      const result = await call<MediaInspection>("media_inspect", { path });
+      const result = await call("media_inspect", { path });
       setInspection(result);
       setInputPath(path);
       setOptions({
@@ -326,7 +321,7 @@ export function EpisodesView({
     const version = selectionVersion.current;
     setBusy(true);
     try {
-      const task = await call<TaskSnapshot>("preview_start", {
+      const task = await call("preview_start", {
         sourceId,
         exampleId: example.id,
         operationId: uid(),
@@ -401,7 +396,7 @@ export function EpisodesView({
   async function saveEdit() {
     if (!example) return;
     try {
-      const updated = await call<CandidateExample>("source_example_update", {
+      const updated = await call("source_example_update", {
         sourceId,
         exampleId: example.id,
         revision: example.revision,
@@ -772,7 +767,13 @@ export function EpisodesView({
                   >
                     {explanation.value?.meaning ? (
                       <>
-                        <small className="muted">{explanation.value.meaningScope === "dictionary" ? "基础词库释义" : explanation.value.meaningScope === "general" ? "通用释义" : "当前语境释义"}</small>
+                        <small className="muted">
+                          {explanation.value.meaningScope === "dictionary"
+                            ? "基础词库释义"
+                            : explanation.value.meaningScope === "general"
+                              ? "通用释义"
+                              : "当前语境释义"}
+                        </small>
                         <p className="context-meaning">
                           {explanation.value.meaning}
                         </p>

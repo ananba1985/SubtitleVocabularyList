@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { audioUrl, call, message, uid, waitTask } from "../api";
-import type { TaskSnapshot } from "../types";
+
 import { useAssessmentMutation } from "../assessmentApi";
 import { assessmentStateNames, assessmentTypeNames } from "../assessmentTypes";
 import type {
@@ -174,13 +174,13 @@ export function AssessmentQuestionPanel({
   }, []);
   async function refresh() {
     onChanged(
-      await call<AssessmentSession>("assessment_session_get", {
+      await call("assessment_session_get", {
         sessionId: session.id,
       }),
     );
   }
   async function transition(action: string, source = session) {
-    return mutate<AssessmentSession>("assessment_session_transition", {
+    return mutate("assessment_session_transition", {
       sessionId: source.id,
       expectedRevision: source.revision,
       action,
@@ -212,7 +212,7 @@ export function AssessmentQuestionPanel({
     setError("");
     try {
       onChanged(
-        await mutate<AssessmentSession>("assessment_answer_submit", {
+        await mutate("assessment_answer_submit", {
           sessionId: session.id,
           itemId: question.id,
           expectedRevision: session.revision,
@@ -234,14 +234,14 @@ export function AssessmentQuestionPanel({
     setAudioBusy(true);
     setError("");
     try {
-      const prepared = await call<TaskSnapshot>("assessment_audio_prepare", {
+      const prepared = await call("assessment_audio_prepare", {
         sessionId: session.id,
         itemId: question.id,
         operationId: uid(),
       });
       await waitTask(prepared);
       if (version !== generation.current) return;
-      const next = await mutate<AssessmentPlayback>("assessment_audio_start", {
+      const next = await mutate("assessment_audio_start", {
         sessionId: session.id,
         itemId: question.id,
         expectedRevision: session.revision,
@@ -269,9 +269,7 @@ export function AssessmentQuestionPanel({
       error: errorText,
     };
     audioChain.current = audioChain.current
-      .then(() =>
-        call<{ played: boolean }>("assessment_audio_event", { input }),
-      )
+      .then(() => call("assessment_audio_event", { input }))
       .then((value) => {
         if (version === generation.current && value.played) setPlayed(true);
       })

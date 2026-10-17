@@ -199,20 +199,41 @@ fn remember_report(c: &Connection, id: &str, slot: i64) -> Result<(), AppError> 
     Ok(())
 }
 
+pub(crate) struct PreparedReport {
+    pub report: AssessmentReport,
+    pub new_json: Option<String>,
+    refresh_index: bool,
+}
+
+impl PreparedReport {
+    pub(crate) fn persist(&self, c: &Connection) -> Result<(), AppError> {
+        if let Some(raw) = &self.new_json {
+            c.execute(
+                "INSERT INTO assessment_report_versions VALUES (?,?,?,?)",
+                params![
+                    self.report.session_id,
+                    self.report.revision,
+                    raw,
+                    self.report.generated_at
+                ],
+            )?;
+        }
+        if self.refresh_index {
+            // A newly inserted report has already advanced the fact counter.
+            remember_report(c, &self.report.session_id, self.report.revision)?;
+        }
+        Ok(())
+    }
+}
+
 pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, AppError> {
-    report_with_cache(c, id, true)
+    let prepared = prepare_report(c, id)?;
+    prepared.persist(c)?;
+    Ok(prepared.report)
 }
 
-// Snapshot preparation publishes this derived index together with its digest.
-pub(crate) fn report_for_export(c: &Connection, id: &str) -> Result<AssessmentReport, AppError> {
-    report_with_cache(c, id, false)
-}
-
-fn report_with_cache(
-    c: &Connection,
-    id: &str,
-    remember: bool,
-) -> Result<AssessmentReport, AppError> {
+// Read-only preparation lets synchronization publish the report and digest atomically.
+pub(crate) fn prepare_report(c: &Connection, id: &str) -> Result<PreparedReport, AppError> {
     let _timing = crate::local_profile::phase("assessment.report");
     let s = load_session(c, id)?;
     if !matches!(s.state.as_str(), "completed" | "ended_early") {
@@ -231,7 +252,11 @@ fn report_with_cache(
     if let Some((slot, saved)) = saved {
         let mut report: AssessmentReport = serde_json::from_str(&saved)?;
         report.revision = slot;
-        return Ok(report);
+        return Ok(PreparedReport {
+            report,
+            new_json: None,
+            refresh_index: false,
+        });
     }
     let mut q = c.prepare(
         "SELECT id,position FROM assessment_session_items WHERE session_id=? ORDER BY position",
@@ -394,28 +419,21 @@ fn report_with_cache(
         let (slot, raw) = saved?;
         let mut prior: AssessmentReport = serde_json::from_str(&raw)?;
         if report_content(c, &prior)? == content {
-            if remember {
-                remember_report(c, id, slot)?;
-            }
             prior.revision = slot;
-            return Ok(prior);
+            return Ok(PreparedReport {
+                report: prior,
+                new_json: None,
+                refresh_index: true,
+            });
         }
     }
     drop(q);
     report.revision = c.query_row("SELECT MAX(?1,COALESCE(MAX(revision)+1,?1)) FROM assessment_report_versions WHERE session_id=?2",params![s.revision,id],|r|r.get(0))?;
-    c.execute(
-        "INSERT INTO assessment_report_versions VALUES (?,?,?,?)",
-        params![
-            id,
-            report.revision,
-            serde_json::to_string(&report)?,
-            report.generated_at
-        ],
-    )?;
-    if remember {
-        remember_report(c, id, report.revision)?;
-    }
-    Ok(report)
+    Ok(PreparedReport {
+        new_json: Some(serde_json::to_string(&report)?),
+        report,
+        refresh_index: true,
+    })
 }
 impl Store {
     pub fn assessment_report(&self, id: &str, revision: Option<i64>) -> Result<Value, AppError> {

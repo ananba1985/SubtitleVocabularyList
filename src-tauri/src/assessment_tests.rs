@@ -334,11 +334,17 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
     })
     .unwrap();
     assert_eq!(peer.assessment_sync_status(scope).unwrap().pending, 1);
+    let published: (String, bool, i64) = peer.connection().unwrap().query_row(
+        "SELECT s.cached_digest,s.cached_epoch=d.epoch AND json_extract(m.value_json,'$[0]')=d.epoch,(SELECT COUNT(*) FROM assessment_report_versions WHERE session_id=?2) FROM assessment_sync_state s JOIN assessment_sync_dirty d ON d.session_id=s.session_id JOIN settings m ON m.key='assessment_current_report:'||s.session_id WHERE s.account_key=?1 AND s.session_id=?2",
+        params![scope,session.id], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+    assert!(published.1, "report index and packet cache must use the post-insert epoch");
+    assert_eq!(published.2, 3);
     let corrected = peer
         .assessment_freeze_push(scope, &session.id)
         .unwrap()
         .unwrap();
     assert_eq!(corrected.bundle.reports.len(), 3);
+    assert_eq!(published.0, crate::assessment_sync::packet_digest(&corrected.bundle).unwrap());
     assert_eq!(corrected.bundle.corrections.len(), 1);
     assert_eq!(
         serde_json::to_value(&corrected.bundle.items).unwrap(),
@@ -431,12 +437,11 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
             .all(|s| s.timings["assessment.export"].calls == 1
                 && s.timings["assessment.digest"].calls == 1)
     );
-    // Existing business reports need just the combined metadata publication commit.
+    // Both reused and newly generated reports share one metadata publication commit.
     assert!(
         samples
             .iter()
             .filter(|s| s.operation == "assessment.status")
-            .take(2)
             .all(|s| s.timings["assessment.write_commit"].calls == 1)
     );
     assert_eq!(

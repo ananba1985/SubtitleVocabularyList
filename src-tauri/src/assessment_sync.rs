@@ -5,7 +5,7 @@ use crate::{
         load_session,
     },
     assessment_bank::AssessmentConfig,
-    assessment_reports::{AssessmentReport, report_on},
+    assessment_reports::{AssessmentReport, PreparedReport, prepare_report, report_on},
     error::AppError,
     store::Store,
     vocabulary::digest,
@@ -97,7 +97,6 @@ pub(crate) struct PreparedPacket {
     epoch: i64,
     packet: AssessmentPacket,
     hash: String,
-    references: usize,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
@@ -416,7 +415,7 @@ pub(crate) fn export_on(
 ) -> Result<AssessmentPacket, AppError> {
     let base = load_base(c, scope, id)?;
     let mut settings = Vec::new();
-    let packet = export_with_base(c, root, scope, id, base.as_ref(), &mut settings)?;
+    let packet = export_with_base(c, root, scope, id, base.as_ref(), None, &mut settings)?;
     write_settings(c, &settings)?;
     Ok(packet)
 }
@@ -455,6 +454,7 @@ fn export_with_base(
     scope: &str,
     id: &str,
     base: Option<&AssessmentDocument>,
+    prepared_report: Option<&PreparedReport>,
     settings: &mut Vec<(String, String)>,
 ) -> Result<AssessmentPacket, AppError> {
     let _timing = crate::local_profile::phase("assessment.export");
@@ -556,7 +556,17 @@ fn export_with_base(
             }
         }
     }
-    for row in q.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
+    let new_report = prepared_report.and_then(|report| {
+        report
+            .new_json
+            .as_ref()
+            .map(|raw| Ok((raw.clone(), report.report.revision)))
+    });
+    // Include the pending immutable report in the complete projection without writing it yet.
+    for row in q
+        .query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+        .chain(new_report)
+    {
         let (raw, slot) = row?;
         if let Some(report) = retained_by_slot.get(&slot.to_string()) {
             reports.insert(report.digest.clone(), (*report).clone());
@@ -651,7 +661,7 @@ fn cache_received_packet(
         params![scope, chrono::Utc::now().timestamp_millis()],
     )?;
     let mut settings = Vec::new();
-    let packet = export_with_base(c, root, scope, id, Some(remote), &mut settings)?;
+    let packet = export_with_base(c, root, scope, id, Some(remote), None, &mut settings)?;
     write_settings(c, &settings)?;
     let hash = packet_digest(&packet)?;
     let mut references = 0usize;
@@ -930,7 +940,7 @@ fn apply_validated_on(
 impl Store {
     fn prepared_assessment(&self, scope: &str, id: &str) -> Result<Arc<PreparedPacket>, AppError> {
         loop {
-            let (packet, epoch, references, settings) = {
+            let (packet, epoch, references, settings, report) = {
                 let mut c = self.connection()?;
                 let epoch: i64 = c.query_row(
                     "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
@@ -952,49 +962,41 @@ impl Store {
                     load_session(&tx, id)?.state.as_str(),
                     "completed" | "ended_early"
                 ) {
-                    Some(crate::assessment_reports::report_for_export(&tx, id)?)
+                    Some(prepare_report(&tx, id)?)
                 } else {
                     None
                 };
                 let base = load_base(&tx, scope, id)?;
                 let mut settings = Vec::new();
-                let packet =
-                    export_with_base(&tx, self.root(), scope, id, base.as_ref(), &mut settings)?;
+                let packet = export_with_base(
+                    &tx,
+                    self.root(),
+                    scope,
+                    id,
+                    base.as_ref(),
+                    report.as_ref(),
+                    &mut settings,
+                )?;
                 let epoch: i64 = tx.query_row(
                     "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
                     [id],
                     |r| r.get(0),
                 )?;
-                if let Some(report) = report {
-                    settings.push((
-                        format!("assessment_current_report:{id}"),
-                        format!("[{epoch},{}]", report.revision),
-                    ));
-                }
                 let mut references = 0;
                 for link in &packet.collection_links {
                     if entry_alias(&tx, scope, &link.entry_id, false)?.is_none() {
                         references += 1;
                     }
                 }
-                // Existing reports and device/slot indices need no separate write commit.
-                // A genuinely missing business report is still committed before detaching.
+                // Report preparation and export leave business rows untouched.
                 let _commit = (tx.total_changes() != changes)
                     .then(|| crate::local_profile::phase("assessment.write_commit"));
                 tx.commit()?;
-                (packet, epoch, references, settings)
+                (packet, epoch, references, settings, report)
             };
             // Hashing the detached complete snapshot does not occupy the business connection.
             let hash = packet_digest(&packet)?;
-            let prepared = Arc::new(PreparedPacket {
-                scope: scope.into(),
-                id: id.into(),
-                epoch,
-                packet,
-                hash,
-                references,
-            });
-            let stable = {
+            let published_epoch = {
                 let mut c = self.connection()?;
                 let _transaction = crate::local_profile::phase("assessment.publish_tx");
                 let tx = c.transaction()?;
@@ -1014,17 +1016,32 @@ impl Store {
                         |r| r.get::<_, bool>(0),
                     )?;
                 if current != epoch || device_changed {
-                    false
+                    None
                 } else {
                     tx.execute("INSERT OR IGNORE INTO assessment_sync_accounts(account_key,updated_at) VALUES (?,?)",params![scope,chrono::Utc::now().timestamp_millis()])?;
+                    if let Some(report) = &report {
+                        report.persist(&tx)?;
+                    }
+                    let published_epoch: i64 = tx.query_row(
+                        "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
+                        [id],
+                        |r| r.get(0),
+                    )?;
                     write_settings(&tx, &settings)?;
-                    tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,cached_epoch,cached_digest,cached_pending_references) VALUES (?,?,?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET cached_epoch=excluded.cached_epoch,cached_digest=excluded.cached_digest,cached_pending_references=excluded.cached_pending_references",params![scope,id,epoch,prepared.hash,prepared.references])?;
+                    tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,cached_epoch,cached_digest,cached_pending_references) VALUES (?,?,?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET cached_epoch=excluded.cached_epoch,cached_digest=excluded.cached_digest,cached_pending_references=excluded.cached_pending_references",params![scope,id,published_epoch,hash,references])?;
                     let _commit = crate::local_profile::phase("assessment.write_commit");
                     tx.commit()?;
-                    true
+                    Some(published_epoch)
                 }
             };
-            if stable {
+            if let Some(epoch) = published_epoch {
+                let prepared = Arc::new(PreparedPacket {
+                    scope: scope.into(),
+                    id: id.into(),
+                    epoch,
+                    packet,
+                    hash,
+                });
                 // Retain only the most recent complete packet, never one copy per historical session.
                 if let Ok(mut cached) = self.assessment_packet.lock() {
                     *cached = Some(Arc::clone(&prepared));
@@ -1373,6 +1390,7 @@ impl Store {
                 scope,
                 &remote.session_id,
                 base.as_ref(),
+                None,
                 &mut settings,
             )?;
             write_settings(&tx, &settings)?;

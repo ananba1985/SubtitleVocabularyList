@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::io::Read;
 
 pub(crate) const CHUNK_BYTES: usize = 500_000;
-pub(crate) use crate::sync_delta::MAX_PACKET_BYTES;
+pub(crate) use crate::sync_limits::MAX_PACKET_BYTES;
 const DIRECT_BYTES: usize = 996_000;
 
 #[cfg(test)]
@@ -238,9 +238,7 @@ impl<'a> Transport<'a> {
         check: impl Fn() -> Result<(), AppError>,
     ) -> Result<(u16, Value), AppError> {
         // Keep the full logical request and its capacity/receipt semantics unchanged.
-        if serde_json::to_vec(full)?.len() > MAX_PACKET_BYTES {
-            return Err(failure("capacity_exceeded", "完整资料超过同步容量，全部内容保留。"));
-        }
+        crate::sync_limits::check_push_size("完整同步资料", serde_json::to_vec(full)?.len(), full["changeId"].as_str().unwrap_or(""), full["baseRevision"].as_i64().unwrap_or(0))?;
         let wire = crate::sync_delta::request(full, base, identity);
         let reply = self.push_value(path, &wire, supports_chunks, &check)?;
         if reply.0 == 412 && reply.1["error"] == "delta_base_missing" && wire.get("delta").is_some() {
@@ -260,11 +258,9 @@ impl<'a> Transport<'a> {
         let bytes = serde_json::to_vec(request)?;
         #[cfg(test)]
         record_transfer("upload", request);
-        if bytes.len() > MAX_PACKET_BYTES || bytes.len() > DIRECT_BYTES && !supports_chunks {
-            return Err(failure(
-                "capacity_exceeded",
-                "完整资料超过本次同步能力，未删减任何例句、原声或历史。",
-            ));
+        let limit = if supports_chunks { MAX_PACKET_BYTES } else { DIRECT_BYTES };
+        if bytes.len() > limit {
+            return Err(crate::sync_limits::capacity_error("本次传输资料", bytes.len(), limit));
         }
         let body = if bytes.len() <= DIRECT_BYTES {
             serde_json::to_value(request)?

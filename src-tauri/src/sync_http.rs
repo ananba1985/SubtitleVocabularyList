@@ -322,7 +322,10 @@ impl Remote for HttpRemote {
         self.check()?;
         let key = (hash.to_owned(), format.to_owned());
         if self.confirmed_media.contains(&key) { return Ok(()); }
-        if bytes.len() > 20 * 1024 * 1024 || digest(&bytes) != hash {
+        if bytes.len() > crate::sync_limits::MAX_AUDIO_BYTES {
+            return Err(crate::sync_limits::capacity_error("原声音频", bytes.len(), crate::sync_limits::MAX_AUDIO_BYTES));
+        }
+        if digest(&bytes) != hash {
             return Err(failure(
                 "capacity_exceeded",
                 "原声过大或摘要不匹配，原文件与待同步记录保留。",
@@ -399,7 +402,7 @@ impl Remote for HttpRemote {
         }
         let mut bytes = vec![];
         response
-            .take(20 * 1024 * 1024 + 1)
+            .take((crate::sync_limits::MAX_AUDIO_BYTES + 1) as u64)
             .read_to_end(&mut bytes)
             .map_err(|_| failure("network_unavailable", "原声下载中断，游标保留。"))?;
         self.check()?;

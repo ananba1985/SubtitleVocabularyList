@@ -348,11 +348,8 @@ impl Store {
         });
         crate::corpus::validate_media_file(self.root(), &relative, hash, "ready")?;
         let bytes = std::fs::read(self.root().join(relative))?;
-        if bytes.len() > 20 * 1024 * 1024 {
-            return Err(AppError::new(
-                "capacity_exceeded",
-                "测试原声超过单文件同步上限，原资料保留。",
-            ));
+        if bytes.len() > crate::sync_limits::MAX_AUDIO_BYTES {
+            return Err(crate::sync_limits::capacity_error("测试原声", bytes.len(), crate::sync_limits::MAX_AUDIO_BYTES));
         }
         Ok(bytes)
     }
@@ -361,7 +358,7 @@ impl Store {
         media: &MediaReference,
         bytes: &[u8],
     ) -> Result<(), AppError> {
-        if !sha(&media.digest) || bytes.len() > 20 * 1024 * 1024 || digest(bytes) != media.digest {
+        if !sha(&media.digest) || bytes.len() > crate::sync_limits::MAX_AUDIO_BYTES || digest(bytes) != media.digest {
             return Err(invalid("测试原声内容与清单不一致。"));
         }
         let relative = local_original_path(media);
@@ -456,11 +453,8 @@ impl Store {
             });
             let payload = push.as_ref().map(canonical).transpose()?;
             drop(_encoding);
-            if payload.as_ref().is_some_and(|v| v.len() > 8 * 1024 * 1024) {
-                return Err(AppError::new(
-                    "capacity_exceeded",
-                    "完整水平测试资料超过单包能力，资料保持完整，未截断历史。",
-                ));
+            if let (Some(payload), Some(push)) = (&payload, &push) {
+                crate::sync_limits::check_push_size("完整水平测试资料", payload.len(), &push.change_id, push.base_revision)?;
             }
             let mut c = self.connection()?;
             let _transaction = crate::local_profile::phase("assessment.freeze_tx");

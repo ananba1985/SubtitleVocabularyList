@@ -719,7 +719,7 @@ impl Store {
             }
             let bytes = remote.download(hash, format)?;
             check_cancel(cancel)?;
-            if bytes.len() < 12 || bytes.len() > 20 * 1024 * 1024 || digest(&bytes) != hash {
+            if bytes.len() < 12 || bytes.len() > crate::sync_limits::MAX_AUDIO_BYTES || digest(&bytes) != hash {
                 return Err(AppError::new(
                     "invalid_data",
                     "下载原声的字节或摘要不匹配，游标与本地资料已保留。",
@@ -911,7 +911,9 @@ impl Store {
                 base_revision: revision,
                 bundle,
             };
-            tx.execute("INSERT INTO sync_outbox(change_id,entity_kind,entity_id,base_revision,payload_json,created_at,account_scope,local_epoch) VALUES (?,'entry',?,?,?,?,?,?)",params![change_id,remote,revision,serde_json::to_string(&push)?,Utc::now().timestamp_millis(),scope,epoch])?;
+            let payload = serde_json::to_string(&push)?;
+            crate::sync_limits::check_push_size("完整词条资料", payload.len(), &push.change_id, push.base_revision)?;
+            tx.execute("INSERT INTO sync_outbox(change_id,entity_kind,entity_id,base_revision,payload_json,created_at,account_scope,local_epoch) VALUES (?,'entry',?,?,?,?,?,?)",params![change_id,remote,revision,payload,Utc::now().timestamp_millis(),scope,epoch])?;
             tx.commit()?;
         }
         Ok(())

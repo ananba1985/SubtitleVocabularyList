@@ -5,7 +5,6 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 pub(crate) const PROTOCOL: &str = "json-delta-1";
-pub(crate) const MAX_PACKET_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(serde::Deserialize)]
 #[serde(tag = "op", rename_all = "lowercase", deny_unknown_fields)]
@@ -66,7 +65,7 @@ pub(crate) fn restore_document(mut value: Value, base: Option<(i64, &Value)>) ->
         return Err(invalid());
     }
     let bundle = apply(base, delta)?;
-    if bundle[root]["id"] != value[identity] || serde_json::to_vec(&bundle)?.len() > MAX_PACKET_BYTES {
+    if bundle[root]["id"] != value[identity] || serde_json::to_vec(&bundle)?.len() > crate::sync_limits::MAX_BUNDLE_BYTES {
         return Err(invalid());
     }
     let object = value.as_object_mut().ok_or_else(invalid)?;

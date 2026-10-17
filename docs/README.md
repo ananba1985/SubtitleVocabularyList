@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.62 |
+| 文档版本 | 0.63 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -21,7 +21,7 @@
 | 高频水平测试增量验证 | [testing/vocabulary-assessment-results.md](testing/vocabulary-assessment-results.md) | M-15 至 M-19、TC-53 至 TC-58、真实 Qwen、站点版本 27／30 和报告业务内容复用 | 核心、真实桌面和真实站点分别记录；0.8.20 真人六题正常往返、报告复用及回执缓存通过，原人工验收边界保留 |
 | 需求审查 | [requirements/review.md](requirements/review.md) | 审查对象、方法、结论、开放事项与后续成果 | 文档层核对不代表功能验收或新增范围已确认 |
 | 架构设计 | [design/architecture.md](design/architecture.md) | 需求依据、系统边界、技术决策、模块与依赖、数据流、集成约束、风险与追溯 | 解释如何组织系统；引用需求，不重新定义产品范围 |
-| 架构优化收尾清单 | [planning/architecture-optimization-plan.md](planning/architecture-optimization-plan.md) | 原始七项及后续优先级、当前证据、剩余模块／类型、对象回收和容量工作 | 明确完成条件，不把局部正常验证或必要保留成本写成所有优化已结束 |
+| 架构优化收尾清单 | [planning/architecture-optimization-plan.md](planning/architecture-optimization-plan.md) | 原始七项及后续优先级、当前证据、模块／类型、对象回收和容量评估 | 本轮清单完成；条件性分页、长期性能和原验收边界分别保留 |
 | 详细设计 | [数据模型](design/data-model.md)、[应用流程](design/application-flows.md)、[接口契约](design/interfaces.md) | 接口契约、数据结构、状态转换、异常处理、对应需求编号 | 补足实现所需细节；简单模块可在架构文档内完成，避免重复文件 |
 | 验证与验收 | [testing/test-plan.md](testing/test-plan.md)；实际记录随验证放入 `testing/` | 计划包含环境、需求、输入、步骤和预期；记录补充实际结果与证据 | 测试计划在设计阶段建立，执行记录在实际验证后形成 |
 | 原型验证记录 | [testing/prototype-results.md](testing/prototype-results.md) | 实际环境、工具、素材标识、结果和未覆盖项 | 只证明具体原型边界，不代替完整功能验收 |
@@ -32,6 +32,7 @@
 | 测验增量验证 | [testing/review-results.md](testing/review-results.md) | 题目、持久化、判分修正、实际听力与重启证据 | 区分核心夹具、真实 WebView2、听感与离线整体验收 |
 | 完整同步设计 | [design/synchronization.md](design/synchronization.md) | 真实账号连接、资料包、增量、回执、冲突与原声传输 | 合同与本地测试不能代替真实站点验收 |
 | 同步增量验证 | [testing/synchronization-results.md](testing/synchronization-results.md) | 实际连接、部署、完整交换、真实资料差量往返与检查点还原 | 记录 0.8.20 真实账号报告复用／回执缓存及完整资料保持；本地、真实链路与整体交付分别说明，保留未覆盖边界 |
+| 同步容量评估 | [testing/sync-capacity-results.md](testing/sync-capacity-results.md) | 现有预算、只读诊断、实际大小、冻结前核对和增长处理条件 | 0.8.29 完成本轮评估及最小正常检查；8 MiB／20 MiB 上限保留，传输历史分页未实现 |
 | 同例句多语境增量 | [testing/example-context-results.md](testing/example-context-results.md) | 多释义关联、原声复用、升级、资料包及实际桌面结果 | 不把完整字段契约当成完整同步 |
 | 笔记本继续开发交接 | [development/laptop-handoff.md](development/laptop-handoff.md) | 当前代码、检查点、站点恢复、未完成项和停止状态 | 完整目标保留，按用户要求在其他环境继续 |
 | 导入选择与查询增量 | [testing/import-query-results.md](testing/import-query-results.md) | 多轨/外置/转写、有序采集、实际解释和手动网络请求 | 不以合成事件替代新跨进程采集或整体安装验收 |
@@ -203,3 +204,4 @@
 | 0.60 | 2026-10-17 | 索引 0.8.26 预习／听读状态职责分离与最小类型检查，更新剩余优化进度 |
 | 0.61 | 2026-10-17 | 索引 0.8.27 异步任务结果关联及最小正常验证，模块／类型优化完成，继续对象回收和容量边界 |
 | 0.62 | 2026-10-17 | 索引 0.8.28 站点引用迁移／有界回收、完整资料保持与版本 31 部署证据，继续容量边界 |
+| 0.63 | 2026-10-17 | 索引 0.8.29 容量评估、只读诊断和提前检查，记录本轮清单收尾及条件性后续边界 |

@@ -601,7 +601,7 @@ fn generate_explanation(
     )?;
     let mut value: Explanation = serde_json::from_str(&stripped)
         .map_err(|_| AppError::new("invalid_data", "模型结果格式无效，原文和草稿已保留。"))?;
-    value.recover_name_meaning(&raw_target);
+    value.normalize_model_fields(&raw_target);
     context.check_cancelled()?;
     if context_text.trim().is_empty() {
         value.translation.clear();

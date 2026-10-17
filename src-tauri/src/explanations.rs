@@ -29,6 +29,19 @@ pub fn validate_input(text: &str, context: &str) -> Result<(), AppError> {
 }
 
 impl Explanation {
+    pub(crate) fn normalize_model_fields(&mut self, original: &str) {
+        self.recover_name_meaning(original);
+        // Some models keep a product/name verbatim in meaning and put its
+        // complete Chinese definition in notes. Preserve that explanation as
+        // the meaning instead of rejecting the whole response or inventing one.
+        if !Self::valid_meaning(&self.meaning)
+            && crate::vocabulary::normalize(&self.meaning) == crate::vocabulary::normalize(original)
+            && Self::valid_meaning(&self.notes)
+        {
+            self.meaning = std::mem::take(&mut self.notes).trim().to_owned();
+        }
+    }
+
     pub(crate) fn recover_name_meaning(&mut self, original: &str) {
         if !self.meaning.trim().is_empty()
             || !original.chars().next().is_some_and(char::is_uppercase)
@@ -59,7 +72,7 @@ impl Explanation {
                 .any(|c| ('\u{3400}'..='\u{9fff}').contains(&c))
         };
         if !Self::valid_meaning(&self.meaning) {
-            return Err(AppError::new("invalid_data", "未获得有效中文词义；英文展开式或拼写诊断不能代替释义，请核对原文或图片字幕。"));
+            return Err(AppError::new("invalid_data", "模型的 meaning 字段未提供有效中文释义。"));
         }
         if (!context.trim().is_empty() && !chinese(&self.translation))
             || [&self.meaning, &self.translation, &self.notes]

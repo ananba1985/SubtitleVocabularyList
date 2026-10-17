@@ -31,6 +31,61 @@ fn finished(app: &Application, id: &str) -> subtitle_vocabulary_list_core::queri
 }
 
 #[test]
+fn named_project_explanation_in_notes_is_displayed_and_saved() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(directory.path()).unwrap());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let settings = Settings {
+        model_url: format!("http://{}", listener.local_addr().unwrap()),
+        ..Default::default()
+    };
+    let definition = "HeadScale 是一个开源的 Tailscale 控制服务器，用于管理 Tailscale 网络。";
+    // Replay the actual local model's response to the user's headscale query.
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut data = Vec::new();
+        let request = loop {
+            let mut buffer = [0; 4096];
+            let size = stream.read(&mut buffer).unwrap();
+            assert!(size > 0);
+            data.extend_from_slice(&buffer[..size]);
+            if let Some(end) = data.windows(4).position(|p| p == b"\r\n\r\n") {
+                let length: usize = String::from_utf8_lossy(&data[..end]).lines()
+                    .find_map(|line| line.to_lowercase().strip_prefix("content-length:")
+                        .map(|n| n.trim().parse().unwrap())).unwrap();
+                if data.len() >= end + 4 + length {
+                    break serde_json::from_slice::<serde_json::Value>(&data[end + 4..end + 4 + length]).unwrap();
+                }
+            }
+        };
+        assert!(request["messages"][0]["content"].as_str().unwrap().contains("专名保留原拼写"));
+        let value = json!({"meaning":"headscale","translation":"","notes":definition});
+        let response = json!({"choices":[{"finish_reason":"stop","message":{"content":value.to_string()}}]}).to_string();
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+    });
+    let app = Arc::new(Application::new(Arc::clone(&store), TaskManager::new(Arc::clone(&store), Arc::new(|_| {})), settings));
+    let input = QueryInput {
+        target: "headscale".into(), context: String::new(), mode: "explain".into(),
+        source_language: "en".into(), target_language: "zh-CN".into(), origin: QueryOrigin::default(),
+    };
+    let session = app.queries.open(input.clone(), None).unwrap();
+    app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+    let result = finished(&app, &session.session_id);
+    server.join().unwrap();
+    let value = result.results[0].value.as_ref().unwrap();
+    assert_eq!(value.meaning, definition);
+    assert!(value.notes.is_empty());
+    assert_eq!(store.explanation("headscale", "").unwrap().unwrap().meaning, definition);
+    let session = app.queries.open(QueryInput { target: "Headscale".into(), ..input }, None).unwrap();
+    app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+    let reused = finished(&app, &session.session_id);
+    assert_eq!(reused.results[0].cache_source, "stored");
+    assert_eq!(reused.results[0].value.as_ref().unwrap().meaning, definition);
+    assert!(store.list_entries("", 0, 40).unwrap().is_empty());
+}
+
+#[test]
 fn captured_word_is_explained_without_a_sentence_and_saved_for_reuse() {
     let directory = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(directory.path()).unwrap());

@@ -127,7 +127,7 @@ impl Application {
                 },
                 notes: item.notes,
             };
-            value.recover_name_meaning(targets[item.id]["text"].as_str().unwrap_or(text));
+            value.normalize_model_fields(targets[item.id]["text"].as_str().unwrap_or(text));
             let result = self
                 .store
                 .save_explanation(

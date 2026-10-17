@@ -192,6 +192,239 @@ fn word_facts(packet: &Value) -> Value {
 fn save(path: &Path, value: &Value) {
     std::fs::write(path, serde_json::to_vec_pretty(value).unwrap()).unwrap();
 }
+
+fn confirmed_cache(app: &Arc<Application>, scope: &str, id: &str) -> Value {
+    let valid: bool = app.store.connection().unwrap().query_row(
+        "SELECT s.cached_epoch=d.epoch AND s.cached_digest=s.acknowledged_digest AND s.acknowledged_digest IS NOT NULL AND s.pending_json IS NULL AND s.pending_change_id IS NULL AND s.pending_digest IS NULL AND s.conflict_json IS NULL FROM assessment_sync_state s JOIN assessment_sync_dirty d ON d.session_id=s.session_id WHERE s.account_key=? AND s.session_id=?",
+        params![scope,id], |r|r.get(0)).unwrap();
+    assert!(
+        valid,
+        "confirmed cache must describe the current complete facts"
+    );
+    crate::local_profile::capture();
+    let status = app.store.assessment_sync_status(scope).unwrap();
+    assert_eq!(status.pending, 0);
+    assert_eq!(status.conflicts, 0);
+    assert!(
+        app.store
+            .assessment_freeze_push(scope, id)
+            .unwrap()
+            .is_none()
+    );
+    let samples = crate::local_profile::take_samples();
+    assert_eq!(samples.len(), 2);
+    assert!(samples.iter().all(|s| {
+        [
+            "assessment.export",
+            "assessment.digest",
+            "assessment.read_tx",
+            "assessment.write_commit",
+        ]
+        .iter()
+        .all(|phase| !s.timings.contains_key(phase))
+    }));
+    json!({"passed":true,"samples":samples})
+}
+
+fn reports_unchanged(app: &Arc<Application>, original: &AssessmentDocument) {
+    let view = app
+        .store
+        .assessment_report(&original.session_id, None)
+        .unwrap();
+    assert_eq!(
+        view["revisions"].as_array().unwrap().len(),
+        original.bundle.reports.len()
+    );
+    let c = app.store.connection().unwrap();
+    let mut q = c
+        .prepare("SELECT report_json FROM assessment_report_versions WHERE session_id=?")
+        .unwrap();
+    let reports = q
+        .query_map([&original.session_id], |r| r.get::<_, String>(0))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(reports.len(), original.bundle.reports.len());
+    assert!(
+        original
+            .bundle
+            .reports
+            .iter()
+            .all(|r| reports.contains(&r.report_json)),
+        "all old reports must retain their original JSON bytes"
+    );
+}
+
+fn pull_confirmed(app: &Arc<Application>, id: &str) -> (AssessmentDocument, Value) {
+    crate::local_profile::capture();
+    let document = assessment_pull(app, id);
+    let samples = crate::local_profile::take_samples();
+    let receives = samples
+        .iter()
+        .filter(|s| s.operation == "assessment.receive")
+        .collect::<Vec<_>>();
+    assert_eq!(receives.len(), 1);
+    assert_eq!(receives[0].timings["assessment.export"].calls, 1);
+    assert_eq!(receives[0].timings["assessment.digest"].calls, 1);
+    (document, json!(samples))
+}
+
+#[test]
+#[ignore = "Explicitly authorized normal roundtrip with approved credentials and selected real data"]
+fn actual_report_reuse_and_receipt_cache_roundtrip() {
+    let root = PathBuf::from(
+        std::env::var_os("SVL_REAL_SYNC_ROOT").expect("fresh private acceptance root"),
+    );
+    assert!(
+        !root.exists(),
+        "preserve previous evidence; use a new acceptance directory"
+    );
+    let credential_root = PathBuf::from(
+        std::env::var_os("SVL_LIVE_CREDENTIAL_ROOT").expect("approved credential directory"),
+    );
+    let credential = credentials::load(
+        &credential_root,
+        "https://english-copy-practice.hxwjb.chatgpt.site",
+    )
+    .unwrap()
+    .unwrap();
+    assert!(credential.account_scope.is_some());
+    let entry = std::env::var("SVL_REAL_ENTRY_ID").unwrap();
+    let session = std::env::var("SVL_REAL_SESSION_ID").unwrap();
+    let scope = format!(
+        "https://english-copy-practice.hxwjb.chatgpt.site|{}",
+        credential.account_scope.as_deref().unwrap()
+    );
+    let source = app(&root.join("source"), &credential);
+    let peer = app(&root.join("peer"), &credential);
+
+    // Fetch only the two selected real records, using the approved account and production transport.
+    word_sync(&source, &entry);
+    word_sync(&peer, &entry);
+    let (word_revision, word_original) = word_base(&source, &scope, &entry);
+    let original_facts = word_facts(&word_original);
+    save(
+        &root.join("word-before.json"),
+        &json!({"revision":word_revision,"bundle":word_original}),
+    );
+    crate::sync_transport::take_live_transfers();
+    touch_word(&source, &entry);
+    word_sync(&source, &entry);
+    word_sync(&peer, &entry);
+    touch_word(&peer, &entry);
+    word_sync(&peer, &entry);
+    word_sync(&source, &entry);
+    let word_transfers = crate::sync_transport::take_live_transfers();
+    let (word_end, word_returned) = word_base(&source, &scope, &entry);
+    assert_eq!(word_end, word_revision + 2);
+    assert!(
+        word_facts(&word_returned) == original_facts,
+        "word learning facts changed"
+    );
+    assert!(word_base(&peer, &scope, &entry) == (word_end, word_returned.clone()));
+    save(
+        &root.join("word-after.json"),
+        &json!({"revision":word_end,"bundle":word_returned}),
+    );
+    for asset in word_original["tables"]["media_assets"].as_array().unwrap() {
+        let hash = asset["digest"].as_str().unwrap();
+        let format = asset["format"].as_str().unwrap();
+        for app in [&source, &peer] {
+            let c = app.store.connection().unwrap();
+            let local: String = c
+                .query_row(
+                    "SELECT id FROM media_assets WHERE digest=? AND format=?",
+                    params![hash, format],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            drop(c);
+            assert_eq!(
+                digest(&std::fs::read(app.store.media_file(&local).unwrap()).unwrap()),
+                hash
+            );
+        }
+    }
+
+    let original = assessment_pull(&source, &session);
+    let peer_original = assessment_pull(&peer, &session);
+    assert!(
+        serde_json::to_value(&peer_original).unwrap() == serde_json::to_value(&original).unwrap()
+    );
+    assert_eq!(
+        original.bundle.answers.len(),
+        6,
+        "select the existing real six-question session"
+    );
+    assert!(!original.bundle.reports.is_empty());
+    let study_facts = learning_facts(&serde_json::to_value(&original.bundle).unwrap());
+    save(
+        &root.join("assessment-before.json"),
+        &serde_json::to_value(&original).unwrap(),
+    );
+    reports_unchanged(&source, &original);
+    reports_unchanged(&peer, &original);
+    crate::sync_transport::take_live_transfers();
+
+    touch_assessment(&source, &session);
+    assert_eq!(
+        source.store.assessment_sync_status(&scope).unwrap().pending,
+        1
+    );
+    let sent = assessment_push(&source, &session);
+    assert_eq!(sent.revision, original.revision + 1);
+    reports_unchanged(&source, &original);
+    let source_ack = confirmed_cache(&source, &scope, &session);
+    let (_, peer_receive) = pull_confirmed(&peer, &session);
+    reports_unchanged(&peer, &original);
+
+    touch_assessment(&peer, &session);
+    assert_eq!(
+        peer.store.assessment_sync_status(&scope).unwrap().pending,
+        1
+    );
+    let sent_back = assessment_push(&peer, &session);
+    assert_eq!(sent_back.revision, original.revision + 2);
+    reports_unchanged(&peer, &original);
+    let peer_ack = confirmed_cache(&peer, &scope, &session);
+    let (returned, source_receive) = pull_confirmed(&source, &session);
+    reports_unchanged(&source, &original);
+    assert!(
+        learning_facts(&serde_json::to_value(&returned.bundle).unwrap()) == study_facts,
+        "assessment learning facts changed"
+    );
+    let final_cache = confirmed_cache(&source, &scope, &session);
+    let assessment_transfers = crate::sync_transport::take_live_transfers();
+    for transfers in [&word_transfers, &assessment_transfers] {
+        for direction in ["upload", "download"] {
+            assert_eq!(
+                transfers
+                    .iter()
+                    .filter(|t| t["direction"] == direction && t["delta"] == true)
+                    .count(),
+                2
+            );
+        }
+    }
+    save(
+        &root.join("assessment-after.json"),
+        &serde_json::to_value(&returned).unwrap(),
+    );
+    save(
+        &root.join("transfers.json"),
+        &json!({"word":word_transfers,"assessment":assessment_transfers}),
+    );
+    save(
+        &root.join("cache-probes.json"),
+        &json!({"sourceAck":source_ack,"peerAck":peer_ack,"finalReceive":final_cache,"receives":[peer_receive,source_receive]}),
+    );
+    let result = json!({"passed":true,"applicationVersion":env!("CARGO_PKG_VERSION"),
+        "word":{"initialRevision":word_revision,"finalRevision":word_end,"examples":original_facts["examples"].as_array().unwrap().len(),"answers":original_facts["review_attempts"].as_array().unwrap().len(),"corrections":original_facts["review_corrections"].as_array().unwrap().len(),"originalAssets":word_original["tables"]["media_assets"].as_array().unwrap().len(),"factsDigest":digest(original_facts.to_string().as_bytes())},
+        "assessment":{"initialRevision":original.revision,"finalRevision":returned.revision,"answers":returned.bundle.answers.len(),"corrections":returned.bundle.corrections.len(),"initialReports":original.bundle.reports.len(),"finalReports":returned.bundle.reports.len(),"factsDigest":digest(study_facts.to_string().as_bytes())},"cacheProbes":3,"receiveProbes":2,"deltaUploads":4,"deltaDownloads":4});
+    save(&root.join("result.json"), &result);
+    println!("{result}");
+}
+
 #[test]
 #[ignore = "Only run on explicit authorization with approved credentials and existing real private data"]
 fn actual_incremental_history_roundtrip() {

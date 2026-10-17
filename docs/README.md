@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.53 |
+| 文档版本 | 0.54 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -18,7 +18,7 @@
 | 高频词汇与短语水平测试需求 | [PRD 第 3.6 节与 FR-20 至 FR-24](requirements/PRD.md) | 可配置范围、合格题库、分层抽样、独立作答及报告、错词确认收录和复测 | 已确认需求，分阶段实施；不据词频直接换算语言等级，技术设计和发布阶段另行制定 |
 | 高频水平测试设计 | [design/vocabulary-assessment.md](design/vocabulary-assessment.md) | 完整排名索引、题库核对、抽样/判分、数据事务、CMD-46 至 CMD-60、完整历史同步 | M-15 至 M-19 已接入；真实完整历史往返通过，本轮人工验收按用户确认结束，证据边界保留；参数不冒充已校准标准 |
 | 高频水平测试开发计划 | [planning/vocabulary-assessment-plan.md](planning/vocabulary-assessment-plan.md) | M-15 至 M-19 的交付、依赖、完成门槛和 TC-53 至 TC-58 | 已授权实施；M-15 至 M-19 代码接入及 TC-58 正常往返通过，用户确认结束本轮验收，未复核项如实保留，不自动授权扩展测试或打包 |
-| 高频水平测试增量验证 | [testing/vocabulary-assessment-results.md](testing/vocabulary-assessment-results.md) | M-15 至 M-19、TC-53 至 TC-58、真实 Qwen、站点版本 27／30 和报告业务内容复用 | 核心、真实桌面和真实站点分别记录；真实六题增量同步及 0.8.18 报告复用／旧历史保持分别记录，原人工验收边界保留 |
+| 高频水平测试增量验证 | [testing/vocabulary-assessment-results.md](testing/vocabulary-assessment-results.md) | M-15 至 M-19、TC-53 至 TC-58、真实 Qwen、站点版本 27／30 和报告业务内容复用 | 核心、真实桌面和真实站点分别记录；0.8.20 真人六题正常往返、报告复用及回执缓存通过，原人工验收边界保留 |
 | 需求审查 | [requirements/review.md](requirements/review.md) | 审查对象、方法、结论、开放事项与后续成果 | 文档层核对不代表功能验收或新增范围已确认 |
 | 架构设计 | [design/architecture.md](design/architecture.md) | 需求依据、系统边界、技术决策、模块与依赖、数据流、集成约束、风险与追溯 | 解释如何组织系统；引用需求，不重新定义产品范围 |
 | 详细设计 | [数据模型](design/data-model.md)、[应用流程](design/application-flows.md)、[接口契约](design/interfaces.md) | 接口契约、数据结构、状态转换、异常处理、对应需求编号 | 补足实现所需细节；简单模块可在架构文档内完成，避免重复文件 |
@@ -30,7 +30,7 @@
 | 复习策略设计 | [design/review-policy.md](design/review-policy.md) | 初始间隔、掌握、专项与判分修正规则 | 规则测试不代表测验模块已交付 |
 | 测验增量验证 | [testing/review-results.md](testing/review-results.md) | 题目、持久化、判分修正、实际听力与重启证据 | 区分核心夹具、真实 WebView2、听感与离线整体验收 |
 | 完整同步设计 | [design/synchronization.md](design/synchronization.md) | 真实账号连接、资料包、增量、回执、冲突与原声传输 | 合同与本地测试不能代替真实站点验收 |
-| 同步增量验证 | [testing/synchronization-results.md](testing/synchronization-results.md) | 实际连接、部署、完整交换、真实资料差量往返与检查点还原 | 区分本地契约、真实身份、原声词条／真人六题数据与整体交付，保留续跑和未覆盖边界 |
+| 同步增量验证 | [testing/synchronization-results.md](testing/synchronization-results.md) | 实际连接、部署、完整交换、真实资料差量往返与检查点还原 | 记录 0.8.20 真实账号报告复用／回执缓存及完整资料保持；本地、真实链路与整体交付分别说明，保留未覆盖边界 |
 | 同例句多语境增量 | [testing/example-context-results.md](testing/example-context-results.md) | 多释义关联、原声复用、升级、资料包及实际桌面结果 | 不把完整字段契约当成完整同步 |
 | 笔记本继续开发交接 | [development/laptop-handoff.md](development/laptop-handoff.md) | 当前代码、检查点、站点恢复、未完成项和停止状态 | 完整目标保留，按用户要求在其他环境继续 |
 | 导入选择与查询增量 | [testing/import-query-results.md](testing/import-query-results.md) | 多轨/外置/转写、有序采集、实际解释和手动网络请求 | 不以合成事件替代新跨进程采集或整体安装验收 |
@@ -193,3 +193,4 @@
 | 0.51 | 2026-10-17 | 索引 0.8.18 报告按业务内容复用、同步修订不增生及完整历史保持的最小正常验证 |
 | 0.52 | 2026-10-17 | 索引 0.8.19 本地计时、单连接互斥统计、完整会话复用及锁外编码的最小正常证据 |
 | 0.53 | 2026-10-17 | 索引 0.8.20 派生写提交集中保存、回执缓存推进及接收重复处理的正常采样与完整资料保持证据 |
+| 0.54 | 2026-10-17 | 索引 0.8.20 真实账号、原声词条与真人六题的正常往返、报告复用及回执缓存验收 |

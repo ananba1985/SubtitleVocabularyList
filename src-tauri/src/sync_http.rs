@@ -535,6 +535,10 @@ impl Application {
 }
 
 #[cfg(test)]
+#[path = "sync_live_acceptance.rs"]
+mod live_acceptance;
+
+#[cfg(test)]
 mod live_recovery_tests {
     use super::*;
     use crate::{

@@ -8,6 +8,30 @@ pub(crate) const CHUNK_BYTES: usize = 500_000;
 pub(crate) use crate::sync_delta::MAX_PACKET_BYTES;
 const DIRECT_BYTES: usize = 996_000;
 
+#[cfg(test)]
+thread_local! {
+    static LIVE_TRANSFERS: std::cell::RefCell<Vec<Value>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+#[cfg(test)]
+fn record_transfer(direction: &str, value: &Value) {
+    if value.get("entryId").is_some()
+        || value.get("sessionId").is_some()
+        || value.get("bundle").is_some()
+    {
+        LIVE_TRANSFERS.with(|v| {
+            v.borrow_mut().push(json!({
+                "direction": direction,
+                "delta": value.get("delta").is_some() || value.get("deltaRef").is_some(),
+                "bytes": serde_json::to_vec(value).unwrap().len()
+            }));
+        });
+    }
+}
+#[cfg(test)]
+pub(crate) fn take_live_transfers() -> Vec<Value> {
+    LIVE_TRANSFERS.with(|v| std::mem::take(&mut *v.borrow_mut()))
+}
+
 fn failure(code: &str, message: impl Into<String>) -> AppError {
     AppError::new(code, message)
 }
@@ -107,6 +131,8 @@ impl<'a> Transport<'a> {
             request.send()
                 .map_err(|_| failure("network_unavailable", "拉取未完成，本地资料与游标保留。"))?,
         )?;
+        #[cfg(test)]
+        record_transfer("download", &value);
         let value = self.hydrate(value, &check)?;
         check()?;
         crate::sync_delta::restore_document(value, base)
@@ -232,6 +258,8 @@ impl<'a> Transport<'a> {
     ) -> Result<(u16, Value), AppError> {
         check()?;
         let bytes = serde_json::to_vec(request)?;
+        #[cfg(test)]
+        record_transfer("upload", request);
         if bytes.len() > MAX_PACKET_BYTES || bytes.len() > DIRECT_BYTES && !supports_chunks {
             return Err(failure(
                 "capacity_exceeded",

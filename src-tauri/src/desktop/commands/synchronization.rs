@@ -1,6 +1,6 @@
 use super::{AppState, background, background_project};
 use crate::error::AppError;
-use crate::{site_connection::ConnectionStatus, tasks::TaskSnapshot};
+use crate::site_connection::ConnectionStatus;
 use std::sync::Arc;
 
 #[svl_ipc_macros::command]
@@ -14,7 +14,7 @@ pub(crate) async fn connection_start(
     app: AppState<'_>,
     operation_id: String,
     replace: bool,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::site_connection::ConnectionStatus>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.connection_start(operation_id, replace)).await
 }
@@ -23,7 +23,7 @@ pub(crate) async fn connection_start(
 pub(crate) async fn connection_check(
     app: AppState<'_>,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::site_connection::ConnectionStatus>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.connection_check(operation_id)).await
 }
@@ -54,7 +54,7 @@ pub(crate) async fn sync_conflicts(
 pub(crate) async fn sync_start(
     app: AppState<'_>,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::tasks::results::SyncTaskResult>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.sync_start(operation_id)).await
 }
@@ -64,7 +64,7 @@ pub(crate) async fn sync_resolve(
     app: AppState<'_>,
     input: crate::synchronization::ResolutionInput,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::tasks::results::SyncResolution>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.sync_resolve(input, operation_id)).await
 }

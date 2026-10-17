@@ -565,7 +565,7 @@ pub struct SyncStatus {
     pub pending: usize,
     pub conflicts: usize,
 }
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SyncResult {

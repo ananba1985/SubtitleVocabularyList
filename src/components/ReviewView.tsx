@@ -121,7 +121,7 @@ export function ReviewView({
         questionId: question.id,
         operationId: uid(),
       });
-      const value = await waitTask<{ path: string; kind: string }>(task);
+      const value = await waitTask(task);
       if (version === generation.current) setAudio(value);
     } catch (e) {
       if (version === generation.current) setError(message(e));
@@ -195,7 +195,7 @@ export function ReviewView({
         context: attempt.question.context,
         operationId: uid(),
       });
-      setExplanation(await waitTask<Explanation>(task));
+      setExplanation(await waitTask(task));
     } catch (e) {
       setError(message(e));
     } finally {

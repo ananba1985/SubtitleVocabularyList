@@ -705,15 +705,15 @@ impl crate::application::Application {
         session: String,
         item: String,
         operation: String,
-    ) -> Result<crate::tasks::TaskSnapshot, AppError> {
+    ) -> Result<crate::tasks::TaskHandle<crate::tasks::results::AudioPath>, AppError> {
         let app = std::sync::Arc::clone(self);
         let hash = digest(format!("{session}:{item}").as_bytes());
         self.tasks
-            .start("speech", &operation, &hash, move |context| {
+            .start_typed("speech", &operation, &hash, move |context| {
                 context.subject("水平测试英语录音");
                 context.check_cancelled()?;
                 let path = app.prepare_assessment_audio_cached(&session, &item, &context)?;
-                Ok(json!({"path":path}))
+                Ok(crate::tasks::results::AudioPath { path })
             })
     }
 }

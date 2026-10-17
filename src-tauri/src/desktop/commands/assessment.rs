@@ -166,7 +166,7 @@ pub(crate) async fn assessment_collection_prepare(
 pub(crate) async fn assessment_collection_commit(
     app: AppState<'_>,
     input: crate::assessment_reports::CommitAssessmentCollection,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::assessment_reports::AssessmentCollectionResult>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.assessment_collection_commit(input)).await
 }
@@ -235,7 +235,7 @@ pub(crate) async fn assessment_bank_items(
 pub(crate) async fn assessment_bank_audio_prepare(
     app: AppState<'_>,
     input: AssessmentBankAudioInput,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::assessment_bank::QuestionDraft>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.assessment_bank_audio_prepare(input.content, input.operation_id)).await
 }
@@ -275,7 +275,7 @@ pub(crate) async fn assessment_audio_prepare(
     session_id: String,
     item_id: String,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::tasks::results::AudioPath>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.assessment_audio_prepare(session_id, item_id, operation_id)).await
 }

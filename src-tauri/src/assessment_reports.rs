@@ -768,18 +768,38 @@ impl Store {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentCollectionReceipt {
+    pub session_item_id: String,
+    pub saved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ipc-types", ts(optional))]
+    pub result: Option<CollectionResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ipc-types", ts(optional))]
+    pub error: Option<AppError>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+pub struct AssessmentCollectionResult {
+    pub items: Vec<AssessmentCollectionReceipt>,
+}
+
 impl crate::application::Application {
     pub fn assessment_collection_commit(
         self: &std::sync::Arc<Self>,
         input: CommitAssessmentCollection,
-    ) -> Result<crate::tasks::TaskSnapshot, AppError> {
+    ) -> Result<crate::tasks::TaskHandle<AssessmentCollectionResult>, AppError> {
         if input.items.is_empty() || input.items.len() > 300 {
             return Err(AppError::new("invalid_input", "请选择并确认要保存的项目。"));
         }
         let store = std::sync::Arc::clone(&self.store);
         let app = std::sync::Arc::clone(self);
         let hash = digest(&serde_json::to_vec(&input)?);
-        self.tasks.start("collection",&input.operation_id,&hash,move|context|{
+        self.tasks.start_typed("collection",&input.operation_id,&hash,move|context|{
             context.subject("水平测试确认收录");
             let mut receipts=Vec::new();let total=input.items.len();
             for (index,selection) in input.items.iter().enumerate() {
@@ -789,11 +809,14 @@ impl crate::application::Application {
                 #[cfg(not(all(windows,feature="desktop")))]
                 let audio:Result<(),AppError>={let _=&app;Ok(())};
                 let result=audio.and_then(|()|store.assessment_collect_item(&input.draft_id,selection));
-                receipts.push(match result{Ok(result)=>json!({"sessionItemId":selection.session_item_id,"saved":true,"result":result}),Err(error)=>json!({"sessionItemId":selection.session_item_id,"saved":false,"error":error})});
+                receipts.push(match result {
+                    Ok(result) => AssessmentCollectionReceipt { session_item_id: selection.session_item_id.clone(), saved: true, result: Some(result), error: None },
+                    Err(error) => AssessmentCollectionReceipt { session_item_id: selection.session_item_id.clone(), saved: false, result: None, error: Some(error) },
+                });
                 context.partial_result(json!({"items":receipts}));
                 context.progress("collection",index+1,total,"正在保存已确认的测试内容");
             }
-            Ok(json!({"items":receipts}))
+            Ok(AssessmentCollectionResult { items: receipts })
         })
     }
 }

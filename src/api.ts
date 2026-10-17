@@ -1,6 +1,7 @@
 import { invoke, convertFileSrc, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TaskSnapshot } from "./types";
+import type { TaskHandle } from "./generated/ipc";
 import { waitForTask } from "./taskUpdates";
 import type {
   CommandArgs,
@@ -33,11 +34,19 @@ export function time(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
-export async function waitTask<T>(
+export function waitTask<T>(
+  task: TaskHandle<T>,
+  onProgress?: (task: TaskSnapshot) => void,
+): Promise<T>;
+export function waitTask(
   task: TaskSnapshot,
   onProgress?: (task: TaskSnapshot) => void,
-): Promise<T> {
-  return waitForTask<T>(
+): Promise<unknown>;
+export async function waitTask(
+  task: TaskSnapshot,
+  onProgress?: (task: TaskSnapshot) => void,
+): Promise<unknown> {
+  return waitForTask<unknown>(
     task,
     () => call("task_get", { taskId: task.id }),
     (receive) =>

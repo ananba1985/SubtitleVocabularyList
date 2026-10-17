@@ -278,7 +278,7 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    fn finish(app: &Application, task: TaskSnapshot) -> TaskSnapshot {
+    fn finish(app: &Application, task: crate::tasks::TaskHandle<Explanation>) -> TaskSnapshot {
         let started = Instant::now();
         loop {
             let current = app.tasks.get(&task.id).unwrap();

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { message, waitTask } from "../api";
 import { useAssessmentMutation } from "../assessmentApi";
 import type { AssessmentCollectionDraft } from "../assessmentTypes";
+import type { AssessmentCollectionReceipt as Receipt } from "../generated/ipc";
 
 interface Selection {
   sessionItemId: string;
@@ -10,12 +11,6 @@ interface Selection {
   meaning: string;
   translation: string;
   saveAudio: boolean;
-}
-interface Receipt {
-  sessionItemId: string;
-  saved: boolean;
-  result?: { entryId: string; created: boolean };
-  error?: { message: string };
 }
 export function AssessmentCollectionPanel({
   draft,
@@ -56,7 +51,7 @@ export function AssessmentCollectionPanel({
         draftId: draft.draftId,
         items: selections.filter((s) => !done.has(s.sessionItemId)),
       });
-      const result = await waitTask<{ items: Receipt[] }>(task);
+      const result = await waitTask(task);
       setReceipts((old) => [
         ...old.filter(
           (r) => !result.items.some((n) => n.sessionItemId === r.sessionItemId),

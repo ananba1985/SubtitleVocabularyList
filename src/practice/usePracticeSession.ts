@@ -136,7 +136,7 @@ export function usePracticeSession({
           return;
         }
         speechTask.current = task.id;
-        const result = await waitTask<{ path: string }>(task);
+        const result = await waitTask(task);
         path = result.path;
       }
       if (!mounted.current || request !== generation.current || !audio.current)
@@ -361,7 +361,7 @@ export function usePracticeSession({
         context: sentence.text,
         operationId: uid(),
       });
-      const result = await waitTask<Explanation>(task);
+      const result = await waitTask(task);
       if (mounted.current && request === explanationGeneration.current)
         setExplanation(result);
     } catch (error) {

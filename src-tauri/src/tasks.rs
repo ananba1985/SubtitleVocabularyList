@@ -1,3 +1,6 @@
+mod typed;
+pub mod results;
+pub use typed::TaskHandle;
 use crate::{error::AppError, store::Store};
 use chrono::Utc;
 use rusqlite::{OptionalExtension, params};

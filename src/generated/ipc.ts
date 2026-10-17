@@ -22,6 +22,10 @@ export type AssessmentBankAudioInput = { content: QuestionDraft, operationId: st
 
 export type AssessmentCollectionDraft = { draftId: string, sessionId: string, reportRevision: number, items: Array<CollectionCandidate>, };
 
+export type AssessmentCollectionReceipt = { sessionItemId: string, saved: boolean, result?: CollectionResult, error?: AppError, };
+
+export type AssessmentCollectionResult = { items: Array<AssessmentCollectionReceipt>, };
+
 export type AssessmentComparison = { first: AssessmentReportSummary, second: AssessmentReportSummary, comparable: boolean, explanation: string, correctRateDelta: number | null, independentRateDelta: number | null, };
 
 export type AssessmentConfig = { mode: string, wordTopN: number, phraseTopN: number, questionCount: number, content: string, questionTypes: Array<string>, bandSize: number, avoidRecentDays: number, minimumSample: number, };
@@ -68,6 +72,8 @@ export type Attempt = { id: string, unitId: string, question: QuestionSnapshot, 
 
 export type AudioAsset = { id: string, relativePath: string, durationMs: number, kind: string, state: string, };
 
+export type AudioPath = { path: string, };
+
 export type BankItem = { id: string, bankId: string, catalogId: string, targetRank: number, targetKey: string, lexemeKey: string, kind: string, senseKey: string, questionType: string, state: string, revision: number, content: QuestionDraft, reviewNote: string, reviewedAt: number | null, };
 
 export type BankPage = { items: Array<BankItem>, total: number, };
@@ -92,6 +98,8 @@ export type CollectionCandidate = { sessionItemId: string, operationId: string, 
 
 export type CollectionInput = { operationId: string, kind: string, text: string, meaning: string, examples: Array<ExampleInput>, targetEntryId: string | null, expectedRevision: number | null, };
 
+export type CollectionResult = { entryId: string, operationId: string, revision: number, created: boolean, exampleIds: Array<string>, };
+
 export type CollectionSelection = { sessionItemId: string, targetEntryId: string | null, expectedRevision: number | null, meaning: string, translation: string, saveAudio: boolean, };
 
 export type CommitAssessmentCollection = { draftId: string, items: Array<CollectionSelection>, operationId: string, };
@@ -105,6 +113,8 @@ export type Correction = { outcome: Outcome, reason: string, createdAt: number, 
 export type CorrectionInput = { operationId: string, attemptId: string, expectedRevision: number, outcome: Outcome, reason: string, };
 
 export type Counts = { planned: number, processed: number, unscored: number, valid: number, unanswered: number, correct: number, independentCorrect: number, incorrect: number, unknown: number, needsConfirmation: number, uncertain: number, hinted: number, correctRate: number | null, independentRate: number | null, reasons: { [key in string]: number }, };
+
+export type Definition = { text: string, partOfSpeech: string, example: string, };
 
 export type Entry = { id: string, kind: string, text: string, matchKey: string, revision: number, createdAt: number, updatedAt: number, collectionCount: number, occurrenceCount: number, meanings: Array<Meaning>, examples: Array<Example>, };
 
@@ -131,6 +141,8 @@ export type KeepAssessmentBoth = { sessionId: string, expectedLocalRevision: num
 export type KnownTarget = { kind: string, text: string, matchKey: string, markedAt: number, };
 
 export type KnownTargetPage = { items: Array<KnownTarget>, total: number, };
+
+export type LookupResult = { query: string, source: string, sourceUrl: string, definitions: Array<Definition>, };
 
 export type Meaning = { id: string, text: string, origin: string, };
 
@@ -178,6 +190,8 @@ export type PreparedCollection = { draftId: string, matches: Array<Entry>, input
 
 export type PreparedExplanation = { meaningScope: string, meaning: string, translation: string, notes: string, };
 
+export type PreviewAudio = { path: string, asset: AudioAsset, };
+
 export type Provider = { id: string, name: string, kind: string, enabled: boolean, autoQuery: boolean, sendContext: boolean, order: number, maxConcurrency: number, networkScope: string, values: { [key in string]: string }, credentialFields: Array<string>, manifest: PluginManifest | null, };
 
 export type ProviderResult = { providerId: string, name: string, state: string, cacheSource: string, value: QueryValue | null, error: string | null, };
@@ -206,6 +220,8 @@ export type ReportItem = { id: string, position: number, item: FrozenItem, answe
 
 export type ResolutionInput = { conflictId: string, choice: string, targetEntryId: string | null, expectedRemoteRevision: number, expectedLocalRevision: number | null, expectedTargetRevision: number | null, };
 
+export type ReviewAudio = { path: string, kind: string, };
+
 export type ReviewBank = { operationId: string, bankId: string, expectedRevision: number, action: string, itemId: string | null, expectedItemRevision: number | null, content: QuestionDraft | null, note: string, };
 
 export type ReviewState = { level: string, streak: number, lapses: number, intervalMs: number, dueAt: number, lastReviewedAt: number, recent: Array<Outcome>, leechActive: boolean, leechStartedAt: number, leechClearedAt: number, };
@@ -222,6 +238,8 @@ export type SourceProgress = { sourceId: string, title: string, current: number,
 
 export type SourceSummary = { id: string, title: string, durationMs: number, textSource: string, exampleCount: number, candidateCount: number, importedAt: number, };
 
+export type SpeechAudio = { path: string, kind: string, voice: SystemVoice, };
+
 export type StartAssessment = { config: AssessmentConfig, expectedInventoryRevision: string, operationId: string, };
 
 export type Stream = { index: number, codec_type: string, codec_name: string, tags: { [key in string]: string }, };
@@ -232,11 +250,17 @@ export type SyncConflictView = { id: string, remoteId: string, localId: string |
 
 export type SyncEntryView = { id: string, kind: string, text: string, revision: number, } & ({ [key in string]: number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null });
 
+export type SyncResolution = { resolved: boolean, };
+
 export type SyncResult = { pulled: number, pushed: number, conflicts: number, cursor: number, };
 
 export type SyncStatus = { cursor: number, pending: number, conflicts: number, };
 
+export type SyncTaskResult = { assessment: AssessmentSyncStatus, pulled: number, pushed: number, conflicts: number, cursor: number, };
+
 export type SystemVoice = { id: string, name: string, };
+
+export type TaskHandle<T> = TaskSnapshot & { readonly __taskResult: T };
 
 export type TaskHistoryPage = { items: Array<TaskSnapshot>, total: number, };
 
@@ -253,14 +277,14 @@ export interface CommandMap {
   app_quit: { args: undefined; result: void };
   assessment_answer_submit: { args: { input: AssessmentAnswerInput }; result: AssessmentSession };
   assessment_audio_event: { args: { input: AssessmentAudioEvent }; result: AssessmentAudioReply };
-  assessment_audio_prepare: { args: { sessionId: string; itemId: string; operationId: string }; result: TaskSnapshot };
+  assessment_audio_prepare: { args: { sessionId: string; itemId: string; operationId: string }; result: TaskHandle<AudioPath> };
   assessment_audio_start: { args: { input: AssessmentAudioStart }; result: AssessmentPlayback };
-  assessment_bank_audio_prepare: { args: { input: AssessmentBankAudioInput }; result: TaskSnapshot };
+  assessment_bank_audio_prepare: { args: { input: AssessmentBankAudioInput }; result: TaskHandle<QuestionDraft> };
   assessment_bank_items: { args: { bankId: string; state?: string | null; offset: number; limit: number }; result: BankPage };
   assessment_bank_prepare: { args: { input: PrepareBank }; result: TaskSnapshot };
   assessment_bank_review: { args: { input: ReviewBank }; result: BankReviewReply };
   assessment_catalog_get: { args: undefined; result: CatalogInventory };
-  assessment_collection_commit: { args: { input: CommitAssessmentCollection }; result: TaskSnapshot };
+  assessment_collection_commit: { args: { input: CommitAssessmentCollection }; result: TaskHandle<AssessmentCollectionResult> };
   assessment_collection_prepare: { args: { input: PrepareAssessmentCollection }; result: AssessmentCollectionDraft };
   assessment_compare: { args: { first: string; second: string }; result: AssessmentComparison };
   assessment_history_list: { args: { offset: number; limit: number; comparisonKey?: string | null }; result: Page<AssessmentHistoryItem> };
@@ -287,17 +311,17 @@ export interface CommandMap {
   capture_session_get: { args: { sessionId: string }; result: ScreenSessionView };
   clipboard_listener_get: { args: undefined; result: ClipboardStatus };
   clipboard_listener_set: { args: { enabled: boolean; preferences: ClipboardPreferences }; result: ClipboardStatus };
-  collection_commit: { args: { draftId: string; targetEntryId?: string | null; expectedRevision?: number | null; saveAudio: boolean }; result: TaskSnapshot };
+  collection_commit: { args: { draftId: string; targetEntryId?: string | null; expectedRevision?: number | null; saveAudio: boolean }; result: TaskHandle<CollectionResult> };
   collection_from_example: { args: { sourceId: string; exampleId: string; text: string; kind: string; meaning: string; operationId: string }; result: PreparedCollection };
   collection_prepare: { args: { input: CollectionInput }; result: PreparedCollection };
-  connection_check: { args: { operationId: string }; result: TaskSnapshot };
+  connection_check: { args: { operationId: string }; result: TaskHandle<ConnectionStatus> };
   connection_open: { args: undefined; result: void };
-  connection_start: { args: { operationId: string; replace: boolean }; result: TaskSnapshot };
+  connection_start: { args: { operationId: string; replace: boolean }; result: TaskHandle<ConnectionStatus> };
   connection_status: { args: undefined; result: ConnectionStatus };
   entries_list: { args: { search?: string | null; offset?: number | null; limit?: number | null }; result: Array<Entry> };
   entry_get: { args: { entryId: string }; result: Entry };
   entry_update: { args: { input: EntryUpdate }; result: Entry };
-  explain_start: { args: { text: string; context: string; operationId: string }; result: TaskSnapshot };
+  explain_start: { args: { text: string; context: string; operationId: string }; result: TaskHandle<Explanation> };
   explanation_get: { args: { text: string; context: string }; result: PreparedExplanation | null };
   explanation_import: { args: { text: string; context: string; value: Explanation; modelUrl: string; modelName: string }; result: Explanation };
   explanations_prepare: { args: { sourceId?: string | null }; result: PreparationReply };
@@ -309,7 +333,7 @@ export interface CommandMap {
   media_inspect: { args: { path: string }; result: MediaInspection };
   media_path: { args: { assetId: string }; result: string };
   native_status: { args: undefined; result: NativeStatus };
-  online_query_start: { args: { text: string; provider?: string | null; operationId: string }; result: TaskSnapshot };
+  online_query_start: { args: { text: string; provider?: string | null; operationId: string }; result: TaskHandle<LookupResult> };
   plugin_install: { args: { path: string }; result: Provider };
   plugin_remove: { args: { pluginId: string }; result: Array<Provider> };
   practice_audio_save: { args: Uint8Array; result: string };
@@ -317,7 +341,7 @@ export interface CommandMap {
   practice_get: { args: undefined; result: PracticeState | null };
   practice_import: { args: { document: PracticeDocument }; result: PracticeState };
   practice_progress_save: { args: { documentId: string; progress: PracticeProgress }; result: void };
-  preview_start: { args: { sourceId: string; exampleId: string; operationId: string }; result: TaskSnapshot };
+  preview_start: { args: { sourceId: string; exampleId: string; operationId: string }; result: TaskHandle<PreviewAudio> };
   providers_list: { args: undefined; result: Array<Provider> };
   providers_update: { args: { update: ProviderUpdate }; result: Array<Provider> };
   query_copy: { args: { text: string }; result: void };
@@ -325,7 +349,7 @@ export interface CommandMap {
   replacement_clipboard_restore: { args: undefined; result: void };
   replacement_result_open: { args: undefined; result: void };
   replacement_status_get: { args: undefined; result: ReplacementStatus };
-  review_audio_start: { args: { questionId: string; operationId: string }; result: TaskSnapshot };
+  review_audio_start: { args: { questionId: string; operationId: string }; result: TaskHandle<ReviewAudio> };
   review_correct: { args: { input: CorrectionInput }; result: Attempt };
   review_hint: { args: { questionId: string }; result: string };
   review_history: { args: { unitId?: string | null; offset: number; limit: number }; result: Array<Attempt> };
@@ -336,11 +360,11 @@ export interface CommandMap {
   settings_update: { args: { settings: Settings }; result: Settings };
   source_example_update: { args: { sourceId: string; exampleId: string; revision: number; text: string; startMs: number; endMs: number }; result: CandidateExample };
   sources_list: { args: undefined; result: Array<SourceSummary> };
-  speech_start: { args: { text: string; operationId: string; voiceId?: string | null }; result: TaskSnapshot };
+  speech_start: { args: { text: string; operationId: string; voiceId?: string | null }; result: TaskHandle<SpeechAudio> };
   speech_voices: { args: undefined; result: Array<SystemVoice> };
   sync_conflicts: { args: undefined; result: Array<SyncConflictView> };
-  sync_resolve: { args: { input: ResolutionInput; operationId: string }; result: TaskSnapshot };
-  sync_start: { args: { operationId: string }; result: TaskSnapshot };
+  sync_resolve: { args: { input: ResolutionInput; operationId: string }; result: TaskHandle<SyncResolution> };
+  sync_start: { args: { operationId: string }; result: TaskHandle<SyncTaskResult> };
   sync_status: { args: undefined; result: SyncStatus };
   task_cancel: { args: { taskId: string }; result: TaskSnapshot };
   task_get: { args: { taskId: string }; result: TaskSnapshot };

@@ -23,7 +23,7 @@ export function AssessmentHistoryAudio({
         itemId,
         operationId: uid(),
       });
-      const result = await waitTask<{ path: string }>(task);
+      const result = await waitTask(task);
       setPath(result.path);
     } catch (e) {
       setError(message(e));

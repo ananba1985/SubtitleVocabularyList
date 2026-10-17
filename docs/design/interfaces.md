@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.52 |
+| 文档版本 | 0.53 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -156,6 +156,10 @@ FR-13 的 `PracticeDocument` 包含 `id,title,kind,chapters:[{title,sentences:[{
 explanation_batch 通过 task_get/list/history 查询进度与 result.preparation；通用词义或句子译文先保存再计入进度，不创建逐项成功任务。取消保存暂停偏好，退出停止当前运行，重开补齐。输入分别按词键、完整原句去重，已有值不覆盖，已掌握过滤与预习一致。CollectionSeed.meaning 仅为草稿初值，确认后走原收录接口；准备语料不自动收录或同步。
 
 0.8.25 的 result.preparation 固定结构由 preparation/progress.rs 的 PreparationProgress、SourceProgress、PreparationFailure 定义，并纳入同一个 Rust 类型导出工具。任务页引用生成类型，不再手写词／句／来源及失败明细结构；失败明细也由后端结构体序列化，source/text/message 字段保持。任务通用 result 仍是开放 JSON，各任务的其他固定结果与前端等待断言未因此全部类型化，旧历史和动态协议行也不改变；此边界与已完成的固定进度类型分别记录。
+
+0.8.27 将 13 个已知任务启动命令的返回值关联为 TaskHandle<T>，T 来自实际工作函数的 Rust 返回类型：本地解释、在线查询、预览原声、复习／系统／测试／题库音频、普通／测试收录、连接申请／检查、同步及冲突处理。TaskManager.start_typed 和网络任务适配复用原任务生命周期，只将具体 DTO 序列化为原 result；Rust 的 PhantomData<T> 不序列化，生成类型中的 __taskResult 仅为编译期关联，不是 JSON 字段或第二份结果。前端 waitTask 根据启动返回类型推导完成值，不再由各调用处声明结果结构；未关联的通用 TaskSnapshot 只能得到 unknown。
+
+重新启动同一成功任务时，核对旧结果可按 T 完整读回且不丢字段，继续返回同一回执；进行中进度仍为开放 JSON，不误按完成 DTO 读取。task_get、任务事件、历史及旧快照仍使用原 TaskSnapshot，不增命令、不增数据库字段、不重写历史。新增固定 DTO 由同一工具生成，完整测试收录回执及同步的 assessment 状态也纳入该类型图。对应最小正常证据见[性能记录 §28](../testing/performance-results.md#28-0827-已知异步任务结果类型关联)。
 
 0.6.2 的 current/total 为通用词义与句子译文项之和，包含生成、复用、跳过和未完成；sources[].current/total 为处理归属，failures 保留前 20 条原因。新任务分别显示词／句数量，不用分集候选总和代替全局词数。旧批次仍按旧词语语境口径显示，不重写历史。候选统计与任务轮询分开读取。
 
@@ -388,3 +392,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.50 | 2026-10-17 | 明确站点内部检查点存储和已校验差量复用不改变线上或 IPC 字段，保持完整回退响应 |
 | 0.51 | 2026-10-17 | 明确报告按业务内容复用及本机查询位置语义，保持命令参数、DTO 字段和原报告 JSON |
 | 0.52 | 2026-10-17 | 准备进度、分来源统计与失败明细由 Rust 生成给任务页，保留通用动态结果与旧历史边界 |
+| 0.53 | 2026-10-17 | 13 个已知启动命令通过 TaskHandle 关联具体完成 DTO，移除等待结果手写断言，保留原 JSON、进度及历史 |

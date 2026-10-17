@@ -3,7 +3,6 @@ use crate::error::AppError;
 use crate::{
     corpus::CandidateExample,
     reviews::{AnswerInput, Attempt, CorrectionInput, Question, ReviewUnit},
-    tasks::TaskSnapshot,
     windows_native::SystemVoice,
 };
 use std::sync::Arc;
@@ -73,7 +72,7 @@ pub(crate) async fn review_audio_start(
     app: AppState<'_>,
     question_id: String,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::tasks::results::ReviewAudio>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.review_audio_start(question_id, operation_id)).await
 }
@@ -140,7 +139,7 @@ pub(crate) async fn speech_start(
     text: String,
     operation_id: String,
     voice_id: Option<String>,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::tasks::results::SpeechAudio>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.speech_start(text, operation_id, voice_id)).await
 }

@@ -4,7 +4,7 @@ use crate::{
     application::{Application, assessment_model_content},
     error::AppError,
     store::Store,
-    tasks::{TaskContext, TaskSnapshot},
+    tasks::{TaskContext, TaskHandle, TaskSnapshot},
     vocabulary::{digest, normalize},
 };
 use chrono::Utc;
@@ -793,16 +793,16 @@ impl Application {
         self: &Arc<Self>,
         content: QuestionDraft,
         operation_id: String,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<QuestionDraft>, AppError> {
         content.validate("listening", false, self.store.root())?;
         let hash = digest(&serde_json::to_vec(&content)?);
         let app = Arc::clone(self);
         self.tasks
-            .start("speech", &operation_id, &hash, move |context| {
+            .start_typed("speech", &operation_id, &hash, move |context| {
                 context.subject("题库音频核对");
                 let mut items = vec![("listening".to_owned(), content)];
                 app.assessment_prepare_audio(&mut items, &context)?;
-                Ok(serde_json::to_value(items.remove(0).1)?)
+                Ok(items.remove(0).1)
             })
     }
     pub fn assessment_bank_prepare(

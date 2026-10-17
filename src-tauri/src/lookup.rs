@@ -1,16 +1,18 @@
-use crate::{application::Application, error::AppError, tasks::TaskSnapshot, vocabulary::digest};
+use crate::{application::Application, error::AppError, tasks::TaskHandle, vocabulary::digest};
 use scraper::{ElementRef, Html, Selector};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{io::Read, time::Duration};
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Definition {
     text: String,
     part_of_speech: String,
     example: String,
 }
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LookupResult {
     query: String,
@@ -156,7 +158,7 @@ impl Application {
         text: String,
         provider: String,
         operation_id: String,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<LookupResult>, AppError> {
         if self.settings()?.offline_mode {
             return Err(AppError::new(
                 "offline_mode",
@@ -176,7 +178,7 @@ impl Application {
             ));
         }
         let hash = digest(serde_json::to_vec(&(&text, &provider))?.as_slice());
-        self.start_network_task("online_query",&operation_id,&hash,move|context|{
+        self.start_network_task_typed("online_query",&operation_id,&hash,move|context|{
             context.subject(&text);
             context.check_cancelled()?;context.progress("query",0,1,"正在执行本次在线查询，仅发送当前查询文字");
             let mut url=reqwest::Url::parse(if provider=="translation"{"https://api.mymemory.translated.net/get"}else{"https://en.wiktionary.org/w/api.php"}).unwrap();
@@ -189,7 +191,7 @@ impl Application {
             let mut bytes=vec![];response.take(1_000_001).read_to_end(&mut bytes).map_err(|_|AppError::new("network_unavailable","在线查询响应中断，当前草稿保留。"))?;context.check_cancelled()?;
             if bytes.len()>1_000_000{return Err(AppError::new("invalid_data","在线查询响应过大，当前草稿保留。"));}
             let value:Value=serde_json::from_slice(&bytes).map_err(|_|AppError::new("invalid_data","在线查询响应无法读取，当前草稿保留。"))?;
-            Ok(serde_json::to_value(if provider=="translation"{translation(&text,&value)?}else{dictionary(&text,&value)?})?)
+            Ok(if provider=="translation"{translation(&text,&value)?}else{dictionary(&text,&value)?})
         })
     }
 }

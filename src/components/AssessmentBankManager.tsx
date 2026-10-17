@@ -166,7 +166,7 @@ export function AssessmentBankManager({
       const task = await mutate("assessment_bank_audio_prepare", {
         content: draft,
       });
-      setDraft(await waitTask<AssessmentDraft>(task));
+      setDraft(await waitTask(task));
       setNotice("本地英语音频已重新生成，请试听并核对后保存或批准。");
     } catch (e) {
       setError(message(e));

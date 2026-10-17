@@ -80,7 +80,7 @@ export function CollectionModal({
         context,
         operationId: uid(),
       });
-      setExplanation(await waitTask<Explanation>(started, setTask));
+      setExplanation(await waitTask(started, setTask));
     } catch (error) {
       setError(message(error));
     } finally {

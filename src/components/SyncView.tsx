@@ -69,7 +69,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
           ? await call(command, { operationId, replace })
           : await call(command, { operationId });
       setTaskId(task.id);
-      await waitTask<ConnectionStatus>(task);
+      await waitTask(task);
       await refresh();
     } catch (e) {
       setError(message(e));
@@ -87,7 +87,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
         operationId: uid(),
       });
       setTaskId(task.id);
-      const result = await waitTask<SyncResult>(task);
+      const result = await waitTask(task);
       const a = result.assessment;
       setNotice(
         `已拉取 ${result.pulled} 次词条变更，发送 ${result.pushed} 份词条资料。${result.conflicts ? `还有 ${result.conflicts} 项词条需要确认。` : ""}${a ? (a.capability !== "assessment-1" && a.pending ? "水平测试记录仍待站点支持。" : `水平测试：${a.pending} 次待发送，${a.conflicts} 次冲突，${a.pendingReferences} 处词条关联待同步。`) : ""}`,

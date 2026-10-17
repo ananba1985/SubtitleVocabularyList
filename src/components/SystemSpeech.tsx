@@ -30,7 +30,7 @@ export function SystemSpeech({
         operationId: uid(),
       });
       setTask(started);
-      const audio = await waitTask<{ path: string; voice: SystemVoice }>(
+      const audio = await waitTask(
         started,
         setTask,
       );

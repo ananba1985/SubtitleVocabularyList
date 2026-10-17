@@ -291,7 +291,7 @@ export function QueryView() {
         return;
       }
       speechTask.current = task.id;
-      const result = await waitTask<{ path: string }>(task);
+      const result = await waitTask(task);
       if (epoch === speechEpoch.current) {
         setSpeechPath(result.path);
         speechTask.current = null;

@@ -7,7 +7,7 @@ use crate::{
     synchronization::{
         ChangePage, Push, PushReply, Remote, RemoteChange, RemoteDocument, SyncConflict, SyncStatus,
     },
-    tasks::TaskSnapshot,
+    tasks::{TaskHandle, results::{SyncTaskResult, SyncResolution}},
     vocabulary::digest,
 };
 use reqwest::blocking::Client;
@@ -480,13 +480,13 @@ impl Application {
             Ok(vec![])
         }
     }
-    pub fn sync_start(self: &Arc<Self>, operation: String) -> Result<TaskSnapshot, AppError> {
+    pub fn sync_start(self: &Arc<Self>, operation: String) -> Result<TaskHandle<SyncTaskResult>, AppError> {
         let mut remote = HttpRemote::new(Arc::clone(self))?;
         let scope = remote.scope();
         let store = Arc::clone(&self.store);
         let guard = Arc::clone(&self.sync_guard);
         let hash = digest(scope.as_bytes());
-        self.start_network_task("sync", &operation, &hash, move |context| {
+        self.start_network_task_typed("sync", &operation, &hash, move |context| {
             remote.cancelled = Some(Arc::clone(&context.cancelled));
             let _guard = guard
                 .try_lock()
@@ -507,29 +507,27 @@ impl Application {
                     )
                 })?;
             let assessment = remote.sync_assessments(&scope, &context)?;
-            let mut result = serde_json::to_value(result)?;
-            result["assessment"] = serde_json::to_value(assessment)?;
-            Ok(result)
+            Ok(SyncTaskResult { entries: result, assessment })
         })
     }
     pub fn sync_resolve(
         self: &Arc<Self>,
         input: crate::synchronization::ResolutionInput,
         operation: String,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<SyncResolution>, AppError> {
         let mut remote = HttpRemote::new(Arc::clone(self))?;
         let scope = remote.scope();
         let store = Arc::clone(&self.store);
         let guard = Arc::clone(&self.sync_guard);
         let hash = digest(serde_json::to_vec(&json!([scope, input]))?.as_slice());
-        self.start_network_task("sync_resolve", &operation, &hash, move |context| {
+        self.start_network_task_typed("sync_resolve", &operation, &hash, move |context| {
             let _guard = guard
                 .try_lock()
                 .map_err(|_| failure("sync_busy", "请等待已有同步结束再处理。"))?;
             context.check_cancelled()?;
             remote.account()?;
             store.synchronization_resolve(&scope, &input, &mut remote, &context.cancelled)?;
-            Ok(json!({"resolved":true}))
+            Ok(SyncResolution { resolved: true })
         })
     }
 }

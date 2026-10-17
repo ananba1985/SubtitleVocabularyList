@@ -2,7 +2,6 @@ use super::{AppState, background};
 use crate::error::AppError;
 use crate::{
     application::{PreparedCollection, example_input_from_corpus},
-    tasks::TaskSnapshot,
     vocabulary::{CollectionInput, Entry, EntryUpdate},
 };
 use std::path::PathBuf;
@@ -80,7 +79,7 @@ pub(crate) async fn collection_commit(
     target_entry_id: Option<String>,
     expected_revision: Option<i64>,
     save_audio: bool,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::vocabulary::CollectionResult>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.commit(draft_id, target_entry_id, expected_revision, save_audio)).await
 }
@@ -91,7 +90,7 @@ pub(crate) async fn preview_start(
     source_id: String,
     example_id: String,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::tasks::results::PreviewAudio>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.preview_start(source_id, example_id, operation_id)).await
 }

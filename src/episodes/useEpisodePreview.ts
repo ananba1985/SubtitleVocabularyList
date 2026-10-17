@@ -317,7 +317,7 @@ export function useEpisodePreview({
         exampleId: example.id,
         operationId: uid(),
       });
-      const result = await waitTask<{ path: string; asset: AudioAsset }>(task);
+      const result = await waitTask(task);
       if (
         version !== selectionVersion.current ||
         selection !== activeSelectionRef.current

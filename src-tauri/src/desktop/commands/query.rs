@@ -1,6 +1,6 @@
 use super::{AppState, background};
 use crate::error::AppError;
-use crate::{desktop_capture, tasks::TaskSnapshot};
+use crate::desktop_capture;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
@@ -234,7 +234,7 @@ pub(crate) async fn explain_start(
     text: String,
     context: String,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::explanations::Explanation>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.explain_start(text, context, operation_id)).await
 }
@@ -245,7 +245,7 @@ pub(crate) async fn online_query_start(
     text: String,
     provider: Option<String>,
     operation_id: String,
-) -> Result<TaskSnapshot, AppError> {
+) -> Result<crate::tasks::TaskHandle<crate::lookup::LookupResult>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || {
         app.online_query_start(

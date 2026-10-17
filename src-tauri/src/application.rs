@@ -5,7 +5,7 @@ use crate::{
     media::{self, MediaTools},
     model_gate::ModelGate,
     store::Store,
-    tasks::{TaskContext, TaskManager, TaskSnapshot},
+    tasks::{TaskContext, TaskHandle, TaskManager, TaskSnapshot},
     vocabulary::{self, CollectionInput, Entry},
 };
 use serde::{Deserialize, Serialize};
@@ -99,13 +99,13 @@ impl Application {
         &self,
         question_id: String,
         operation_id: String,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<crate::tasks::results::ReviewAudio>, AppError> {
         let question = self.store.review_audio(&question_id)?;
         let store = Arc::clone(&self.store);
         let settings = self.settings()?;
         let hash = vocabulary::digest(question_id.as_bytes());
         self.tasks
-            .start("review_audio", &operation_id, &hash, move |context| {
+            .start_typed("review_audio", &operation_id, &hash, move |context| {
                 context.subject("听力测验");
                 context.check_cancelled()?;
                 let path = if let Some(asset_id) = &question.asset_id {
@@ -154,7 +154,7 @@ impl Application {
                 };
                 context.check_cancelled()?;
                 store.review_audio_prepared(&question_id)?;
-                Ok(json!({"path":path,"kind":question.audio_kind}))
+                Ok(crate::tasks::results::ReviewAudio { path, kind: question.audio_kind })
             })
     }
     #[cfg(all(windows, feature = "desktop"))]
@@ -163,7 +163,7 @@ impl Application {
         text: String,
         operation_id: String,
         voice_id: Option<String>,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<crate::tasks::results::SpeechAudio>, AppError> {
         if text.trim().is_empty() || text.chars().count() > 20000 || text.contains('\0') {
             return Err(AppError::new(
                 "invalid_input",
@@ -177,7 +177,7 @@ impl Application {
         let store = Arc::clone(&self.store);
         let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &settings.system_voice))?);
         self.tasks
-            .start("speech", &operation_id, &hash, move |context| {
+            .start_typed("speech", &operation_id, &hash, move |context| {
                 context.subject(&text);
                 context.progress("speech", 0, 1, "正在准备 Windows 本地英语语音");
                 context.check_cancelled()?;
@@ -226,7 +226,7 @@ impl Application {
                     let _ = std::fs::remove_file(&temporary);
                     result?;
                 }
-                Ok(json!({"path":path,"kind":"system","voice":voice}))
+                Ok(crate::tasks::results::SpeechAudio { path, kind: "system".into(), voice })
             })
     }
     pub fn new(store: Arc<Store>, tasks: Arc<TaskManager>, defaults: Settings) -> Self {
@@ -299,6 +299,18 @@ impl Application {
                 }
                 result
             })
+    }
+
+    pub(crate) fn start_network_task_typed<T, F>(
+        &self, kind: &str, operation_id: &str, request_hash: &str, worker: F,
+    ) -> Result<TaskHandle<T>, AppError>
+    where
+        T: Serialize + serde::de::DeserializeOwned,
+        F: FnOnce(TaskContext) -> Result<T, AppError> + Send + 'static,
+    {
+        TaskHandle::new(self.start_network_task(kind, operation_id, request_hash, move |context| {
+            Ok(serde_json::to_value(worker(context)?)?)
+        })?)
     }
 
     pub fn settings(&self) -> Result<Settings, AppError> {
@@ -457,7 +469,7 @@ impl Application {
         target_entry_id: Option<String>,
         expected_revision: Option<i64>,
         save_audio: bool,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<vocabulary::CollectionResult>, AppError> {
         let mut input = self
             .drafts
             .lock()
@@ -471,7 +483,7 @@ impl Application {
         let hash = vocabulary::digest(&serde_json::to_vec(&(input.clone(), save_audio))?);
         let store = Arc::clone(&self.store);
         let tools = self.settings()?.tools;
-        self.tasks.start("collection",&operation,&hash,move|context|{
+        self.tasks.start_typed("collection",&operation,&hash,move|context|{
             context.subject(&input.text);
             for index in 0..input.examples.len(){
                 context.check_cancelled()?;
@@ -489,7 +501,7 @@ impl Application {
             }
             context.check_cancelled()?;
             let result=store.collect(&input)?;
-            Ok(serde_json::to_value(result)?)
+            Ok(result)
         })
     }
 
@@ -498,12 +510,12 @@ impl Application {
         source_id: String,
         example_id: String,
         operation_id: String,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<crate::tasks::results::PreviewAudio>, AppError> {
         let hash = vocabulary::digest(format!("{source_id}:{example_id}").as_bytes());
         let store = Arc::clone(&self.store);
         let tools = self.settings()?.tools;
         self.tasks
-            .start("preview", &operation_id, &hash, move |context| {
+            .start_typed("preview", &operation_id, &hash, move |context| {
                 use rusqlite::OptionalExtension;
                 let subject: Option<String> = store
                     .connection()?
@@ -519,7 +531,7 @@ impl Application {
                 let asset =
                     store.ensure_clip(&tools, &source_id, &example_id, &context.cancelled)?;
                 let path = store.media_file(&asset.id)?;
-                Ok(json!({"asset":asset,"path":path}))
+                Ok(crate::tasks::results::PreviewAudio { asset, path })
             })
     }
 
@@ -528,7 +540,7 @@ impl Application {
         text: String,
         context_text: String,
         operation_id: String,
-    ) -> Result<TaskSnapshot, AppError> {
+    ) -> Result<TaskHandle<Explanation>, AppError> {
         explanations::validate_input(&text, &context_text)?;
         let text = text.trim().to_owned();
         let settings = self.settings()?;
@@ -536,7 +548,7 @@ impl Application {
         let model_gate = Arc::clone(&self.model_gate);
         let hash = vocabulary::digest(&serde_json::to_vec(&(&text, &context_text))?);
         self.tasks
-            .start("explanation", &operation_id, &hash, move |context| {
+            .start_typed("explanation", &operation_id, &hash, move |context| {
                 context.subject(&text);
                 context.progress("model", 0, 1, "正在取得本地解释");
                 let (value, _) = generate_explanation(
@@ -547,7 +559,7 @@ impl Application {
                     &context_text,
                     &context,
                 )?;
-                Ok(serde_json::to_value(value)?)
+                Ok(value)
             })
     }
 

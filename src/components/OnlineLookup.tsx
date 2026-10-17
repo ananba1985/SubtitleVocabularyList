@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { call, message, uid, waitTask } from "../api";
+import type { LookupResult } from "../generated/ipc";
 
-interface Result {
-  query: string;
-  source: string;
-  sourceUrl: string;
-  definitions: { text: string; partOfSpeech: string; example: string }[];
-}
 export function OnlineLookup({
   text,
   onMeaning,
@@ -14,7 +9,7 @@ export function OnlineLookup({
   text: string;
   onMeaning?: (meaning: string) => void;
 }) {
-  const [result, setResult] = useState<Result | null>(null),
+  const [result, setResult] = useState<LookupResult | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [taskId, setTaskId] = useState<string | null>(null);
@@ -29,7 +24,7 @@ export function OnlineLookup({
         operationId: uid(),
       });
       setTaskId(task.id);
-      setResult(await waitTask<Result>(task));
+      setResult(await waitTask(task));
     } catch (e) {
       setError(message(e));
     } finally {

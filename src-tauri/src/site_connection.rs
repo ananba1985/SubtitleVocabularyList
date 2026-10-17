@@ -25,7 +25,7 @@ mod desktop {
     use crate::{
         application::Application,
         credentials::{self, SiteCredential},
-        tasks::TaskSnapshot,
+        tasks::TaskHandle,
         vocabulary::digest,
     };
     use chrono::Utc;
@@ -144,7 +144,7 @@ mod desktop {
             &self,
             operation_id: String,
             replace: bool,
-        ) -> Result<TaskSnapshot, AppError> {
+        ) -> Result<TaskHandle<ConnectionStatus>, AppError> {
             if Uuid::parse_str(&operation_id).is_err() {
                 return Err(AppError::new("invalid_input", "连接操作标识无效。"));
             }
@@ -182,7 +182,7 @@ mod desktop {
             let hash = digest(format!("{site}:{}", credential.request_id).as_bytes());
             let store = Arc::clone(&self.store);
             let guard = Arc::clone(&self.connection_guard);
-            self.start_network_task("site_connection",&operation_id,&hash,move|context| {
+            self.start_network_task_typed("site_connection",&operation_id,&hash,move|context| {
                 context.check_cancelled()?;context.progress("connection",0,1,"正在准备真实站点账号连接");
                 let response=client()?.post(format!("{site}/api/desktop/requests")).json(&json!({"requestId":credential.request_id,"tokenHash":digest(credential.token.as_bytes()),"deviceName":credential.device_name})).send().map_err(|_|AppError::new("network_unavailable","无法连接站点，请稍后重试；连接请求与本地内容已保留。"))?;
                 let value=read_response(response)?;context.check_cancelled()?;
@@ -192,17 +192,17 @@ mod desktop {
                 let _guard=guard.lock().map_err(|_|AppError::new("internal_error","站点连接状态不可用。"))?;
                 if credentials::load(store.root(),&site)?.is_none_or(|current|current.request_id!=credential.request_id){return Err(AppError::new("conflict","连接请求已变化，请检查当前请求。"));}
                 credentials::save(store.root(),&site,&credential)?;
-                Ok(serde_json::to_value(status(&site,false,Some(&credential)))?)
+                Ok(status(&site,false,Some(&credential)))
             })
         }
-        pub fn connection_check(&self, operation_id: String) -> Result<TaskSnapshot, AppError> {
+        pub fn connection_check(&self, operation_id: String) -> Result<TaskHandle<ConnectionStatus>, AppError> {
             let site = require_online(self)?;
             let credential = credentials::load(self.store.root(), &site)?
                 .ok_or_else(|| AppError::new("auth_required", "请先发起站点连接。"))?;
             let store = Arc::clone(&self.store);
             let guard = Arc::clone(&self.connection_guard);
             let hash = digest(format!("{site}:{}:check", credential.request_id).as_bytes());
-            self.start_network_task(
+            self.start_network_task_typed(
                 "site_connection_check",
                 &operation_id,
                 &hash,
@@ -262,7 +262,7 @@ mod desktop {
                     if server_state != "approved" {
                         result.state = server_state.into();
                     }
-                    Ok(serde_json::to_value(result)?)
+                    Ok(result)
                 },
             )
         }

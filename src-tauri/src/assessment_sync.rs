@@ -97,6 +97,22 @@ pub(crate) struct PreparedPacket {
     epoch: i64,
     packet: AssessmentPacket,
     hash: String,
+    inputs: ProjectionInputs,
+}
+#[derive(Default)]
+struct ProjectionInputs {
+    items: Vec<ItemInput>,
+    reports: BTreeMap<i64, ReportInput>,
+}
+struct ItemInput {
+    digest: String,
+    media: Option<MediaReference>,
+}
+#[derive(Clone)]
+struct ReportInput {
+    digest: String,
+    projected_digest: String,
+    aliases: BTreeMap<String, Option<String>>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
@@ -247,11 +263,18 @@ fn rewrite_entry_references(
     v: &mut Value,
     outbound: bool,
 ) -> Result<(), AppError> {
+    rewrite_references(v, &mut |id| entry_alias(c, scope, id, outbound))
+}
+
+fn rewrite_references(
+    v: &mut Value,
+    alias: &mut impl FnMut(&str) -> Result<Option<String>, AppError>,
+) -> Result<(), AppError> {
     if let Some(o) = v.as_object_mut() {
         for (k, v) in o.iter_mut() {
             if matches!(k.as_str(), "entryId" | "entry_id") {
                 if let Some(id) = v.as_str() {
-                    if let Some(mapped) = entry_alias(c, scope, id, outbound)? {
+                    if let Some(mapped) = alias(id)? {
                         *v = json!(mapped);
                     }
                 }
@@ -259,25 +282,35 @@ fn rewrite_entry_references(
                 if let Some(a) = v.as_array_mut() {
                     for id in a {
                         if let Some(text) = id.as_str() {
-                            if let Some(mapped) = entry_alias(c, scope, text, outbound)? {
+                            if let Some(mapped) = alias(text)? {
                                 *id = json!(mapped);
                             }
                         }
                     }
                 }
             } else {
-                rewrite_entry_references(c, scope, v, outbound)?;
+                rewrite_references(v, alias)?;
             }
         }
     } else if let Some(a) = v.as_array_mut() {
         for v in a {
-            rewrite_entry_references(c, scope, v, outbound)?;
+            rewrite_references(v, alias)?;
         }
     }
     Ok(())
 }
 impl AssessmentPacket {
     pub fn validate(&self) -> Result<(), AppError> {
+        self.validate_projection(None, &HashSet::new())
+    }
+
+    // Only locally built projections can reuse previously validated immutable parts.
+    // Incoming packets always use validate(), and all cross-record checks still run.
+    fn validate_projection(
+        &self,
+        previous: Option<&PreparedPacket>,
+        reused_items: &HashSet<usize>,
+    ) -> Result<(), AppError> {
         let s = &self.session;
         s.config.validate()?;
         if self.protocol != "assessment-1"
@@ -302,11 +335,14 @@ impl AssessmentPacket {
             if !interaction.audio_seconds.is_finite() || interaction.audio_seconds < 0.0 {
                 return Err(invalid("测试播放状态无效。"));
             }
-            i.snapshot.content.validate(
-                &i.snapshot.question_type,
-                false,
-                std::path::Path::new(""),
-            )?;
+            if !reused_items.contains(&i.position) {
+                let _timing = crate::local_profile::phase("assessment.item_validate");
+                i.snapshot.content.validate(
+                    &i.snapshot.question_type,
+                    false,
+                    std::path::Path::new(""),
+                )?;
+            }
             if !uuid(&i.id)
                 || !items.insert(&i.id)
                 || !positions.insert(i.position)
@@ -378,12 +414,30 @@ impl AssessmentPacket {
             }
         }
         let mut reports = HashSet::new();
+        let old_reports = previous
+            .filter(|p| p.id == s.id)
+            .map(|p| {
+                p.packet
+                    .reports
+                    .iter()
+                    .map(|r| (r.digest.as_str(), r.report_json.as_str()))
+                    .collect::<BTreeMap<_, _>>()
+            })
+            .unwrap_or_default();
         for r in &self.reports {
-            let report: AssessmentReport = serde_json::from_str(&r.report_json)?;
-            if report.session_id != s.id
-                || !reports.insert(&r.digest)
-                || digest(r.report_json.as_bytes()) != r.digest
+            if !reports.insert(&r.digest) {
+                return Err(invalid("测试报告摘要或会话关联无效。"));
+            }
+            if old_reports
+                .get(r.digest.as_str())
+                .is_some_and(|raw| *raw == r.report_json)
             {
+                let _timing = crate::local_profile::phase("assessment.report_validate_reuse");
+                continue;
+            }
+            let _timing = crate::local_profile::phase("assessment.report_validate");
+            let report: AssessmentReport = serde_json::from_str(&r.report_json)?;
+            if report.session_id != s.id || digest(r.report_json.as_bytes()) != r.digest {
                 return Err(invalid("测试报告摘要或会话关联无效。"));
             }
         }
@@ -409,13 +463,13 @@ impl AssessmentPacket {
 
 pub(crate) fn export_on(
     c: &Connection,
-    root: &std::path::Path,
+    _root: &std::path::Path,
     scope: &str,
     id: &str,
 ) -> Result<AssessmentPacket, AppError> {
     let base = load_base(c, scope, id)?;
     let mut settings = Vec::new();
-    let packet = export_with_base(c, root, scope, id, base.as_ref(), None, &mut settings)?;
+    let (packet, _) = export_with_base(c, scope, id, base.as_ref(), None, None, &mut settings)?;
     write_settings(c, &settings)?;
     Ok(packet)
 }
@@ -450,14 +504,26 @@ fn write_settings(c: &Connection, settings: &[(String, String)]) -> Result<(), A
 
 fn export_with_base(
     c: &Connection,
-    root: &std::path::Path,
     scope: &str,
     id: &str,
     base: Option<&AssessmentDocument>,
     prepared_report: Option<&PreparedReport>,
+    previous: Option<&PreparedPacket>,
     settings: &mut Vec<(String, String)>,
-) -> Result<AssessmentPacket, AppError> {
+) -> Result<(AssessmentPacket, ProjectionInputs), AppError> {
     let _timing = crate::local_profile::phase("assessment.export");
+    let previous = previous.filter(|p| p.scope == scope && p.id == id);
+    let old_reports = previous
+        .map(|p| {
+            p.packet
+                .reports
+                .iter()
+                .map(|r| (r.digest.as_str(), r))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let mut inputs = ProjectionInputs::default();
+    let mut reused_items = HashSet::new();
     let s = load_session(c, id)?;
     let origin = if let Some(base) = base {
         base.bundle.origin_device_id.clone()
@@ -500,24 +566,50 @@ fn export_with_base(
     let mut items = Vec::new();
     let mut media = std::collections::BTreeSet::new();
     for (id, position, snapshot, interaction) in rows {
-        let snapshot: FrozenItem = serde_json::from_str(&snapshot)?;
-        if let Some(audio) = &snapshot.content.audio {
-            if audio.kind == "original" {
-                let format = std::path::Path::new(&audio.relative_path)
-                    .extension()
-                    .and_then(|v| v.to_str())
-                    .unwrap_or("wav")
-                    .to_owned();
-                media.insert(MediaReference {
+        let source_digest = digest(snapshot.as_bytes());
+        let cached = previous
+            .and_then(|p| {
+                p.packet
+                    .items
+                    .get(position)
+                    .zip(p.inputs.items.get(position))
+            })
+            .filter(|(item, input)| {
+                item.id == id && item.position == position && input.digest == source_digest
+            });
+        let (snapshot, reference) = if let Some((item, input)) = cached {
+            let _timing = crate::local_profile::phase("assessment.item_reuse");
+            reused_items.insert(position);
+            (item.snapshot.clone(), input.media.clone())
+        } else {
+            let _timing = crate::local_profile::phase("assessment.item_project");
+            let snapshot: FrozenItem = serde_json::from_str(&snapshot)?;
+            let reference = snapshot
+                .content
+                .audio
+                .as_ref()
+                .filter(|a| a.kind == "original")
+                .map(|audio| MediaReference {
                     digest: audio.sha256.clone(),
-                    format,
+                    format: std::path::Path::new(&audio.relative_path)
+                        .extension()
+                        .and_then(|v| v.to_str())
+                        .unwrap_or("wav")
+                        .to_owned(),
                 });
-            }
+            (portable(&snapshot)?, reference)
+        };
+        inputs.items.push(ItemInput {
+            digest: source_digest,
+            media: reference.clone(),
+        });
+        if let Some(reference) = reference {
+            media.insert(reference);
         }
         items.push(ItemFacts {
             id,
             position,
-            snapshot: portable(&snapshot)?,
+            snapshot,
             interaction_json: interaction,
         });
     }
@@ -569,15 +661,54 @@ fn export_with_base(
     {
         let (raw, slot) = row?;
         if let Some(report) = retained_by_slot.get(&slot.to_string()) {
+            let _timing = crate::local_profile::phase("assessment.report_reuse");
             reports.insert(report.digest.clone(), (*report).clone());
             continue;
         }
+        let source_digest = digest(raw.as_bytes());
+        if let Some(input) = previous.and_then(|p| p.inputs.reports.get(&slot)) {
+            let mut unchanged = input.digest == source_digest;
+            if unchanged {
+                for (entry, mapped) in &input.aliases {
+                    if entry_alias(c, scope, entry, true)? != *mapped {
+                        unchanged = false;
+                        break;
+                    }
+                }
+            }
+            if unchanged {
+                if let Some(report) = old_reports.get(input.projected_digest.as_str()) {
+                    let _timing = crate::local_profile::phase("assessment.report_reuse");
+                    settings.push((report_slot_key(id, &report.digest), slot.to_string()));
+                    reports.insert(report.digest.clone(), (*report).clone());
+                    inputs.reports.insert(slot, input.clone());
+                    continue;
+                }
+            }
+        }
+        let _timing = crate::local_profile::phase("assessment.report_project");
         let report: AssessmentReport = portable(&serde_json::from_str::<AssessmentReport>(&raw)?)?;
         let mut v = serde_json::to_value(report)?;
-        rewrite_entry_references(c, scope, &mut v, true)?;
+        let mut aliases: BTreeMap<String, Option<String>> = BTreeMap::new();
+        rewrite_references(&mut v, &mut |entry| {
+            if let Some(mapped) = aliases.get(entry) {
+                return Ok(mapped.clone());
+            }
+            let mapped = entry_alias(c, scope, entry, true)?;
+            aliases.insert(entry.to_owned(), mapped.clone());
+            Ok(mapped)
+        })?;
         let report: AssessmentReport = serde_json::from_value(v)?;
         let report_json = canonical(&report)?;
         let checksum = digest(report_json.as_bytes());
+        inputs.reports.insert(
+            slot,
+            ReportInput {
+                digest: source_digest,
+                projected_digest: checksum.clone(),
+                aliases,
+            },
+        );
         settings.push((report_slot_key(id, &checksum), slot.to_string()));
         reports.insert(
             checksum.clone(),
@@ -643,25 +774,25 @@ fn export_with_base(
         collection_links: links.into_values().collect(),
         media: media.into_iter().collect(),
     };
-    let _ = root;
-    packet.validate()?;
-    Ok(packet)
+    packet.validate_projection(previous, &reused_items)?;
+    Ok((packet, inputs))
 }
 
 // Cached digests describe complete exported facts, never a truncated history or an acknowledgement.
 fn cache_received_packet(
     c: &Connection,
-    root: &std::path::Path,
     scope: &str,
     remote: &AssessmentDocument,
-) -> Result<(AssessmentPacket, String), AppError> {
+    previous: Option<&PreparedPacket>,
+) -> Result<PreparedPacket, AppError> {
     let id = &remote.session_id;
     c.execute(
         "INSERT OR IGNORE INTO assessment_sync_accounts(account_key,updated_at) VALUES (?,?)",
         params![scope, chrono::Utc::now().timestamp_millis()],
     )?;
     let mut settings = Vec::new();
-    let packet = export_with_base(c, root, scope, id, Some(remote), None, &mut settings)?;
+    let (packet, inputs) =
+        export_with_base(c, scope, id, Some(remote), None, previous, &mut settings)?;
     write_settings(c, &settings)?;
     let hash = packet_digest(&packet)?;
     let mut references = 0usize;
@@ -676,7 +807,14 @@ fn cache_received_packet(
         |r| r.get(0),
     )?;
     c.execute("INSERT INTO assessment_sync_state(account_key,session_id,cached_epoch,cached_digest,cached_pending_references) VALUES (?,?,?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET cached_epoch=excluded.cached_epoch,cached_digest=excluded.cached_digest,cached_pending_references=excluded.cached_pending_references",params![scope,id,epoch,hash,references])?;
-    Ok((packet, hash))
+    Ok(PreparedPacket {
+        scope: scope.into(),
+        id: id.clone(),
+        epoch,
+        packet,
+        hash,
+        inputs,
+    })
 }
 
 fn equal<T: Serialize>(a: &T, b: &T) -> Result<bool, AppError> {
@@ -938,22 +1076,27 @@ fn apply_validated_on(
     Ok(())
 }
 impl Store {
+    fn previous_assessment(&self, scope: &str, id: &str) -> Option<Arc<PreparedPacket>> {
+        self.assessment_packet.lock().ok().and_then(|cached| {
+            cached
+                .as_ref()
+                .filter(|p| p.scope == scope && p.id == id)
+                .cloned()
+        })
+    }
+
     fn prepared_assessment(&self, scope: &str, id: &str) -> Result<Arc<PreparedPacket>, AppError> {
         loop {
-            let (packet, epoch, references, settings, report) = {
+            let (packet, inputs, epoch, references, settings, report) = {
                 let mut c = self.connection()?;
                 let epoch: i64 = c.query_row(
                     "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
                     [id],
                     |r| r.get(0),
                 )?;
-                let cached = self.assessment_packet.lock().ok().and_then(|v| {
-                    v.as_ref()
-                        .filter(|v| v.scope == scope && v.id == id && v.epoch == epoch)
-                        .cloned()
-                });
-                if let Some(cached) = cached {
-                    return Ok(cached);
+                let previous = self.previous_assessment(scope, id);
+                if let Some(cached) = previous.as_ref().filter(|p| p.epoch == epoch) {
+                    return Ok(Arc::clone(cached));
                 }
                 let _transaction = crate::local_profile::phase("assessment.read_tx");
                 let changes = c.total_changes();
@@ -968,13 +1111,13 @@ impl Store {
                 };
                 let base = load_base(&tx, scope, id)?;
                 let mut settings = Vec::new();
-                let packet = export_with_base(
+                let (packet, inputs) = export_with_base(
                     &tx,
-                    self.root(),
                     scope,
                     id,
                     base.as_ref(),
                     report.as_ref(),
+                    previous.as_deref(),
                     &mut settings,
                 )?;
                 let epoch: i64 = tx.query_row(
@@ -992,7 +1135,7 @@ impl Store {
                 let _commit = (tx.total_changes() != changes)
                     .then(|| crate::local_profile::phase("assessment.write_commit"));
                 tx.commit()?;
-                (packet, epoch, references, settings, report)
+                (packet, inputs, epoch, references, settings, report)
             };
             // Hashing the detached complete snapshot does not occupy the business connection.
             let hash = packet_digest(&packet)?;
@@ -1041,6 +1184,7 @@ impl Store {
                     epoch,
                     packet,
                     hash,
+                    inputs,
                 });
                 // Retain only the most recent complete packet, never one copy per historical session.
                 if let Ok(mut cached) = self.assessment_packet.lock() {
@@ -1364,6 +1508,7 @@ impl Store {
         let _encoding = crate::local_profile::phase("assessment.receive_encode");
         let remote_json = canonical(remote)?;
         drop(_encoding);
+        let previous = self.previous_assessment(scope, &remote.session_id);
         let mut c = self.connection()?;
         let _transaction = crate::local_profile::phase("assessment.receive_tx");
         let tx = c.transaction()?;
@@ -1384,13 +1529,13 @@ impl Store {
         )?;
         let local = if exists && !unchanged {
             let mut settings = Vec::new();
-            let local = export_with_base(
+            let (local, _) = export_with_base(
                 &tx,
-                self.root(),
                 scope,
                 &remote.session_id,
                 base.as_ref(),
                 None,
+                previous.as_deref(),
                 &mut settings,
             )?;
             write_settings(&tx, &settings)?;
@@ -1419,14 +1564,17 @@ impl Store {
             Ok(packet) => {
                 apply_validated_on(&tx, self.root(), scope, &packet)?;
                 tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,base_json) VALUES (?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET base_json=excluded.base_json,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL,conflict_json=NULL",params![scope,remote.session_id,remote_json])?;
-                let (_, hash) = cache_received_packet(&tx, self.root(), scope, remote)?;
+                let prepared = cache_received_packet(&tx, scope, remote, previous.as_deref())?;
                 // A merged local append must still be pushed; a plain receive is acknowledged locally.
                 let merged = local.is_some()
                     && saved.as_ref().and_then(|r| r.0.as_ref()) != local_hash.as_ref()
                     && base.is_some();
-                tx.execute("UPDATE assessment_sync_state SET acknowledged_digest=? WHERE account_key=? AND session_id=?",params![if merged{None}else{Some(hash)},scope,remote.session_id])?;
+                tx.execute("UPDATE assessment_sync_state SET acknowledged_digest=? WHERE account_key=? AND session_id=?",params![if merged{None}else{Some(&prepared.hash)},scope,remote.session_id])?;
                 let _commit = crate::local_profile::phase("assessment.write_commit");
                 tx.commit()?;
+                if let Ok(mut cached) = self.assessment_packet.lock() {
+                    *cached = Some(Arc::new(prepared));
+                }
                 Ok(true)
             }
             Err(error) => {

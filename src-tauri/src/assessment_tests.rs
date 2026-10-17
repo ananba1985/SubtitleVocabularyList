@@ -238,6 +238,10 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .unwrap();
     }
     assert_eq!(source.assessment_sync_status(scope).unwrap().pending, 1);
+    // A normal refresh before the first acknowledgement must reuse local old reports too.
+    source.connection().unwrap().execute(
+        "UPDATE assessment_sessions SET updated_at=updated_at+1 WHERE id=?", [&session.id]).unwrap();
+    assert_eq!(source.assessment_sync_status(scope).unwrap().pending, 1);
     let first = source
         .assessment_freeze_push(scope, &session.id)
         .unwrap()
@@ -344,6 +348,7 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .unwrap()
         .unwrap();
     assert_eq!(corrected.bundle.reports.len(), 3);
+    corrected.bundle.validate().unwrap(); // Independent full validation of the reused complete packet.
     assert_eq!(published.0, crate::assessment_sync::packet_digest(&corrected.bundle).unwrap());
     assert_eq!(corrected.bundle.corrections.len(), 1);
     assert_eq!(
@@ -437,6 +442,20 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
             .all(|s| s.timings["assessment.export"].calls == 1
                 && s.timings["assessment.digest"].calls == 1)
     );
+    let statuses = samples.iter().filter(|s| s.operation == "assessment.status").collect::<Vec<_>>();
+    assert_eq!(statuses.len(), 4);
+    assert_eq!(statuses[0].timings["assessment.item_project"].calls, 1);
+    assert_eq!(statuses[0].timings["assessment.report_project"].calls, 2);
+    for status in &statuses[1..] {
+        assert_eq!(status.timings["assessment.item_reuse"].calls, 1);
+        assert!(!status.timings.contains_key("assessment.item_project"));
+        assert!(!status.timings.contains_key("assessment.item_validate"));
+        assert_eq!(status.timings["assessment.report_validate_reuse"].calls, 2);
+    }
+    assert!(!statuses[1].timings.contains_key("assessment.report_project"));
+    assert!(!statuses[1].timings.contains_key("assessment.report_validate"));
+    assert_eq!(statuses[3].timings["assessment.report_project"].calls, 1);
+    assert_eq!(statuses[3].timings["assessment.report_validate"].calls, 1);
     // Both reused and newly generated reports share one metadata publication commit.
     assert!(
         samples
@@ -449,7 +468,7 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
             .iter()
             .filter(|s| s.operation == "assessment.status")
             .count(),
-        3
+        4
     );
     println!("local_profile={}", serde_json::to_string(&samples).unwrap());
     if let Some(path) = std::env::var_os("SVL_PROFILE_RESULT") {

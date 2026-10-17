@@ -209,6 +209,10 @@ fn put_row(c: &Connection, table: &str, row: &Value) -> Result<(), AppError> {
             if frozen && !same {
                 return Err(error("原学习事件存在不同内容，未修改本地词库。"));
             }
+            if same && matches!(k.as_str(), "question_json" | "result_json") {
+                // Keep the original immutable JSON bytes when only formatting differs.
+                row[k] = v.clone();
+            }
             if matches!(k.as_str(), "revision" | "hinted") {
                 row[k] = Value::from(v.as_i64().unwrap().max(row[k].as_i64().unwrap()));
             }
@@ -218,6 +222,10 @@ fn put_row(c: &Connection, table: &str, row: &Value) -> Result<(), AppError> {
         }
         if table == "media_assets" {
             row["recipe_key"] = old["recipe_key"].clone();
+        }
+        // The existing read and merge checks already establish the final persisted values.
+        if row == old {
+            return Ok(());
         }
     }
     let mut fields = row.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
@@ -316,7 +324,7 @@ fn import_on(
     entry["id"] = local.clone().into();
     put_row(c, "entries", &entry)?;
     c.execute(
-        "UPDATE entries SET archived=? WHERE id=?",
+        "UPDATE entries SET archived=?1 WHERE id=?2 AND archived IS NOT ?1",
         params![bundle.deleted, &local],
     )?;
     for table in [
@@ -382,7 +390,7 @@ fn import_on(
     }
     crate::reviews::ensure_units(c, &local, bundle.entry["created_at"].as_i64().unwrap())?;
     crate::reviews::recompute_entry(c, &local)?;
-    c.execute("UPDATE review_attempts SET revision=MAX(revision,COALESCE((SELECT MAX(expected_revision)+1 FROM review_corrections WHERE attempt_id=review_attempts.id),1)) WHERE unit_id IN (SELECT id FROM learning_units WHERE entry_id=?)",[&local])?;
+    c.execute("UPDATE review_attempts SET revision=MAX(revision,COALESCE((SELECT MAX(expected_revision)+1 FROM review_corrections WHERE attempt_id=review_attempts.id),1)) WHERE unit_id IN (SELECT id FROM learning_units WHERE entry_id=?) AND revision<COALESCE((SELECT MAX(expected_revision)+1 FROM review_corrections WHERE attempt_id=review_attempts.id),1)",[&local])?;
     Ok(local)
 }
 

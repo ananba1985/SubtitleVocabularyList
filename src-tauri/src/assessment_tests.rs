@@ -270,6 +270,9 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         )
         .unwrap()
     );
+    crate::sync_tests::observe_updates(&peer, &["assessment_session_items", "assessment_answers"]);
+    let peer_epoch: i64 = peer.connection().unwrap().query_row(
+        "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?", [&session.id], |r|r.get(0)).unwrap();
     source
         .connection()
         .unwrap()
@@ -297,6 +300,11 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .unwrap()
     );
     let reused = peer.assessment_report(&session.id, None).unwrap();
+    assert_eq!(crate::sync_tests::observed_updates(&peer, "assessment_session_items"), 0);
+    assert_eq!(crate::sync_tests::observed_updates(&peer, "assessment_answers"), 0);
+    let received_epoch: i64 = peer.connection().unwrap().query_row(
+        "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?", [&session.id], |r|r.get(0)).unwrap();
+    assert_eq!(received_epoch - peer_epoch, 2); // Session revision and new base only.
     assert_eq!(reused["revisions"].as_array().unwrap().len(), 2);
     assert_eq!(reused["report"]["counts"]["unknown"], 1);
     let slot = reused["report"]["revision"].as_i64().unwrap();
@@ -355,6 +363,7 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
     peer.assessment_sync_saved(scope, &corrected, 3).unwrap();
     assert_acknowledged(&peer);
     source.assessment_save_remote_media(media, &bytes).unwrap();
+    crate::sync_tests::observe_updates(&source, &["assessment_session_items", "assessment_answers"]);
     assert!(
         source
             .assessment_sync_receive(
@@ -367,6 +376,10 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
             )
             .unwrap()
     );
+    // This source receives for the first time: its audio path is localized and the answer revision changes.
+    assert_eq!(crate::sync_tests::observed_updates(&source, "assessment_session_items"), 1);
+    assert_eq!(crate::sync_tests::observed_updates(&source, "assessment_answers"), 1);
+    println!("receive_updates: metadata items=0 answers=0 epoch_delta=2; first return items=1 answers=1");
     let current = source.assessment_report(&session.id, None).unwrap();
     assert_eq!(current["revisions"].as_array().unwrap().len(), 3);
     assert_eq!(current["report"]["counts"]["correct"], 1);

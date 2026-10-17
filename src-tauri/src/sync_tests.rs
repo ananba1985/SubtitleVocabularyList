@@ -8,6 +8,20 @@ use crate::{
 use std::{collections::BTreeMap, sync::atomic::AtomicBool};
 use uuid::Uuid;
 
+// Passive observers count actual SQLite UPDATEs without changing business rows.
+pub(crate) fn observe_updates(store: &Store, tables: &[&str]) {
+    let c = store.connection().unwrap();
+    c.execute_batch("CREATE TEMP TABLE sync_test_updates(name TEXT PRIMARY KEY,calls INTEGER NOT NULL DEFAULT 0);").unwrap();
+    for table in tables {
+        c.execute("INSERT INTO sync_test_updates(name) VALUES (?)", [table]).unwrap();
+        c.execute_batch(&format!("CREATE TEMP TRIGGER sync_test_update_{table} AFTER UPDATE ON main.{table} BEGIN UPDATE sync_test_updates SET calls=calls+1 WHERE name='{table}'; END;")).unwrap();
+    }
+}
+
+pub(crate) fn observed_updates(store: &Store, table: &str) -> usize {
+    store.connection().unwrap().query_row("SELECT calls FROM sync_test_updates WHERE name=?", [table], |r|r.get(0)).unwrap()
+}
+
 #[derive(Default)]
 struct Server {
     docs: BTreeMap<String, RemoteDocument>,
@@ -172,7 +186,13 @@ fn sync_growth_preserves_full_history_and_reuses_transport() {
         })
         .unwrap();
     assert_eq!(sync(&second, &mut server).pushed, 1);
+    let unchanged_tables = ["entries", "meanings", "sources", "media_assets", "examples", "learning_units", "occurrences", "entry_examples", "example_media", "collection_actions", "review_attempts"];
+    observe_updates(&first, &unchanged_tables);
     sync(&first, &mut server);
+    for table in unchanged_tables {
+        assert_eq!(observed_updates(&first, table), 0, "unchanged {table} must not be rewritten");
+    }
+    println!("receive_updates: unchanged word/history tables=0; a second original answer inserted");
     let bundle = first.sync_export(&entries[0]).unwrap();
     assert_eq!(bundle.tables["review_attempts"].len(), 2);
     assert_eq!(bundle.tables["examples"].len(), 1);

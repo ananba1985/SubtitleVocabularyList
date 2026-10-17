@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PERF-001 |
-| 文档版本 | 0.19 |
+| 文档版本 | 0.20 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 核心与实装 WebView 样本通过；版本总审计继续 |
 | 依据 | NFR-03、NFR-04；TC-20、TC-21、TC-39、TC-40、TC-41；OPEN-05 |
@@ -384,7 +384,36 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib assessment_tests:
 
 2026-10-17，用户进一步授权后，在 0.8.20 上执行一次真实批准账号、既有原声词条和真人六题资料的最小正常往返，**1 passed、0 failed**。原 2 份报告数量及原文保持；两次发送回执与最终接收后的 3 次状态／冻结核对均无完整导出、摘要、读取事务或写提交标记，2 次更新接收各仅一次实际保存投影的导出／摘要。完整学习事实与原声保持，产品无需修复。真实链路的正式命令、传输与私有证据见[同步验收第 7 节](synchronization-results.md#7-0820-真实账号报告复用与回执缓存验收)；这次正常验收不与上面的本地计时样本混算，也不新增稳定性能结论。
 
-## 22 修订记录
+## 22 0.8.21 接收合并跳过未变化行
+
+2026-10-17，FR-12、FR-23、NFR-02／NFR-03。前一版已减少接收前的完整导出，但 apply 仍对已有题目、作答及词条资料执行相同值 UPDATE；SQLite 仍会运行对应 UPDATE 触发器。应用版本递增为 **0.8.21**，schema 10、IPC 和线上协议保持。
+
+### 22.1 改动
+
+1. 水平测试题目以本机最终快照／交互值判断 UPDATE，作答以修订值判断；未变行不触发其 dirty epoch 更新。
+2. 词条导入在原校验、别名映射和字段合并后，完整比较已读旧行与待保存行，跳过相同值 UPSERT。语义相同的原题目／收录回执 JSON 保留旧字节；原声配方及路径规则保持，媒体校验仍执行。
+3. 归档标记、根据修正恢复的作答修订，以及复习回放的作答前后状态均增加实际变化条件；保留完整历史重算及 review_states 原修订推进，不省略原声或历史核对。
+
+### 22.2 最小正常验证
+
+只运行以下两条已有正常流程，各一次。测试在隔离 SQLite 中安装 TEMP AFTER UPDATE 观察触发器，只计数实际更新，不修改业务行；观察表及触发器不进入生产库或迁移。
+
+```text
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib sync_tests::sync_growth_preserves_full_history_and_reuses_transport -- --exact --nocapture
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib assessment_tests::reports_reuse_business_content_across_sync_and_keep_history -- --exact --nocapture
+```
+
+| 正常流程 | 结果及直接证据 |
+| --- | --- |
+| 词条／原声／历史回传 | **1 passed、0 failed、111 filtered out**，运行 0.22 秒；接收新增第 2 条原作答时，entries、meanings、sources、media_assets、examples、learning_units、occurrences、entry_examples、example_media、collection_actions、review_attempts 共 11 类表的 UPDATE 均为 **0**。新增作答仍插入；最终 2 条作答、完整例句、原声关联及字节、原主动收录计数保持 |
+| 水平测试仅元数据变化 | **1 passed、0 failed、111 filtered out**，运行 0.42 秒；题目 UPDATE=**0**、作答 UPDATE=**0**。会话 epoch 增量为 **2**，仅来自会话同步修订与新基准；未再由未变题目／作答触发 dirty 更新 |
+| 水平测试必要变更 | 同一正常流程的真实判分修正回传时，源端首次接收需规范本机原声路径，题目 UPDATE=**1**；作答修订变化 UPDATE=**1**，证明实际变化仍保存。原 2 份报告保持，正常业务修正后为 3 份，回传不增生；旧报告原文／摘要、原回答、完整题目／例句、修正、历史列表／明细及两端合成原声字节保持 |
+
+上述运行时间均不含编译，不作耗时提升指标。本轮不再执行旧版基线、压力或额外采样；只确认实际无变化写入及相关触发器调用减少，不将 UPDATE 数换算为稳定延迟、写提交、磁盘 I/O 或带宽比例。完整读取、JSON 构建、原声校验、复习重放、必要会话／复习状态修订与提交仍有成本，并非所有接收写入均已消除。
+
+私有结果及原有操作计时输出保留在 `.local/receive-updates-0.8.21/results.json`、assessment-profile.json，均忽略于 Git。只使用合成夹具与隔离临时库，未读取日常 Data、操作真实账号、启动 GUI、打包或部署站点；上一节 0.8.20 真实往返证据保持其原范围。版本一致性及 Git 差异检查随本次交付执行。
+
+## 23 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -407,3 +436,4 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib assessment_tests:
 | 0.17 | 2026-10-17 | 记录可选本地操作／锁统计、完整会话复用及锁外计算的最小正常采样，分别报告构建次数、持锁范围与总耗时边界 |
 | 0.18 | 2026-10-17 | 记录集中派生写提交、回执缓存推进及接收重复处理减少，比较同范围 13 个本地操作并保留单样本边界 |
 | 0.19 | 2026-10-17 | 关联 0.8.20 真实正常往返中的报告数量保持、回执缓存命中和接收导出次数证据 |
+| 0.20 | 2026-10-17 | 记录词条及水平测试跳过未变行更新、实际 UPDATE／触发器计数和完整历史保持的两条最小正常验证 |

@@ -883,11 +883,11 @@ fn apply_validated_on(
                 )?;
             }
         }
-        c.execute("INSERT INTO assessment_session_items VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET snapshot_json=excluded.snapshot_json,interaction_json=excluded.interaction_json",params![row.id,s.id,row.position,canonical(&snapshot)?,row.interaction_json])?;
+        c.execute("INSERT INTO assessment_session_items VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET snapshot_json=excluded.snapshot_json,interaction_json=excluded.interaction_json WHERE assessment_session_items.snapshot_json IS NOT excluded.snapshot_json OR assessment_session_items.interaction_json IS NOT excluded.interaction_json",params![row.id,s.id,row.position,canonical(&snapshot)?,row.interaction_json])?;
     }
     for row in &packet.answers {
         let a = &row.answer;
-        c.execute("INSERT INTO assessment_answers VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision",params![a.id,s.id,a.session_item_id,canonical(a)?,row.revision,a.created_at])?;
+        c.execute("INSERT INTO assessment_answers VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision WHERE assessment_answers.revision IS NOT excluded.revision",params![a.id,s.id,a.session_item_id,canonical(a)?,row.revision,a.created_at])?;
     }
     for row in &packet.corrections {
         c.execute(

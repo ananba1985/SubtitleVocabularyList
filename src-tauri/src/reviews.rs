@@ -608,7 +608,7 @@ fn recompute(connection: &Connection, unit_id: &str) -> Result<ReviewState, AppE
                 state = state.apply(outcome, time, 0, count)?;
             }
             connection.execute(
-                "UPDATE review_attempts SET state_before_json=?,state_after_json=? WHERE id=?",
+                "UPDATE review_attempts SET state_before_json=?1,state_after_json=?2 WHERE id=?3 AND (state_before_json IS NOT ?1 OR state_after_json IS NOT ?2)",
                 params![before, serde_json::to_string(&state)?, id],
             )?;
         }

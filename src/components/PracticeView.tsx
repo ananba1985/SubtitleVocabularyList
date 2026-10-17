@@ -77,11 +77,13 @@ export function PracticeView({
   const feedback = compareCopy(sentence?.text ?? "", state?.copy ?? "");
 
   function save(value: PracticeState) {
+    const documentId = value.document.id;
+    const progress = practiceProgress(value);
     saveQueue.current = saveQueue.current
       .then(() =>
         call<void>("practice_progress_save", {
-          documentId: value.document.id,
-          progress: practiceProgress(value),
+          documentId,
+          progress,
         }),
       )
       .catch((error) => {

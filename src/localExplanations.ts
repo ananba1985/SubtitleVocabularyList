@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { call } from "./api";
-import type { Explanation } from "./types";
+import type { Explanation, TaskSnapshot } from "./types";
 
 type Snapshot = {
   state: "idle" | "loading" | "waiting" | "ready" | "error";
@@ -213,9 +213,26 @@ export function useLocalExplanation(
   useEffect(() => {
     const complete = snapshot.state === "ready" && (!includeTranslation || !current.context.trim() || !!snapshot.value?.translation);
     if (!active || !current.text || complete) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      if (document.hidden || timer) return;
+      runtime.status = undefined;
+      timer = setTimeout(() => { timer = undefined; void read(current); }, 1500);
+    };
+    const updated = (event: Event) => {
+      const task = (event as CustomEvent<TaskSnapshot>).detail;
+      if (["explanation", "explanation_batch", "import"].includes(task.kind)) refresh();
+    };
+    window.addEventListener("svl_task_updated", updated);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
     void read(current);
-    const timer = setInterval(() => void read(current), 1500);
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("svl_task_updated", updated);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [current, active, includeTranslation, snapshot.state, !!snapshot.value?.translation]);
   return { ...snapshot, retry: () => void retry(current) };
 }

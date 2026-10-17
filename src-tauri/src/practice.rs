@@ -4,7 +4,7 @@ use crate::{
     store::Store,
     vocabulary::{self, ExampleInput, SourceInput},
 };
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,23 +65,62 @@ pub struct PracticeState {
     pub progress: PracticeProgress,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedProgress {
+    document_id: String,
+    chapter_lengths: Vec<usize>,
+    #[serde(flatten)]
+    progress: PracticeProgress,
+}
+
+fn save_state(connection: &Connection, state: &PracticeState) -> Result<SavedProgress, AppError> {
+    let saved = SavedProgress {
+        document_id: state.document.id.clone(),
+        chapter_lengths: state.document.chapters.iter().map(|chapter| chapter.sentences.len()).collect(),
+        progress: state.progress.clone(),
+    };
+    connection.execute("INSERT INTO settings(key,value_json) VALUES ('practice_document',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", [serde_json::to_string(&state.document)?])?;
+    save_progress(connection, &saved)?;
+    connection.execute("DELETE FROM settings WHERE key='practice'", [])?;
+    Ok(saved)
+}
+
+fn save_progress(connection: &Connection, saved: &SavedProgress) -> Result<(), AppError> {
+    connection.execute("INSERT INTO settings(key,value_json) VALUES ('practice_progress',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", [serde_json::to_string(saved)?])?;
+    Ok(())
+}
+
+fn load_progress(connection: &Connection) -> Result<Option<SavedProgress>, AppError> {
+    let value: Option<String> = connection.query_row("SELECT value_json FROM settings WHERE key='practice_progress'", [], |row| row.get(0)).optional()?;
+    if let Some(value) = value {
+        return Ok(Some(serde_json::from_str(&value)?));
+    }
+    // Upgrade the old combined record only when this feature is read or saved.
+    let legacy: Option<String> = connection.query_row("SELECT value_json FROM settings WHERE key='practice'", [], |row| row.get(0)).optional()?;
+    legacy.map(|value| {
+        let state: PracticeState = serde_json::from_str(&value)?;
+        save_state(connection, &state)
+    }).transpose()
+}
+
 impl Store {
     pub fn practice_get(&self) -> Result<Option<PracticeState>, AppError> {
-        let value: Option<String> = self
-            .connection()?
-            .query_row(
-                "SELECT value_json FROM settings WHERE key='practice'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
-        value
-            .map(|text| serde_json::from_str(&text).map_err(AppError::from))
-            .transpose()
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let Some(saved) = load_progress(&transaction)? else { return Ok(None); };
+        let value: String = transaction.query_row("SELECT value_json FROM settings WHERE key='practice_document'", [], |row| row.get(0))?;
+        transaction.commit()?;
+        drop(connection);
+        let document: PracticeDocument = serde_json::from_str(&value)?;
+        Ok(Some(PracticeState { document, progress: saved.progress }))
     }
 
     fn practice_save(&self, state: &PracticeState) -> Result<(), AppError> {
-        self.connection()?.execute("INSERT INTO settings(key,value_json) VALUES ('practice',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", [serde_json::to_string(state)?])?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        save_state(&transaction, state)?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -159,24 +198,26 @@ impl Store {
         document_id: &str,
         progress: PracticeProgress,
     ) -> Result<(), AppError> {
-        let mut state = self
-            .practice_get()?
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let mut saved = load_progress(&transaction)?
             .ok_or_else(|| AppError::new("not_found", "请先导入练习文字。"))?;
-        if state.document.id != document_id {
+        if saved.document_id != document_id {
             return Ok(());
         }
-        if !state
-            .document
-            .chapters
+        if !saved
+            .chapter_lengths
             .get(progress.chapter_index)
-            .is_some_and(|chapter| progress.sentence_index < chapter.sentences.len())
+            .is_some_and(|length| progress.sentence_index < *length)
             || ![0.65, 0.85, 1.0].contains(&progress.speed)
             || !["original", "voice"].contains(&progress.audio_mode.as_str())
         {
             return Err(AppError::new("invalid_input", "练习位置或播放设置无效。"));
         }
-        state.progress = progress;
-        self.practice_save(&state)
+        saved.progress = progress;
+        save_progress(&transaction, &saved)?;
+        transaction.commit()?;
+        Ok(())
     }
 
     pub fn practice_audio_save(&self, bytes: &[u8]) -> Result<String, AppError> {
@@ -255,6 +296,8 @@ mod tests {
                 audio_file: Some(file.clone()),
             })
             .unwrap();
+        let saved_document: String = store.connection().unwrap().query_row("SELECT value_json FROM settings WHERE key='practice_document'", [], |row| row.get(0)).unwrap();
+        let changes = store.connection().unwrap().total_changes();
         store
             .practice_progress_save(
                 &state.document.id,
@@ -266,6 +309,8 @@ mod tests {
                 },
             )
             .unwrap();
+        assert_eq!(store.connection().unwrap().total_changes() - changes, 1);
+        assert_eq!(store.connection().unwrap().query_row("SELECT value_json FROM settings WHERE key='practice_document'", [], |row| row.get::<_, String>(0)).unwrap(), saved_document);
         let example = store.practice_example(&state.document.id, 0, 0).unwrap();
         let result = store
             .collect(&vocabulary::CollectionInput {
@@ -297,5 +342,29 @@ mod tests {
             Some("Practice fixture")
         );
         assert_eq!(entry.examples[0].start_ms, Some(0));
+    }
+
+    #[test]
+    fn legacy_reading_resumes_with_separate_document_and_progress() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let legacy = serde_json::json!({
+            "document": {"id":"legacy-reading","title":"Saved reading","kind":"TXT",
+                "chapters":[{"title":"Chapter","sentences":[{"text":"Every small step helps.","startMs":null,"endMs":null}]}],"audioFile":null},
+            "chapterIndex":0,"sentenceIndex":0,"copy":"Every small","speed":0.85,"audioMode":"voice","voiceId":"fixture-voice"
+        });
+        store.connection().unwrap().execute("INSERT INTO settings(key,value_json) VALUES ('practice',?)", [legacy.to_string()]).unwrap();
+        let state = store.practice_get().unwrap().unwrap();
+        assert_eq!(state.document.title, "Saved reading");
+        assert_eq!(state.progress.copy, "Every small");
+        assert_eq!(state.progress.voice_id, "fixture-voice");
+        store.practice_progress_save(&state.document.id, PracticeProgress { copy:"Every small step".into(), ..state.progress }).unwrap();
+        drop(store);
+        let reopened = Store::open(directory.path()).unwrap();
+        let resumed = reopened.practice_get().unwrap().unwrap();
+        assert_eq!(resumed.document.chapters[0].sentences[0].text, "Every small step helps.");
+        assert_eq!(resumed.progress.copy, "Every small step");
+        assert_eq!(resumed.progress.speed, 0.85);
+        assert_eq!(reopened.connection().unwrap().query_row("SELECT COUNT(*) FROM settings WHERE key='practice'", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
     }
 }

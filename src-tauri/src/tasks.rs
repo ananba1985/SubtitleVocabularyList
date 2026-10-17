@@ -36,6 +36,18 @@ impl TaskSnapshot {
     pub fn terminal(&self) -> bool {
         matches!(self.state.as_str(), "succeeded" | "failed" | "cancelled")
     }
+
+    pub fn update_event(&self) -> TaskUpdate<'_> {
+        TaskUpdate { task: self, visible_in_list: !foreground(&self.kind) || self.state == "failed" }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskUpdate<'a> {
+    #[serde(flatten)]
+    task: &'a TaskSnapshot,
+    visible_in_list: bool,
 }
 
 #[derive(Serialize)]

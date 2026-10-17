@@ -1,5 +1,8 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { TaskSnapshot } from "./types";
+import { waitForTask } from "./taskUpdates";
+export { terminal } from "./taskUpdates";
 export const call = <T>(command: string, args?: Record<string, unknown>) =>
   invoke<T>(command, args);
 export function message(error: unknown): string {
@@ -7,8 +10,6 @@ export function message(error: unknown): string {
     return String(error.message);
   return String(error);
 }
-export const terminal = (task: TaskSnapshot) =>
-  ["succeeded", "failed", "cancelled"].includes(task.state);
 export const uid = () => crypto.randomUUID();
 export const audioUrl = (path: string) => convertFileSrc(path);
 export function time(ms: number): string {
@@ -19,14 +20,8 @@ export async function waitTask<T>(
   task: TaskSnapshot,
   onProgress?: (task: TaskSnapshot) => void,
 ): Promise<T> {
-  let current = task;
-  while (!terminal(current)) {
-    onProgress?.(current);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    current = await call<TaskSnapshot>("task_get", { taskId: current.id });
-  }
-  onProgress?.(current);
-  if (current.state !== "succeeded")
-    throw new Error(current.error?.message ?? current.message);
-  return current.result as T;
+  return waitForTask<T>(task,
+    () => call<TaskSnapshot>("task_get", { taskId: task.id }),
+    (receive) => listen<TaskSnapshot>("task_updated", (event) => receive(event.payload)),
+    onProgress);
 }

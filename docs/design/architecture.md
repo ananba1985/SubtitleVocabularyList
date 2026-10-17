@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.36 |
+| 文档版本 | 0.37 |
 | 对应产品版本 | 0.1 基线；0.4.0 听读、0.5.0 Pot 替代、0.6.0 写作翻译及 0.7.0 底库增量 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
@@ -107,13 +107,15 @@ explanations.rs 的 prepared_explanation 优先读取已有语境释义，其次
 
 基础词库作为可选适配器分别初始化，资源异常转为 dictionaryWarnings，不传播为 Store::open 的失败；运行期 ECDICT 读取错误停用该资源，健康词典与个人资料继续使用，详见[基础词库故障隔离](base-dictionary.md#33-可选资源故障隔离0810)。
 
+0.8.11 的任务状态先订阅 task_updated 再查询当前快照，主窗口按事件更新列表，任务终态合并刷新应用信息；事件携带由原生规则计算的 visibleInList，临时成功／取消仍不进入后台列表。waitTask 复用事件等待结果，完成后释放监听。主窗口、单项等待和查询小窗只在可见且仍有未结束操作、连续 10 秒无事件时补查；恢复窗口时读取快照，空闲及隐藏窗口不常驻轮询。本地解释通过主窗口分发的准备任务通知合并读取，替代每项 1.5 秒轮询；音频播放中的位置计时保持原用途。
+
 ### 4.2 网站学习功能的本地整合（FR-13）
 
 对照现有 `english-practice/dist/app.js` 与 README，本地已有词库、例句编辑、原声、学习历史、测验及认证同步；此次新增的部分是阅读／课程导入、逐句输入与连续听读。网站的账号 API 不作为本地学习前提，原有 React／Tauri／Rust／SQLite 技术栈保持。
 
 `PracticeView.tsx` 负责章节、句子、输入反馈、速度、原声／本地语音切换、连续播放及选词；`practice.ts` 在本机解析 TXT、EPUB 阅读顺序及课程元数据。JSZip 3.10.1 通过 npm 锁文件随前端提供，采用其 MIT 许可，不引用另一个项目的运行资源。书籍 HTML 只提取文字，脚本、样式、导航与 SVG 不进入页面。
 
-Rust `practice.rs` 保存当前完整阅读与练习位置，读取旧位置及课程原声；练习设置使用 SQLite 现有 `settings` 表，不新增 schema 迁移。课程原声保存在 `media/practice`；收录按稳定章节／句子位置关联 `reading` 来源、例句，并使用既有 `collection_prepare/collection_from_example/collection_commit` 和 `ensure_clip`。日常朗读复用 SAPI 本地 WAV，练习声音覆盖只作用于此次请求，不修改全局设置。
+Rust `practice.rs` 使用 SQLite 现有 settings 表分别保存当前完整阅读 practice_document 与小型进度 practice_progress；导入及旧记录拆分使用事务，日常保存只更新进度，practice_get 保持原返回结构。旧 practice 合并记录首次读取时转换，不新增 schema 迁移。课程原声保存在 `media/practice`；收录按稳定章节／句子位置关联 `reading` 来源、例句，并使用既有 `collection_prepare/collection_from_example/collection_commit` 和 `ensure_clip`。日常朗读复用 SAPI 本地 WAV，练习声音覆盖只作用于此次请求，不修改全局设置。
 
 练习状态和完整阅读不属于同步资料包。只把用户确认收录的词条、例句、独立原声及既有学习记录送入原同步流程；抄写不更新复习成绩。实现与最低必要验证见[听读整合记录](../testing/practice-integration-results.md)，网站和安装包验收分别保持原有边界。
 
@@ -335,3 +337,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 
 | 0.35 | 2026-10-15 | 接通 assessment-1 完整测试历史、版本 27 真实往返及独立同步状态；人工体验按用户要求延期 |
 | 0.36 | 2026-10-17 | 记录可选词库故障隔离、数据库命令后台执行及逐词冻结事务；修正相关同步旧状态 |
+| 0.37 | 2026-10-17 | 记录听读正文／进度分离、旧记录事务转换、任务事件订阅与可见活跃状态下的补查，保持原技术栈 |

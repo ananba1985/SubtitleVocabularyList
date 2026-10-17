@@ -1,6 +1,6 @@
 {
   "name": "subtitle-vocabulary-list",
-  "version": "0.8.10",
+  "version": "0.8.11",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -14,6 +14,7 @@
     "version:set": "node scripts/version.mjs set",
     "test:version": "node scripts/test-version.mjs",
     "test:sources": "node --experimental-strip-types scripts/test-source-groups.mjs",
+    "test:task-updates": "node --experimental-strip-types scripts/test-task-updates.mjs",
     "tauri": "tauri",
     "desktop:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File 本地调试运行.ps1",
     "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File 本地打包运行.ps1",

@@ -1205,7 +1205,7 @@ pub fn run() {
             let tasks = TaskManager::new(
                 Arc::clone(&store),
                 Arc::new(move |snapshot| {
-                    let _ = handle.emit("task_updated", snapshot);
+                    let _ = handle.emit("task_updated", snapshot.update_event());
                 }),
             );
             tasks.recover_interrupted()?;

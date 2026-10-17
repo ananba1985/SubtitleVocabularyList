@@ -45,6 +45,7 @@ export function QueryView() {
     [options, setOptions] = useState(false);
   const [speechBusy, setSpeechBusy] = useState(false),
     [speechPath, setSpeechPath] = useState("");
+  const [windowVisible, setWindowVisible] = useState(true);
   const current = useRef<QuerySession | null>(null),
     input = useRef<HTMLTextAreaElement>(null),
     audio = useRef<HTMLAudioElement>(null),
@@ -107,7 +108,6 @@ export function QueryView() {
     const stops: (() => void)[] = [];
     const keep = (stop: () => void) => (disposed ? stop() : stops.push(stop));
     const ready = () => refresh().catch(report);
-    ready();
     call<Provider[]>("providers_list").then(setProviders).catch(report);
     call<ClipboardStatus>("clipboard_listener_get")
       .then(setClipboard)
@@ -122,9 +122,10 @@ export function QueryView() {
         refresh().catch(report);
       },
     )
-      .then(keep)
+      .then((stop) => { keep(stop); if (!disposed) ready(); })
       .catch(report);
     listen("translation_hidden", () => {
+      setWindowVisible(false);
       void stopSpeech();
       setDirty(false);
       dirtyRef.current = false;
@@ -141,6 +142,7 @@ export function QueryView() {
     getCurrentWindow()
       .onFocusChanged((e) => {
         if (e.payload) {
+          setWindowVisible(true);
           ready();
           input.current?.focus();
         } else if (
@@ -155,10 +157,6 @@ export function QueryView() {
       })
       .then(keep)
       .catch(() => {});
-    const timer = setInterval(() => {
-      if (!dirtyRef.current && current.current)
-        refresh(current.current.sessionId).catch(() => {});
-    }, 500);
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -170,11 +168,18 @@ export function QueryView() {
     return () => {
       disposed = true;
       stops.forEach((stop) => stop());
-      clearInterval(timer);
       window.removeEventListener("keydown", key);
       document.body.classList.remove("query-body");
     };
   }, []);
+  useEffect(() => {
+    if (!busy || !windowVisible || document.hidden || dirty) return;
+    const timer = setTimeout(() => {
+      if (!document.hidden && !dirtyRef.current && current.current)
+        refresh(current.current.sessionId).catch(report);
+    }, 10_000);
+    return () => clearTimeout(timer);
+  }, [session, busy, windowVisible, dirty]);
   function change(next: QueryInput) {
     setDraft(next);
     setDirty(true);

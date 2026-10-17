@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { call, message, terminal } from "./api";
 import type {
@@ -20,6 +20,7 @@ import { KnownTargetsManager } from "./components/KnownTargetsManager";
 import { PracticeView, type PracticePanel } from "./components/PracticeView";
 import { collectionQueue } from "./collectionQueue";
 import { ReplacementSettings } from "./components/ReplacementSettings";
+import { applyTaskUpdate, type TaskUpdate } from "./taskUpdates";
 
 type Tab =
   | "library"
@@ -56,17 +57,26 @@ export default function App() {
   );
   const [episodePanel, setEpisodePanel] = useState<EpisodePanel>(null);
   const [practicePanel, setPracticePanel] = useState<PracticePanel>(null);
+  const taskBuffer = useRef<Map<string, TaskUpdate> | null>(null);
   const refresh = useCallback(async () => {
-    const [nextInfo, nextTasks] = await Promise.all([
-      call<AppInfo>("app_info"),
-      call<TaskSnapshot[]>("tasks_list"),
-    ]);
-    setInfo(nextInfo);
-    setTasks(nextTasks);
+    const updates = new Map<string, TaskUpdate>();
+    taskBuffer.current = updates;
+    try {
+      const [nextInfo, nextTasks] = await Promise.all([
+        call<AppInfo>("app_info"),
+        call<TaskSnapshot[]>("tasks_list"),
+      ]);
+      if (taskBuffer.current !== updates) return;
+      setInfo(nextInfo);
+      setTasks([...updates.values()].reduce(applyTaskUpdate, nextTasks));
+      for (const task of nextTasks)
+        window.dispatchEvent(new CustomEvent("svl_task_updated", { detail: task }));
+    } finally {
+      if (taskBuffer.current === updates) taskBuffer.current = null;
+    }
   }, []);
   useEffect(() => {
     setNotice("");
-    refresh().catch((error) => setError(message(error)));
     call<Settings>("settings_get")
       .then(setSettings)
       .catch((error) => setError(message(error)));
@@ -144,9 +154,49 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    const timer = setInterval(() => refresh().catch(() => {}), 1000);
-    return () => clearInterval(timer);
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    let infoTimer: ReturnType<typeof setTimeout> | undefined;
+    const resume = () => {
+      if (!document.hidden) refresh().catch((error) => setError(message(error)));
+    };
+    listen<TaskUpdate>("task_updated", ({ payload: task }) => {
+      if (disposed) return;
+      taskBuffer.current?.set(task.id, task);
+      setTasks((current) => applyTaskUpdate(current, task));
+      window.dispatchEvent(new CustomEvent("svl_task_updated", { detail: task }));
+      if (terminal(task) && !infoTimer) {
+        infoTimer = setTimeout(() => {
+          infoTimer = undefined;
+          call<AppInfo>("app_info").then((value) => {
+            if (!disposed) setInfo(value);
+          }).catch(() => {});
+        }, 300);
+      }
+    }).then((unlisten) => {
+      if (disposed) unlisten();
+      else stop = unlisten;
+    }).catch((error) => {
+      if (!disposed) setError(message(error));
+    }).finally(() => { if (!disposed) resume(); });
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      disposed = true;
+      stop?.();
+      clearTimeout(infoTimer);
+      taskBuffer.current = null;
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
   }, [refresh]);
+  useEffect(() => {
+    if (document.hidden || !tasks.some((task) => !terminal(task))) return;
+    const timer = setTimeout(() => {
+      if (!document.hidden) refresh().catch(() => {});
+    }, 10_000);
+    return () => clearTimeout(timer);
+  }, [tasks, refresh]);
   const active = tasks.filter((task) => !terminal(task));
   const report = (error: unknown) => setError(message(error));
   const saved = () => {

@@ -1,0 +1,22 @@
+{
+  "protocol": "json-delta-1",
+  "capability": "GET /api/svl/v1/account: bundleDelta=json-delta-1",
+  "scope": "Optional upload encoding for svl-sync-1 and assessment-1; stored bundles and downloaded snapshots remain complete.",
+  "requestFields": ["changeId", "baseRevision", "entryId or sessionId", "delta"],
+  "deltaFields": ["protocol", "ops"],
+  "path": "RFC 6901 JSON Pointer into the acknowledged bundle; array indexes refer to the result of preceding operations.",
+  "operations": {
+    "set": {"op": "set", "path": "/entry/revision", "value": 2},
+    "remove": {"op": "remove", "path": "/object/key"},
+    "splice": {"op": "splice", "path": "/tables/review_attempts", "index": 1, "deleteCount": 0, "items": []}
+  },
+  "semantics": {
+    "set": "Replace a value, or add an object member; an empty path replaces the bundle root.",
+    "remove": "Remove an existing object member. Arrays use splice.",
+    "splice": "Replace deleteCount array members starting at index with items; unchanged spans are retained.",
+    "omission": "Unmentioned data is retained from the same account, entity and baseRevision. Omission never deletes history."
+  },
+  "commit": "Reconstruct from the matching complete current or historical snapshot, then run the existing complete bundle validation, identity, media, history retention, optimistic revision and canonical-content receipt checks. No delta is stored as the business snapshot.",
+  "fallback": "Use the complete frozen request if capability or matching local baseline is absent, or the delta is not smaller. HTTP 412 with error=delta_base_missing permits a complete retry with the same changeId, baseRevision and logical content.",
+  "limits": "Existing complete bundle and request limits still apply. Large delta requests reuse chunks-1. Original media remains digest-addressed. New report artifacts are complete; old report artifacts are omitted."
+}

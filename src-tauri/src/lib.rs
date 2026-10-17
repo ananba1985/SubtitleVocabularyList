@@ -33,6 +33,7 @@ pub mod reviews;
 pub mod site_connection;
 pub mod store;
 pub mod sync_data;
+mod sync_delta;
 pub mod sync_merge;
 #[cfg(all(test, windows, feature = "desktop"))]
 mod sync_test_fixture;

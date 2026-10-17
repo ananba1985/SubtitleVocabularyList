@@ -276,6 +276,80 @@ fn fixture() -> (tempfile::TempDir, Store) {
         .unwrap();
     (dir, store)
 }
+
+#[test]
+fn sync_delta_append_and_correct_complete_histories() {
+    use crate::{sync_delta, reviews::{AnswerInput, CorrectionInput}, review_policy::Outcome};
+    let (_dir, store) = fixture();
+    let scope = "delta-account";
+    let mut cases = Vec::new();
+    let entry = crate::sync_test_fixture::large_entry(&store, None, 2);
+    let asset = op();
+    let bytes = std::fs::read(store.root().join("media/fixture.wav")).unwrap();
+    let hash = digest(&bytes);
+    {
+        let c = store.connection().unwrap();
+        c.execute("INSERT INTO media_assets(id,recipe_key,digest,relative_path,kind,format,duration_ms,state,created_at) VALUES (?,?,?,'media/fixture.wav','original','wav',50,'ready',1)",params![asset,hash,hash]).unwrap();
+        let example: String = c.query_row("SELECT example_id FROM entry_examples WHERE entry_id=? LIMIT 1",[&entry],|r|r.get(0)).unwrap();
+        c.execute("INSERT INTO example_media(example_id,asset_id) VALUES (?,?)",params![example,asset]).unwrap();
+    }
+    let initial = json!({"changeId":op(),"baseRevision":0,"bundle":store.sync_export(&entry).unwrap()});
+    let mut steps = vec![json!({"full":initial,"wire":initial})];
+    let mut base = initial["bundle"].clone();
+    store.connection().unwrap().execute("INSERT INTO sync_documents(account_scope,remote_id,local_id,remote_revision,base_json,acknowledged_epoch) VALUES (?,?,?,1,?,0)",params![scope,entry,entry,base.to_string()]).unwrap();
+    let unit = store.review_units("all","meaning",0,100).unwrap().into_iter().find(|u|u.entry_id==entry).unwrap();
+    let q = store.review_question(&unit.id,unit.revision).unwrap();
+    let answer = store.review_submit(&AnswerInput { operation_id:op(),question_id:q.id,answer:"大词条同步验证".into(),unable:false }).unwrap();
+    for revision in [1,2] {
+        if revision==2 {
+            store.review_correct(&CorrectionInput { operation_id:op(),attempt_id:answer.id.clone(),expected_revision:answer.revision,outcome:Outcome::Incorrect,reason:"合成核对".into() }).unwrap();
+        }
+        let full = json!({"changeId":op(),"baseRevision":revision,"bundle":store.sync_export(&entry).unwrap()});
+        let saved = store.sync_upload_base(scope,&entry,revision,false).unwrap().unwrap();
+        assert_eq!(saved,base);
+        let wire = sync_delta::request(&full,Some(&saved),"entryId");
+        assert_eq!(wire["entryId"],entry);
+        assert_eq!(wire["delta"]["protocol"],sync_delta::PROTOCOL);
+        assert!(!wire.to_string().contains("/tables/examples"));
+        assert!(wire.to_string().len()<full.to_string().len());
+        base = full["bundle"].clone();
+        steps.push(json!({"full":full,"wire":wire}));
+        store.connection().unwrap().execute("UPDATE sync_documents SET remote_revision=?,base_json=? WHERE account_scope=? AND remote_id=?",params![revision+1,base.to_string(),scope,entry]).unwrap();
+    }
+    assert_eq!(base["tables"]["review_attempts"].as_array().unwrap().len(),3);
+    assert_eq!(base["tables"]["review_corrections"].as_array().unwrap().len(),1);
+    cases.push(json!({"kind":"entry","id":entry,"steps":steps}));
+
+    let config = AssessmentConfig {word_top_n:2000,question_count:1,question_types:vec!["recognition".into()],..Default::default()};
+    let preview = store.assessment_preview(&config).unwrap();
+    let session = store.assessment_start(&StartAssessment {config,expected_inventory_revision:preview.inventory_revision,operation_id:op()}).unwrap();
+    let push = store.assessment_freeze_push(scope,&session.id).unwrap().unwrap();
+    let full = serde_json::to_value(&push).unwrap();
+    let mut steps = vec![json!({"full":full,"wire":full})];
+    store.assessment_sync_saved(scope,&push,1).unwrap();
+    store.assessment_answer_submit(&AssessmentAnswerInput {session_id:session.id.clone(),item_id:session.question.unwrap().id,expected_revision:session.revision,operation_id:op(),action:"unknown".into(),option_id:None,text:String::new(),uncertain:false}).unwrap();
+    for revision in [1,2] {
+        let push = store.assessment_freeze_push(scope,&session.id).unwrap().unwrap();
+        let full = serde_json::to_value(&push).unwrap();
+        let saved = store.sync_upload_base(scope,&session.id,revision,true).unwrap().unwrap();
+        let wire = sync_delta::request(&full,Some(&saved),"sessionId");
+        assert_eq!(wire["delta"]["protocol"],sync_delta::PROTOCOL);
+        assert!(!wire.to_string().contains("\"/items"));
+        steps.push(json!({"full":full,"wire":wire}));
+        store.assessment_sync_saved(scope,&push,revision+1).unwrap();
+        if revision==1 {
+            let answer = &push.bundle.answers[0];
+            store.assessment_correct(&CorrectAssessment {answer_id:answer.answer.id.clone(),expected_revision:answer.revision,operation_id:op(),result:"incorrect".into(),add_hint:false,reason:"合成核对".into()}).unwrap();
+        } else {
+            assert_eq!(push.bundle.reports.len(),2);
+            assert_eq!(push.bundle.corrections.len(),1);
+        }
+    }
+    cases.push(json!({"kind":"assessment","id":session.id,"steps":steps}));
+    if let Ok(path) = std::env::var("SVL_DELTA_FIXTURE_OUTPUT") {
+        std::fs::write(path,serde_json::to_vec(&json!({"cases":cases,"audio":{"digest":hash,"format":"wav","bytes":bytes}})).unwrap()).unwrap();
+    }
+}
 fn personal_snapshot(store: &Store) -> Value {
     let c = store.connection().unwrap();
     let mut q = c

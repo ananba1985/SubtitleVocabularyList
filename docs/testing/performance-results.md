@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PERF-001 |
-| 文档版本 | 0.11 |
+| 文档版本 | 0.12 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 核心与实装 WebView 样本通过；版本总审计继续 |
 | 依据 | NFR-03、NFR-04；TC-20、TC-21、TC-39、TC-40、TC-41；OPEN-05 |
@@ -203,7 +203,32 @@ python scripts/measure-core-workflow.py --tools <安装目录/tools> --video <�
 
 这些是合成 Remote 与隔离 SQLite 的正常路径证据，原声检查证明字节保持，不代表真人听感或真实 HTTP 带宽验收。未运行额外异常注入、压力、耗时比较、扩大回归、真实站点或 GUI；未部署站点或打包。只有 sent／superseded 传输副本可释放，pending／conflict 和业务历史继续保留；SQLite 文件不自动收缩，真实变更仍采用完整包，既有容量上限未扩大。
 
-## 15 修订记录
+## 15 0.8.15 实际变更差量上传
+
+2026-10-17，FR-12、FR-23、NFR-02／NFR-03，对应 TC-31／TC-58 的正常上传子流程。桌面冻结与确认基准仍为完整包；json-delta-1 只改变发送编码。站点还原后使用原完整校验、历史保持、原声检查、版本条件更新和回执。无 schema 升级，不读取运行中的个人词库。
+
+最小正常验证：`cargo test --locked --manifest-path src-tauri/Cargo.toml --lib assessment_tests::sync_delta_append_and_correct_complete_histories -- --exact --nocapture`，1 条通过。隔离 SQLite 保存带原声例句的词条、原作答，追加作答与修正；独立水平测试完成作答及修正，确认旧报告继续保留。按账号和确认修订读取真实基准，生成差量。合成夹具位于忽略目录 `.local/sync-delta-validation-0.8.15/normal-flow.json`，无凭据和用户数据。
+
+站点 `node scripts/test-sync-delta.mjs <normal-flow.json>` 通过：Node 原接收路由、SQLite 及内存媒体存储依次处理词条与会话的完整首传、差量作答、差量修正。每次 GET 的完整包逐字段等于 Rust 预期，例句、题目、原作答、全部修正、旧报告与原声关联保持；原声 PUT／GET 字节一致。HTTP Request／Response 在本地调用，不是真实网络或真实身份验证。
+
+| 合成请求 | 完整 JSON 字节 | 实际 JSON 字节 |
+| --- | ---: | ---: |
+| 词条首传 | 9,187 | 9,187 |
+| 词条新增作答 | 11,407 | 3,378 |
+| 词条追加修正 | 11,739 | 1,417 |
+| 水平测试首传 | 2,658 | 2,658 |
+| 水平测试新增作答 | 8,358 | 6,222 |
+| 水平测试追加修正 | 14,082 | 6,197 |
+
+这是一次正常样本的实际序列化大小核对，不是压力、耗时或真实带宽测试，也不保证所有数据有同一比例。新报告作为完整新成果发送，旧报告不重发；完整下载、完整基准计算及远端历史快照增长保持原边界。
+
+`pnpm build` 通过，包括版本、Rust IPC 嵌套类型一致性、TypeScript 和 Vite；`pnpm version:check` 通过，版本 0.8.15。站点原构建脚本 `node scripts/build-site.mjs` 通过，Site 工作流将源码 `22246532359d7fd9f92d91d86792b74f71afebcb` 提交并推送。Windows 的 npm 包装器及 GNU tar 盘符路径失败后，复用已通过的原构建，使用 Git Bash 与 TAR_OPTIONS=--force-local 完成归档；未重复业务测试。
+
+站点版本 **28**，保存版本 ID `appgprj_6ab87c3ee6108191b323f7e065674509~appgver_54e5fb4051d881918cd880c9b7d968c6`，部署 ID `appgdep_6ad3ba132d2481918dd30554e22c3be5`，2026-10-17T18:10:33Z 原生结果 **succeeded**，URL：[English Practice](https://english-copy-practice.hxwjb.chatgpt.site)。原 public 访问范围和账号隔离保持，无 D1 迁移。
+
+未扩大异常、兼容、压力或业务回归，未启动个人资料、GUI 或生成桌面安装包。原生部署成功不代表真实账号已执行本轮差量往返；本轮功能证据限定为上述本地正常链路。
+
+## 16 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -218,3 +243,4 @@ python scripts/measure-core-workflow.py --tools <安装目录/tools> --video <�
 | 0.9 | 2026-10-17 | 记录桌面命令按域拆分、106 项统一类型表与顶层参数检查，保留嵌套 DTO 与真实运行未验证边界 |
 | 0.10 | 2026-10-17 | 记录 Rust 单源生成 106 个命令及 121 个类型、固定 JSON 响应校验和一条离线正常 DTO 流程，保留动态载荷及真实运行边界 |
 | 0.11 | 2026-10-17 | 记录同步回声跳过、终态快照释放、会话缓存及 schema 10 升级的 3 条正常验证，保留完整包和真实网络边界 |
+| 0.12 | 2026-10-17 | 记录词条／会话首传、差量作答和修正的最小跨语言正常验证及实际请求大小，保持完整历史与验收边界 |

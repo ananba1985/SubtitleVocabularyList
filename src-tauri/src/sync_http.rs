@@ -28,6 +28,7 @@ struct HttpRemote {
     client: Client,
     supports_chunks: bool,
     supports_assessments: bool,
+    supports_delta: bool,
     cancelled: Option<Arc<AtomicBool>>,
     confirmed_media: BTreeSet<(String, String)>,
 }
@@ -67,6 +68,7 @@ impl HttpRemote {
             client: crate::site_connection::desktop_client()?,
             supports_chunks: false,
             supports_assessments: false,
+            supports_delta: false,
             cancelled: None,
         })
     }
@@ -131,6 +133,7 @@ impl HttpRemote {
             && v["packetChunkBytes"].as_u64() == Some(CHUNK_BYTES as u64)
             && v["maxPacketBytes"].as_u64() == Some(MAX_PACKET_BYTES as u64);
         self.supports_assessments = v["assessmentSync"].as_str() == Some("assessment-1");
+        self.supports_delta = v["bundleDelta"].as_str() == Some(crate::sync_delta::PROTOCOL);
         self.app
             .store
             .assessment_sync_capability(&self.scope(), v["assessmentSync"].as_str())?;
@@ -238,10 +241,15 @@ impl HttpRemote {
                         .assessment_sync_media(&media.digest, &media.format)?;
                     self.upload(&media.digest, &media.format, bytes)?;
                 }
+                let base = if self.supports_delta {
+                    self.app.store.sync_upload_base(scope, &session, push.base_revision, true)?
+                } else { None };
                 let (status, value) =
-                    Transport::new(&self.client, &self.site, &self.credential.token).push_value(
+                    Transport::new(&self.client, &self.site, &self.credential.token).push_changes(
                         &format!("/api/svl/v1/assessments/{}", push.bundle.session.id),
                         &serde_json::to_value(&push)?,
+                        base.as_ref(),
+                        "sessionId",
                         self.supports_chunks,
                         || self.check(),
                     )?;
@@ -278,8 +286,12 @@ impl Remote for HttpRemote {
         )?)
     }
     fn push(&mut self, request: &Push) -> Result<PushReply, AppError> {
+        let base = if self.supports_delta {
+            self.app.store.sync_upload_base(&self.scope(), request.bundle.entry["id"].as_str().unwrap(), request.base_revision, false)?
+        } else { None };
         let (status, v) = Transport::new(&self.client, &self.site, &self.credential.token).push(
             request,
+            base.as_ref(),
             self.supports_chunks,
             || self.check(),
         )?;

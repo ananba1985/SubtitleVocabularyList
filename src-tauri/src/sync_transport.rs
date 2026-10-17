@@ -34,7 +34,7 @@ pub(crate) fn read_json(response: Response) -> Result<(u16, Value), AppError> {
             "词条资料超过本次同步容量，全部本地资料保留。",
         ));
     }
-    if !matches!(status, 200..=299 | 409) {
+    if !matches!(status, 200..=299 | 409 | 412) {
         return Err(failure(
             "network_error",
             format!("同步未完成（HTTP {status}），本地资料与待处理内容保留。"),
@@ -173,18 +173,42 @@ impl<'a> Transport<'a> {
     pub(crate) fn push(
         &self,
         request: &Push,
+        base: Option<&Value>,
         supports_chunks: bool,
         check: impl Fn() -> Result<(), AppError>,
     ) -> Result<(u16, Value), AppError> {
-        self.push_value(
+        self.push_changes(
             &format!(
                 "/api/svl/v1/entries/{}",
                 request.bundle.entry["id"].as_str().unwrap()
             ),
             &serde_json::to_value(request)?,
+            base,
+            "entryId",
             supports_chunks,
             check,
         )
+    }
+    pub(crate) fn push_changes(
+        &self,
+        path: &str,
+        full: &Value,
+        base: Option<&Value>,
+        identity: &str,
+        supports_chunks: bool,
+        check: impl Fn() -> Result<(), AppError>,
+    ) -> Result<(u16, Value), AppError> {
+        // Keep the full logical request and its capacity/receipt semantics unchanged.
+        if serde_json::to_vec(full)?.len() > MAX_PACKET_BYTES {
+            return Err(failure("capacity_exceeded", "完整资料超过同步容量，全部内容保留。"));
+        }
+        let wire = crate::sync_delta::request(full, base, identity);
+        let reply = self.push_value(path, &wire, supports_chunks, &check)?;
+        if reply.0 == 412 && reply.1["error"] == "delta_base_missing" && wire.get("delta").is_some() {
+            return self.push_value(path, full, supports_chunks, check);
+        }
+        if reply.0 == 412 { return Err(failure("invalid_data", "站点未确认同步基准，待发送资料保留。")); }
+        Ok(reply)
     }
     pub(crate) fn push_value(
         &self,
@@ -320,11 +344,11 @@ mod tests {
         let bytes = serde_json::to_vec(&push).unwrap();
         assert!(bytes.len() > 2_000_000 && bytes.len() < MAX_PACKET_BYTES);
         assert_eq!(
-            transport.push(&push, false, || Ok(())).unwrap_err().code,
+            transport.push(&push, None, false, || Ok(())).unwrap_err().code,
             "capacity_exceeded"
         );
         let calls = AtomicUsize::new(0);
-        let stopped = transport.push(&push, true, || {
+        let stopped = transport.push(&push, None, true, || {
             if calls.fetch_add(1, Ordering::Relaxed) >= 4 {
                 Err(AppError::new("cancelled", "synthetic cancellation"))
             } else {
@@ -339,10 +363,10 @@ mod tests {
             .send()
             .unwrap();
         assert_eq!(
-            transport.push(&push, true, || Ok(())).unwrap_err().code,
+            transport.push(&push, None, true, || Ok(())).unwrap_err().code,
             "network_error"
         );
-        assert_eq!(transport.push(&push, true, || Ok(())).unwrap().0, 200);
+        assert_eq!(transport.push(&push, None, true, || Ok(())).unwrap().0, 200);
         let state: Value = client
             .get(format!("{site}/__fixture/state"))
             .bearer_auth(token)

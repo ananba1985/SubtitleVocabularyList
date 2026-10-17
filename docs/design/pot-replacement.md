@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-POT-001 |
-| 文档版本 | 0.4 |
+| 文档版本 | 0.5 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 已获实施授权；0.5.0 首版已接通，验证状态见增量记录 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-14 至 FR-18、FR-03 至 FR-08、NFR-01 至 NFR-05 |
@@ -116,11 +116,17 @@ QuerySession 记录 sessionId、inputRevision、origin、target、context、mode
 
 查词进度和错误留在小窗的相应服务内。正常查询、取消以及自动监听的重复失败不逐次写入后台任务历史；自动失败保留当前会话的最新原因及次数。剧集导入、整集中文准备和同步的任务规则保持。
 
+0.8.7 将内置本地模型的 explain／translate 交互查询改为 `stream:true`，逐段读取 SSE 的 content 增量；服务返回完整 JSON 时仍沿用原解析入口。模型许可尚未取得时显示“排队等待”，开始请求后显示“等待回复”，收到可展示字段后显示“正在生成”。底库和缓存继续直接返回，不为了展示流式效果延迟命中结果；后台批量准备沿用原批处理协议。
+
+`query_stream` 保留跨网络包的 UTF-8／SSE 行，只向会话提供增量 JSON 中已经解码的 meaning、translation、notes 文字，不展示 JSON 结构或未完成的转义。首次有效片段立即通知，后续通知间隔至少 80 ms。无实际原句的解释仍不展示 translation。片段通过已有 sessionId／inputRevision／queryId 核对后更新内存快照，不逐片写库或记任务历史。
+
+生成过程中 QueryProviderResult 为 running，value 可以含临时预览；复制和收录只在 ready 时出现。只有流完整结束、完整 JSON 解析与原有中文字段校验通过后，才保存有效结果并置 ready；失败清除临时值。取消继续使用现有订阅取消及请求中止机制，修改输入后迟到片段不进入新会话。
+
 ## 5 数据设计与兼容
 
 | 数据 | 存放与规则 |
 | --- | --- |
-| QuerySession | Rust 进程内；窗口快照包含当前完整有效结果，退出后释放，不保存剪贴板复制流水 |
+| QuerySession | Rust 进程内；窗口快照包含当前状态、生成中的临时文字或完整有效结果，退出后释放，不保存剪贴板复制流水 |
 | query_results（schema 7） | SQLite；身份包含精确目标、完整语境、mode、语言、providerId 和非敏感配置指纹；保存完整有效结果及服务来源 |
 | 服务／插件配置 | settings 的独立键，记录非敏感选项、顺序、自动查询和 credentialRef；不混入已确认词义 |
 | 服务凭据 | 主程序受保护存储，沿用 Windows DPAPI 方案；SQLite 只存引用，读取接口不返回完整凭据 |
@@ -151,7 +157,7 @@ QuerySession 记录 sessionId、inputRevision、origin、target、context、mode
 | providers_list/update | 返回非敏感配置；更新服务与自动范围，凭据提交后只返回引用／是否已配置 |
 | plugin_install/remove | 用户选定包或 pluginId；返回版本、能力与启用状态，卸载保持业务资料 |
 
-query_updated 事件只携带会话、输入版本、查询和服务标识以及状态，完整结果由 translation_session_get 读取。窗口间显式收录继续使用现有 collection_* 命令，不引入第二套收藏数据库。
+query_updated 事件只携带会话、输入版本、查询和服务标识以及状态；流式进度也使用此通知，当前预览或完整结果由 translation_session_get 读取。窗口间显式收录继续使用现有 collection_* 命令，不引入第二套收藏数据库。
 
 ## 7 决策与实施前核对
 
@@ -186,3 +192,4 @@ query_updated 事件只携带会话、输入版本、查询和服务标识以及
 | 0.2 | 2026-10-11 | 对齐 0.5.0 查询会话、异步窗口、schema 7、服务和 JSON 插件实现，区分验证状态 |
 | 0.3 | 2026-10-15 | 记录单词重复语境的解释、校验与通用缓存修正，保留实际原句和翻译模式规则 |
 | 0.4 | 2026-10-17 | 记录专名中文说明从 notes 整理至 meaning、共享处理及查询失败原始返回展示 |
+| 0.5 | 2026-10-17 | 对齐本地查询 SSE、内存预览、等待状态及完整校验后的保存和收录 |

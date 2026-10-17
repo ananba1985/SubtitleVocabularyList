@@ -3,10 +3,10 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-POT-001 |
-| 文档版本 | 0.3 |
+| 文档版本 | 0.4 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 首版最小正常流程通过；桌面声音与采集已获用户确认 |
-| 对应版本 | 0.5.0 首轮；0.8.1 划词及 0.8.6 专名说明字段修复增量，schema 9 |
+| 对应版本 | 0.5.0 首轮；0.8.1 划词、0.8.6 专名说明字段及 0.8.7 流式查询增量，schema 9 |
 | 对应需求 | FR-14 至 FR-18、NFR-01 至 NFR-05 |
 | 依据 | [设计](../design/pot-replacement.md)、[计划](../planning/pot-replacement-plan.md)、[测试计划](test-plan.md) |
 
@@ -91,10 +91,30 @@ FR-08、FR-14。用户输入 `headscale` 后，0.8.4 安装版显示“未获得
 
 查询失败原文展示分支已接入，未另行执行故障注入或错误响应测试。本轮没有重启当前安装版、修改日常词库、做兼容矩阵或全量回归，也没有打包或安装；0.8.6 是源码修复版本。
 
-## 7 修订记录
+## 7 本地交互查询流式展示（0.8.7）
+
+FR-14。原本本地查询发送 `stream:false`，等完整 JSON 返回、解析和校验后才向窗口提供结果。模型许可不足时还会在交互队列等待，不能把所有等待都归因于模型生成。此次将本地查词和整段翻译切换为流式请求与正文预览，显示排队、等待回复及正在生成；底库／缓存命中仍直接返回。
+
+| 最小正常检查 | 实际结果 |
+| --- | --- |
+| 核心流式与保存 | `cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --test query_stream_normal -- --nocapture`：1 passed。合成服务确认 stream=true，先发未完成 meaning；会话 running 时已显示“维”，explanations 与 query_results 尚无记录。随后完成中文词义、译文及含引号的 notes，ready 后保存完整结果；相同查询复用 cache，个人词库为空 |
+| 前端类型 | `pnpm exec tsc --noEmit` 通过 |
+| 桌面构建与启动 | 使用根目录脚本对应的 `pnpm desktop:dev -DataDirectory ...`，按既有规则清理 Cargo 后完成 debug 编译，真实 app_info 为 0.8.7／schema 9，资料库位于 `.local/query-stream-0.8.7/Data` |
+| 真实 Qwen 与窗口 | 通过实际 Tauri 查询窗口选择“整段翻译”、输入下述自编英文并点击“查询”。DOM 首次显示中文“请在”及“正在生成…”约为 3,764 ms，随后持续追加正文；6,611 ms 出现完整结果及复制／收录按钮。最终状态 ready、来源 provider，未使用缓存；生成中的收录按钮未显示 |
+
+真实查询输入为：
+
+> Please review the deployment checklist before restarting the server. We need to back up the database, verify the configuration, and notify the team when the maintenance is complete.
+
+最终译文为“请在重启服务器之前检查部署清单。我们需要备份数据库、验证配置，并在维护完成后通知团队。”已查看真实 WebView 的生成中与完成截图，正文逐步显示，未展示 JSON 结构。计时从点击查询前开始，包含客户端调度、模型等待、传输和渲染；仅为一次正常查询观测，不用于断言模型计算速度提升或所有输入的延迟。流式展示使本次能在完成前约 2.85 秒开始阅读。
+
+用户确认无任务和未保存输入后，已退出原安装版并保留隔离调试版运行。真实查询前后 entryCount／sourceCount 均为 0，没有向日常单词本写入测试数据。独立资料、`ui-result.txt`、`partial.png`、`complete.png` 及启动记录保留在 `.local/query-stream-0.8.7`。未打包或安装；未增加故障注入、压力、兼容矩阵或全套回归。
+
+## 8 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
 | 0.1 | 2026-10-11 | 记录独立查询、双服务缓存／收录／卸载、真实桌面明确收录及用户确认的声音／采集／监听，注明未覆盖范围 |
 | 0.2 | 2026-10-15 | 记录 Certified 重复语境的失败原因、0.8.1 修复和隔离真实模型／底库正常验证 |
 | 0.3 | 2026-10-17 | 记录 headscale 原始返回、字段校验误拒绝、0.8.6 整理与真实查询验证，区分模型知识准确性 |
+| 0.4 | 2026-10-17 | 记录流式核心、完整保存及真实查询窗口首段和完成时间，保留隔离调试数据 |

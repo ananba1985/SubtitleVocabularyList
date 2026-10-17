@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.41 |
-| 更新日期 | 2026-10-15 |
+| 文档版本 | 0.42 |
+| 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-09；ARC-10 实施中 |
@@ -167,13 +167,15 @@ CMD-38 至 CMD-44 已在 0.5.0 接通，字段、事件与取消契约见 [Pot �
 | --- | --- | --- | --- |
 | CMD-38 | translation_session_open | 创建查询会话，保持查询与收录分离 | FR-14、FR-15 |
 | CMD-39 | translation_query_start | 对当前输入和允许的服务开始查询 | FR-14 至 FR-17 |
-| CMD-40 | translation_session_get | 读取当前版本的完整状态与有效结果 | FR-14 至 FR-17 |
+| CMD-40 | translation_session_get | 读取当前版本的状态、流式预览或完整有效结果 | FR-14 至 FR-17 |
 | CMD-41 | translation_query_cancel | 取消相应查询订阅，保留其他会话 | FR-14、FR-16 |
 | CMD-42 | clipboard_listener_set/get | 显式开关与真实运行状态 | FR-16 |
 | CMD-43 | providers_list/update | 非敏感服务配置、调用范围和凭据引用 | FR-17、FR-18 |
 | CMD-44 | plugin_install/remove | 版本与能力明确的 JSON 配置安装／卸载 | FR-18 |
 
-实际参数：translation_session_open 为 `{input:QueryInput,sessionId?:string}`；QueryInput 包含 target、context、mode（explain／translate）、sourceLanguage、targetLanguage 和 origin。get 的 sessionId 可空，空时返回当前会话。query_start 为 `{sessionId,expectedInputRevision,providerIds,automatic,persist}`；providerIds 空表示所有已启用服务，automatic 时还筛选 autoQuery。cancel 为 `{sessionId,queryId?:string}`。返回完整 QuerySession，含输入版本、查询标识和各服务独立状态／值／错误；query_updated 只通知标识，完整结果通过 get 读取。
+实际参数：translation_session_open 为 `{input:QueryInput,sessionId?:string}`；QueryInput 包含 target、context、mode（explain／translate）、sourceLanguage、targetLanguage 和 origin。get 的 sessionId 可空，空时返回当前会话。query_start 为 `{sessionId,expectedInputRevision,providerIds,automatic,persist}`；providerIds 空表示所有已启用服务，automatic 时还筛选 autoQuery。cancel 为 `{sessionId,queryId?:string}`。返回完整 QuerySession，含输入版本、查询标识和各服务独立状态／值／错误；query_updated 只通知标识，当前快照通过 get 读取。
+
+0.8.7 起，内置本地模型的 running 结果可以带临时 QueryValue，字段形状不变，仅含已经解码的正文片段；ready 才表示完整且通过校验的有效结果。客户端收到流式 query_updated 后重新 get，沿用原有输入版本及查询标识核对。临时值不能收录或写入查询缓存，失败清除临时值；持久化表结构不变。具体等待状态和输出规则见 [Pot 替代设计第 4 节](pot-replacement.md#4-会话取消与进度)。
 
 clipboard_listener_set 为 `{enabled,preferences:{debounceMs,persistResults}}`，间隔 100～2000 ms，返回运行期 enabled、error 和偏好；get 无参数。providers_update 为 `{update:{id,enabled,autoQuery,sendContext,order,maxConcurrency,values,secrets}}`；order 为 0～1000，外部并发为 1～16，本机模型沿用全局许可。返回配置不含 secrets，仅 credentialFields 表示已配置的凭据字段。插件为 `{path}` 安装单个小于 512 KB 的 JSON，或 `{pluginId}` 卸载；升级默认关闭，协议为 1，首版仅 translation／dictionary。
 
@@ -345,3 +347,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.40 | 2026-10-15 | 对齐水平测试 M-17／18 实施与 TC-55 部分、TC-56／57 核心证据，M-19 继续实施 |
 
 | 0.41 | 2026-10-15 | 接通 assessment-1 完整测试历史、版本 27 真实往返及独立同步状态；人工体验按用户要求延期 |
+| 0.42 | 2026-10-17 | 明确 running 临时 QueryValue、流式事件快照及 ready 的完整结果契约 |

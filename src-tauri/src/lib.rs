@@ -23,6 +23,7 @@ pub mod practice;
 pub mod preparation;
 pub mod providers;
 pub mod queries;
+mod query_stream;
 pub mod review_policy;
 pub mod reviews;
 pub mod site_connection;

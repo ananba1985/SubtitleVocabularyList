@@ -21,8 +21,8 @@ const empty: QueryInput = {
   origin: { kind: "input", sourceTitle: "", locationKey: "" },
 };
 const states: Record<string, string> = {
-  queued: "等待服务…",
-  running: "正在查询…",
+  queued: "排队等待…",
+  running: "等待回复…",
   ready: "",
   failed: "查询失败",
   cancelled: "已取消",
@@ -414,15 +414,19 @@ export function QueryView() {
               className="query-result"
             >
               <summary>
-                {result.cacheSource === "dictionary" ? "本地基础词库" : result.name}
+                {result.cacheSource === "dictionary"
+                  ? "本地基础词库"
+                  : result.name}
                 <small>
                   {result.cacheSource === "dictionary"
                     ? "已匹配"
                     : result.cacheSource === "stored"
-                    ? "已有本地解释"
-                    : result.cacheSource === "cache"
-                      ? "已保存结果"
-                      : states[result.state]}
+                      ? "已有本地解释"
+                      : result.cacheSource === "cache"
+                        ? "已保存结果"
+                        : result.state === "running" && result.value
+                          ? "正在生成…"
+                          : states[result.state]}
                 </small>
               </summary>
               {result.error && <p className="error">{result.error}</p>}
@@ -439,12 +443,17 @@ export function QueryView() {
                   {result.value.notes && (
                     <p className="muted">{result.value.notes}</p>
                   )}
-                  <div className="query-row">
-                    <button onClick={() => copy(result)}>复制译文</button>
-                    <button className="primary" onClick={() => collect(result)}>
-                      收录
-                    </button>
-                  </div>
+                  {result.state === "ready" && (
+                    <div className="query-row">
+                      <button onClick={() => copy(result)}>复制译文</button>
+                      <button
+                        className="primary"
+                        onClick={() => collect(result)}
+                      >
+                        收录
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </details>

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DAT-001 |
-| 文档版本 | 0.34 |
+| 文档版本 | 0.35 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 实施中；初始迁移与收录核心已实现，其余部分继续按设计落地 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01、FR-02、FR-05 至 FR-13、NFR-02；FR-20 至 FR-24 实施中 |
@@ -224,6 +224,12 @@ history 保存 revision、baseRevision、depth、bundleBytes，以及 checkpoint
 
 站点迁移 0003_sync_history 仅新增 svl_changes(user_id,entry_id,revision) 和 svl_assessment_changes(user_id,session_id,revision) 非唯一索引，避免基准查找扫描账号全部变更；不增加业务实体或删除历史。当前记录、变更封装、完整内容摘要、回执及游标仍通过原 D1 batch 条件事务提交。完整包读取可按需派生原 packetRef 供旧设备使用；这种投影及旧完整快照仍可能占用存储，本轮不执行对象垃圾回收。
 
+### 13.1 传输对象保留元数据（0.8.28）
+
+svl-packets/<accountHash>/history/<digest> 保存新永久快照和差量；transfers/<digest> 是可重建响应，uploads/<digest>/<index> 是原分片暂存，snapshots/<digest> 是旧混合位置。maintenance.json 仅保存各目录游标、nextAt 和 legacyReadyAt，不含业务正文或凭据。每账号每小时各目录最多 4 个对象，临时内容保留至少 7 天；永久历史及独立原声目录不按时间删除。
+
+旧引用存在于 svl_records／svl_changes／svl_assessment_records／svl_assessment_changes 的 packetRef、history.checkpoint.packetRef 或 history.deltaRef。迁移只复制核对后的 R2 内容并移除旧副本，不修改 D1 信封、修订、回执或学习事实；当前和旧历史的引用仍按同一 digest 读取。新旧目录兼容及完整规则见[同步设计 4.11](synchronization.md#411-站点传输对象生命周期0828)。无新增表、迁移或桌面 schema；0.8.17 当时未执行对象回收的边界由本节补充，不改写旧验收结论。
+
 ## 14 修订记录
 
 | 版本 | 日期 | 内容 |
@@ -264,3 +270,4 @@ history 保存 revision、baseRevision、depth、bundleBytes，以及 checkpoint
 | 0.32 | 2026-10-17 | 新报告只读准备后与派生元数据原子发布，缓存采用报告入库后的最终 epoch，保持报告和完整历史 |
 | 0.33 | 2026-10-17 | 最近完整会话附带行级指纹和报告引用依赖，按实际内容复用题目／旧报告投影和既有验证结果 |
 | 0.34 | 2026-10-17 | 报告业务输入与历史内容指纹元数据随原业务事务保存，保持 schema 10 和完整历史 |
+| 0.35 | 2026-10-17 | 站点永久／派生对象目录及游标维护元数据，保留全部 D1 历史和原声，无 schema 变更 |

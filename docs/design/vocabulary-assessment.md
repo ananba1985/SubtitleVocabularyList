@@ -3,11 +3,11 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-ASSESSMENT-001 |
-| 文档版本 | 0.8 |
-| 更新日期 | 2026-10-15 |
+| 文档版本 | 0.9 |
+| 更新日期 | 2026-10-17 |
 | 状态 | M-15 至 M-19 已接入，TC-58 真实完整往返及本轮听感通过；用户确认本轮验收结束，详细边界见增量记录 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-20 至 FR-24、BR-09 至 BR-11、FR-12、NFR-01 至 NFR-06 |
-| 当前实现基线 | 应用 0.8.0 开发中；业务 schema 9，Google 底库 schema 2／ECDICT schema 1；词条 svl-sync-1／测试历史 assessment-1 |
+| 当前实现基线 | 应用 0.8.18 开发中；业务 schema 10，Google 底库 schema 2／ECDICT schema 1；词条 svl-sync-1／测试历史 assessment-1 |
 | 关联 | [架构](architecture.md)、[数据模型](data-model.md)、[接口](interfaces.md)、[同步](synchronization.md)、[开发计划](../planning/vocabulary-assessment-plan.md)、TC-53 至 TC-58 |
 
 本文件区分设计目标与实际实施：M-15 已由 assessment_bank.rs、009_assessments.sql 与词频构建器落地，CMD-46 至 CMD-49 已注册；assessment.rs／assessment_sampling.rs 已实现会话、抽样、作答、媒体事件及追加修正；桌面界面已接入三题型和题库管理；报告与可信确认收录已接入，assessment-1 已接入实际站点版本 27。验证见[增量记录](../testing/vocabulary-assessment-results.md)，不以基础完成代替完整功能。
@@ -101,6 +101,10 @@ M-16 实际采用增广匹配完成全部配额，同类词元在所有题型间
 
 人工修正可确认正确/错误、补充使用提示事实、撤销有问题题目的有效计分；保留理由、原结果和版本，不支持把已使用提示的记录静默清成无提示。题目问题进入后续核对，不因一次报告自动删除全库题目。原题快照不修改，报告产生新修订。
 
+0.8.18 起，报告版本与会话的同步修订计数分开。生成候选报告后比较完整业务内容，包括配置、题目及来源、原作答、有效判分、全部修正、提示／播放事实、统计／警告和收录关联；只忽略报告顶层 revision／generatedAt 及音频的本机 relativePath／assetId。收录引用仅在同一题目的实际关联与唯一已知别名对应时视为同一实体。业务内容相同则复用已有报告及原生成时间，不新增或改写报告行；业务变化才追加新报告。
+
+已有重复版本及收到的原始报告 JSON、摘要保持。返回界面的 revision 是报告在本机的查询位置，可能不同于会话修订及原 JSON 内来源修订；默认报告、历史摘要与详情分页使用同一位置。新位置避开全部已有报告，收到的碰撞报告仍沿用既有负数位置，不覆盖历史。
+
 报告按频段、内容类别和能力维度分别汇总，默认呈现这些独立视图；细分交叉明细按需展开。每个报告单元采用固定口径：
 
 - P 为计划题量，A 为已处理位置数，U 为其中未计分量（未播放/无效/待确认等）。V 为可计分量，包含 correct、incorrect、unknown；A=V+U，未答量为 P-A，未答题不混入分母。
@@ -124,12 +128,14 @@ M-16 实际采用增广匹配完成全部配额，同类词元在所有题型间
 | assessment_session_items | id、session_id、position、snapshot_json、interaction_json；完整私有快照含目录、bank/item 来源及冻结选项，unique(session_id,position)，词元唯一在抽样时保证 |
 | assessment_answers | id、session_id、session_item_id、answer_json、revision、created_at；原回答及判分保存在 answer_json；位置只有一个原始提交，操作幂等在 assessment_operations |
 | assessment_corrections | id、answer_id、correction_json、created_at；修正保存理由及答案修订，追加历史不覆盖原作答 |
-| assessment_report_versions | session_id、report_revision、来源事实修订、report_json、created_at；缓存投影可重建但旧报告修订保留 |
+| assessment_report_versions | session_id、revision（本机查询位置）、report_json、created_at；原 JSON 内来源修订与本机位置可不同，旧报告只追加保留 |
 | assessment_collection_links | session_item_id、collection_operation_id、entry_id、报告修订/来源；只在用户确认收录后建立 |
 | assessment_sync_accounts | account_key、cursor、capability、updated_at；与已有词条游标分离 |
 | assessment_sync_state | account_key/session_id、base_json、pending_json、pending_change_id、pending_digest、conflict_json、acknowledged_digest；未回执请求不被新本地修改覆盖 |
 
 配置偏好放入既有 settings 的独立 assessment 命名空间，不改现有模型/语音/复习配置。生成音频复用媒体服务，路径位于 Data/media 下，题目只存相对描述/摘要；临时模型输出进入 Data/jobs，不写 AppData。
+
+报告使用 settings 的 `assessment_current_report:<sessionId>` 保存 `[epoch,slot]` 派生索引，复用 schema 10 的 assessment_sync_dirty.epoch。会话、题目、作答、修正、报告及关联变化按原计数使索引过期；重新比较后记录当前报告位置，内容未变时不生成新报告。再次读取有效索引可直接定位报告；缺少索引的旧库首次按需建立，历史列表先补齐过期索引再分页。此索引不进入同步包，不新增数据库迁移、IPC 字段或站点协议。
 
 会话内部的题目、作答、修正与报告有本地关联约束；bank/item 的来源版本引用允许接收端未安装该题库，以会话完整快照复现历史，不要求导入整库，也不把收到的题目自动发布到本机可抽样题库。收录关联由实际词条实体映射确认，未到达时保持待关联状态。
 
@@ -238,3 +244,4 @@ CMD-59 使用 operationId 保存可信批次草稿和候选收录操作 UUID；�
 | 0.7 | 2026-10-15 | 对齐实际 schema 字段，明确未挖空原句的单一目标替换及独立语义核对 |
 
 | 0.8 | 2026-10-15 | 按用户确认结束本轮验收，保留实际证据与未复核边界，后续问题按 bug 处理 |
+| 0.9 | 2026-10-17 | 按完整业务内容复用报告，以现有变更计数维护当前报告位置，保留原始版本和历史分页语义 |

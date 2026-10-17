@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.50 |
+| 文档版本 | 0.51 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
@@ -217,6 +217,8 @@ FR-20 至 FR-24 的 CMD-46 至 CMD-60 在[高频水平测试设计第 7 节](voc
 
 assessment_preview/start 使用后台线程计算并在开始事务内冻结；session_get 不返回未作答答案。submit 只接受本题选项 ID、填空原文或明确 unknown/skip，提示与播放事实由核心读取。session_transition 支持 pause/resume/end_early/request_hint/save_draft，后者只保存草稿。audio_start 返回 playbackId、可播放 path 或资源 error，不下发听音文本；audio_event 接受 started/progress/ended/error 及秒数，成功结束才保存 played。播放事件不改变作答用 expectedRevision；result_correct 追加事实，保留原回答与提示，未播放听音不能修正为计分成功。
 
+0.8.18 的 assessment_report_get、assessment_history_list 与 assessment_report_items 参数及 DTO 字段保持。报告与历史摘要中的 revision 表示本机报告查询位置，用于详情及旧版本选择；不要求等于 session_get 的会话 revision。默认读取按业务内容选择已有或新增报告，单纯同步修订及本机音频定位变化复用旧版本；收到的原报告 JSON 和摘要不改写。比较及可信收录也使用选中的本机报告位置，详见[报告设计第 5、6 节](vocabulary-assessment.md#5-判分报告与复测)。
+
 ## 3 收录请求与提交结果
 
 CMD-29 的 `meaningScope` 增加 `dictionary`：词义来自独立底库，`notes` 保留来源与词形匹配信息，`translation` 只组合已保存的整句译文，不查询模型。小窗 Qwen `explain` 入口命中底库时 `cacheSource=dictionary`，直接返回，既有 `stored/cache/provider` 保持；`translate` 模式不将词典释义冒充完整译文。底库文件、导入与统计口径见[离线基础词库设计](base-dictionary.md)。
@@ -382,3 +384,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.48 | 2026-10-17 | 补充 json-delta-1 能力、词条／会话上传字段和基准缺失回退，保持 IPC 返回契约 |
 | 0.49 | 2026-10-17 | 补充下载能力、基准请求头、内联／分片差量与完整响应回退，保持 IPC 和完整应用契约 |
 | 0.50 | 2026-10-17 | 明确站点内部检查点存储和已校验差量复用不改变线上或 IPC 字段，保持完整回退响应 |
+| 0.51 | 2026-10-17 | 明确报告按业务内容复用及本机查询位置语义，保持命令参数、DTO 字段和原报告 JSON |

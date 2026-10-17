@@ -168,6 +168,37 @@ fn summary(report: &AssessmentReport) -> Result<Value, AppError> {
     Ok(value)
 }
 
+fn report_content(c: &Connection, report: &AssessmentReport) -> Result<Value, AppError> {
+    let mut content = report.clone();
+    content.revision = 0;
+    content.generated_at = 0;
+    for row in &mut content.items {
+        // Cache locations and local media IDs are not frozen learning facts.
+        if let Some(audio) = row.item.content.audio.as_mut() {
+            audio.relative_path.clear();
+            audio.asset_id = None;
+        }
+        for entry in &mut row.collected_entry_ids {
+            let mut q = c.prepare("SELECT DISTINCT local_id FROM sync_links WHERE entity_kind='entries' AND remote_id=? AND local_id IN (SELECT entry_id FROM assessment_collection_links WHERE session_item_id=?)")?;
+            let aliases = q
+                .query_map(params![entry.as_str(), row.id], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            if aliases.len() == 1 {
+                *entry = aliases[0].clone();
+            }
+        }
+        row.collected_entry_ids.sort();
+        row.collected_entry_ids.dedup();
+    }
+    Ok(serde_json::to_value(content)?)
+}
+
+fn remember_report(c: &Connection, id: &str, slot: i64) -> Result<(), AppError> {
+    // Use the existing counter for every changed fact, including linked entries.
+    c.execute("INSERT INTO settings(key,value_json) SELECT 'assessment_current_report:'||?1,json_array(epoch,?2) FROM assessment_sync_dirty WHERE session_id=?1 ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",params![id,slot])?;
+    Ok(())
+}
+
 pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, AppError> {
     let s = load_session(c, id)?;
     if !matches!(s.state.as_str(), "completed" | "ended_early") {
@@ -176,15 +207,17 @@ pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, Ap
             "测试尚未结束，请先继续作答或明确提前结束。",
         ));
     }
-    let saved: Option<String> = c
+    let saved: Option<(i64, String)> = c
         .query_row(
-            "SELECT report_json FROM assessment_report_versions WHERE session_id=? AND revision=?",
-            params![id, s.revision],
-            |r| r.get(0),
+            "SELECT r.revision,r.report_json FROM settings m JOIN assessment_sync_dirty d ON d.session_id=?1 AND d.epoch=json_extract(m.value_json,'$[0]') JOIN assessment_report_versions r ON r.session_id=?1 AND r.revision=json_extract(m.value_json,'$[1]') WHERE m.key='assessment_current_report:'||?1",
+            [id],
+            |r| Ok((r.get(0)?,r.get(1)?)),
         )
         .optional()?;
-    if let Some(saved) = saved {
-        return Ok(serde_json::from_str(&saved)?);
+    if let Some((slot, saved)) = saved {
+        let mut report: AssessmentReport = serde_json::from_str(&saved)?;
+        report.revision = slot;
+        return Ok(report);
     }
     let mut q = c.prepare(
         "SELECT id,position FROM assessment_session_items WHERE session_id=? ORDER BY position",
@@ -315,7 +348,7 @@ pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, Ap
         "samplingPolicy":s.sampling.policy_version,"scorePolicy":s.sampling.score_policy}),
     )?);
     let minimum = s.config.minimum_sample;
-    let report = AssessmentReport {
+    let mut report = AssessmentReport {
         session_id: id.into(),
         revision: s.revision,
         state: s.state,
@@ -341,6 +374,19 @@ pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, Ap
         warnings,
         items,
     };
+    let content = report_content(c, &report)?;
+    let mut q = c.prepare("SELECT revision,report_json FROM assessment_report_versions WHERE session_id=? ORDER BY revision DESC")?;
+    for saved in q.query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))? {
+        let (slot, raw) = saved?;
+        let mut prior: AssessmentReport = serde_json::from_str(&raw)?;
+        if report_content(c, &prior)? == content {
+            remember_report(c, id, slot)?;
+            prior.revision = slot;
+            return Ok(prior);
+        }
+    }
+    drop(q);
+    report.revision = c.query_row("SELECT MAX(?1,COALESCE(MAX(revision)+1,?1)) FROM assessment_report_versions WHERE session_id=?2",params![s.revision,id],|r|r.get(0))?;
     c.execute(
         "INSERT INTO assessment_report_versions VALUES (?,?,?,?)",
         params![
@@ -350,6 +396,7 @@ pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, Ap
             report.generated_at
         ],
     )?;
+    remember_report(c, id, report.revision)?;
     Ok(report)
 }
 impl Store {
@@ -407,7 +454,7 @@ impl Store {
     ) -> Result<Value, AppError> {
         let mut c = self.connection()?;
         let tx = c.transaction()?;
-        let mut q=tx.prepare("SELECT id FROM assessment_sessions s WHERE state IN ('completed','ended_early') AND NOT EXISTS(SELECT 1 FROM assessment_report_versions r WHERE r.session_id=s.id AND r.revision=s.revision)")?;
+        let mut q=tx.prepare("SELECT id FROM assessment_sessions s WHERE state IN ('completed','ended_early') AND NOT EXISTS(SELECT 1 FROM settings m JOIN assessment_sync_dirty d ON d.session_id=s.id AND d.epoch=json_extract(m.value_json,'$[0]') JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=json_extract(m.value_json,'$[1]') WHERE m.key='assessment_current_report:'||s.id)")?;
         let ids = q
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -415,8 +462,8 @@ impl Store {
         for id in ids {
             report_on(&tx, &id)?;
         }
-        let total:usize=tx.query_row("SELECT COUNT(*) FROM assessment_sessions s JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=s.revision WHERE (?1 IS NULL OR json_extract(r.report_json,'$.comparisonKey')=?1)",[comparison_key],|r|r.get(0))?;
-        let mut q=tx.prepare("SELECT json_object('id',s.id,'state',s.state,'revision',s.revision,'createdAt',s.created_at,'config',json(s.config_json),'counts',json_extract(r.report_json,'$.counts'),'status',json_extract(r.report_json,'$.status'),'comparisonKey',json_extract(r.report_json,'$.comparisonKey'),'repeatedTargets',json_extract(r.report_json,'$.repeatedTargets'),'preservedCopy',json(CASE WHEN EXISTS(SELECT 1 FROM json_each(s.sampling_json,'$.warnings') WHERE substr(value,1,5)='保留副本：') THEN 'true' ELSE 'false' END)) FROM assessment_sessions s JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=s.revision WHERE (?1 IS NULL OR json_extract(r.report_json,'$.comparisonKey')=?1) ORDER BY s.created_at DESC,s.id DESC LIMIT ?2 OFFSET ?3")?;
+        let total:usize=tx.query_row("SELECT COUNT(*) FROM assessment_sessions s JOIN settings m ON m.key='assessment_current_report:'||s.id JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=json_extract(m.value_json,'$[1]') WHERE s.state IN ('completed','ended_early') AND (?1 IS NULL OR json_extract(r.report_json,'$.comparisonKey')=?1)",[comparison_key],|r|r.get(0))?;
+        let mut q=tx.prepare("SELECT json_object('id',s.id,'state',s.state,'revision',r.revision,'createdAt',s.created_at,'config',json(s.config_json),'counts',json_extract(r.report_json,'$.counts'),'status',json_extract(r.report_json,'$.status'),'comparisonKey',json_extract(r.report_json,'$.comparisonKey'),'repeatedTargets',json_extract(r.report_json,'$.repeatedTargets'),'preservedCopy',json(CASE WHEN EXISTS(SELECT 1 FROM json_each(s.sampling_json,'$.warnings') WHERE substr(value,1,5)='保留副本：') THEN 'true' ELSE 'false' END)) FROM assessment_sessions s JOIN settings m ON m.key='assessment_current_report:'||s.id JOIN assessment_report_versions r ON r.session_id=s.id AND r.revision=json_extract(m.value_json,'$[1]') WHERE s.state IN ('completed','ended_early') AND (?1 IS NULL OR json_extract(r.report_json,'$.comparisonKey')=?1) ORDER BY s.created_at DESC,s.id DESC LIMIT ?2 OFFSET ?3")?;
         let items = q
             .query_map(params![comparison_key, limit.clamp(1, 100), offset], |r| {
                 r.get::<_, String>(0)

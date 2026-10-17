@@ -144,7 +144,230 @@ fn sync_growth_assessment_caches_changed_sessions_and_keeps_reports() {
     assert_eq!(store.assessment_sync_status(scope).unwrap().pending, 0);
 }
 
+#[test]
+fn reports_reuse_business_content_across_sync_and_keep_history() {
+    use crate::assessment_sync::AssessmentDocument;
+    let (_dir, source) = fixture_audio("original");
+    let scope = "report-content-normal";
+    source.assessment_sync_capability(scope, Some("assessment-1")).unwrap();
+    let config = AssessmentConfig {
+        word_top_n: 2000,
+        question_count: 1,
+        minimum_sample: 1,
+        question_types: vec!["listening".into()],
+        ..Default::default()
+    };
+    let preview = source.assessment_preview(&config).unwrap();
+    let session = source
+        .assessment_start(&StartAssessment {
+            config,
+            expected_inventory_revision: preview.inventory_revision,
+            operation_id: op(),
+        })
+        .unwrap();
+    let item = session.question.unwrap().id;
+    let audio = source
+        .assessment_audio_start(&AssessmentAudioStart {
+            session_id: session.id.clone(),
+            item_id: item.clone(),
+            expected_revision: session.revision,
+            operation_id: op(),
+        })
+        .unwrap();
+    for event in ["started", "ended"] {
+        source
+            .assessment_audio_event(&AssessmentAudioEvent {
+                session_id: session.id.clone(),
+                item_id: item.clone(),
+                playback_id: audio.playback_id.clone(),
+                operation_id: op(),
+                event: event.into(),
+                seconds: 0.05,
+                error: String::new(),
+            })
+            .unwrap();
+    }
+    let completed = source
+        .assessment_answer_submit(&AssessmentAnswerInput {
+            session_id: session.id.clone(),
+            item_id: item,
+            expected_revision: session.revision,
+            operation_id: op(),
+            action: "unknown".into(),
+            option_id: None,
+            text: String::new(),
+            uncertain: false,
+        })
+        .unwrap();
+    source.assessment_report(&session.id, None).unwrap();
+    // Existing redundant versions are immutable history, including after upgrade.
+    {
+        let c = source.connection().unwrap();
+        let raw: String = c
+            .query_row(
+                "SELECT report_json FROM assessment_report_versions WHERE session_id=?",
+                [&session.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let mut old: Value = serde_json::from_str(&raw).unwrap();
+        old["revision"] = json!(completed.revision + 1);
+        old["generatedAt"] = json!(old["generatedAt"].as_i64().unwrap() + 1);
+        c.execute(
+            "INSERT INTO assessment_report_versions VALUES (?,?,?,?)",
+            params![
+                session.id,
+                completed.revision + 1,
+                old.to_string(),
+                old["generatedAt"].as_i64().unwrap()
+            ],
+        )
+        .unwrap();
+        c.execute(
+            "UPDATE assessment_sessions SET revision=revision+1 WHERE id=?",
+            [&session.id],
+        )
+        .unwrap();
+        c.execute(
+            "DELETE FROM settings WHERE key=?",
+            [format!("assessment_current_report:{}", session.id)],
+        )
+        .unwrap();
+    }
+    let first = source
+        .assessment_freeze_push(scope, &session.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.bundle.reports.len(), 2);
+    source.assessment_sync_saved(scope, &first, 1).unwrap();
+    let peer_dir = tempfile::tempdir().unwrap();
+    let peer = Store::open(peer_dir.path()).unwrap();
+    peer.assessment_sync_capability(scope, Some("assessment-1")).unwrap();
+    let media = &first.bundle.media[0];
+    let bytes = source
+        .assessment_sync_media(&media.digest, &media.format)
+        .unwrap();
+    peer.assessment_save_remote_media(media, &bytes).unwrap();
+    assert!(peer
+        .assessment_sync_receive(
+            scope,
+            &AssessmentDocument {
+                session_id: session.id.clone(),
+                revision: 1,
+                bundle: first.bundle.clone(),
+            }
+        )
+        .unwrap());
+    source
+        .connection()
+        .unwrap()
+        .execute(
+            "UPDATE assessment_sessions SET updated_at=updated_at+1 WHERE id=?",
+            [&session.id],
+        )
+        .unwrap();
+    let metadata = source
+        .assessment_freeze_push(scope, &session.id)
+        .unwrap()
+        .unwrap();
+    source.assessment_sync_saved(scope, &metadata, 2).unwrap();
+    assert!(peer
+        .assessment_sync_receive(
+            scope,
+            &AssessmentDocument {
+                session_id: session.id.clone(),
+                revision: 2,
+                bundle: metadata.bundle.clone(),
+            }
+        )
+        .unwrap());
+    let reused = peer.assessment_report(&session.id, None).unwrap();
+    assert_eq!(reused["revisions"].as_array().unwrap().len(), 2);
+    assert_eq!(reused["report"]["counts"]["unknown"], 1);
+    let slot = reused["report"]["revision"].as_i64().unwrap();
+    let history = peer
+        .assessment_history(0, 10, reused["report"]["comparisonKey"].as_str())
+        .unwrap();
+    assert_eq!(history["total"], 1);
+    assert_eq!(history["items"][0]["revision"], slot);
+    assert_eq!(
+        peer.assessment_report_items(&session.id, slot, 0, 10)
+            .unwrap()["items"][0]["answer"]["result"],
+        "unknown"
+    );
+    assert!(peer
+        .assessment_freeze_push(scope, &session.id)
+        .unwrap()
+        .is_none());
+    let original = &first.bundle.answers[0];
+    peer.assessment_correct(&CorrectAssessment {
+        answer_id: original.answer.id.clone(),
+        expected_revision: original.revision,
+        operation_id: op(),
+        result: "correct".into(),
+        add_hint: false,
+        reason: "正常人工核对".into(),
+    })
+    .unwrap();
+    let corrected = peer
+        .assessment_freeze_push(scope, &session.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(corrected.bundle.reports.len(), 3);
+    assert_eq!(corrected.bundle.corrections.len(), 1);
+    for report in &first.bundle.reports {
+        assert!(corrected
+            .bundle
+            .reports
+            .iter()
+            .any(|r| r.digest == report.digest && r.report_json == report.report_json));
+    }
+    peer.assessment_sync_saved(scope, &corrected, 3).unwrap();
+    source.assessment_save_remote_media(media, &bytes).unwrap();
+    assert!(source
+        .assessment_sync_receive(
+            scope,
+            &AssessmentDocument {
+                session_id: session.id.clone(),
+                revision: 3,
+                bundle: corrected.bundle.clone(),
+            }
+        )
+        .unwrap());
+    let current = source.assessment_report(&session.id, None).unwrap();
+    assert_eq!(current["revisions"].as_array().unwrap().len(), 3);
+    assert_eq!(current["report"]["counts"]["correct"], 1);
+    let detail = source
+        .assessment_report_items(
+            &session.id,
+            current["report"]["revision"].as_i64().unwrap(),
+            0,
+            10,
+        )
+        .unwrap();
+    assert_eq!(detail["items"][0]["originalAnswer"]["result"], "unknown");
+    assert_eq!(
+        detail["items"][0]["corrections"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        source
+            .assessment_sync_media(&media.digest, &media.format)
+            .unwrap(),
+        bytes
+    );
+    assert_eq!(
+        peer.assessment_sync_media(&media.digest, &media.format)
+            .unwrap(),
+        bytes
+    );
+}
+
 fn fixture() -> (tempfile::TempDir, Store) {
+    fixture_audio("system")
+}
+
+fn fixture_audio(audio_kind: &str) -> (tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("dictionaries")).unwrap();
     let c = Connection::open(dir.path().join("dictionaries/base.sqlite3")).unwrap();
@@ -244,7 +467,7 @@ fn fixture() -> (tempfile::TempDir, Store) {
                         explanation: "这是一道事先核对的合成核心样本。".into(),
                         origin: "TC-54 synthetic".into(),
                         audio: (*kind == "listening").then(|| AssessmentAudio {
-                            kind: "system".into(),
+                            kind: audio_kind.into(),
                             relative_path: "media/fixture.wav".into(),
                             sha256: digest(&wave),
                             text: format!("{}. {}", target.text, sentence),

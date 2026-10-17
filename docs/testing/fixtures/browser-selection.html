@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>SVL browser selection fixture</title>
+  <style>
+    body { font: 26px system-ui; padding: 40px; max-width: 850px; }
+    input { font: inherit; }
+    p { padding: 24px; background: #eef2ee; }
+  </style>
+  <h1>Browser selection fixture</h1>
+  <input aria-label="Search" placeholder="Search">
+  <p id="sentence">The server has been migrated for <strong>maintenance</strong>.</p>
+  <p>Double-click maintenance to select it. This page does not move keyboard focus to the sentence.</p>
+  <script>
+    document.addEventListener('selectionchange', () => {
+      if (getSelection().toString() === 'maintenance') {
+        document.title = 'SVL first selection READY';
+      }
+    });
+  </script>
+</html>

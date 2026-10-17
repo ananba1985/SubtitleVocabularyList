@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-003 |
-| 文档版本 | 0.5 |
-| 更新日期 | 2026-10-15 |
+| 文档版本 | 0.6 |
+| 更新日期 | 2026-10-16 |
 | 状态 | 本增量已执行；完整 M-05 与 0.1 尚未完成 |
 | 对应需求 | FR-03、FR-05、FR-06、FR-07、FR-09，部分 NFR-01、NFR-03 |
 | 执行依据 | [测试计划](test-plan.md)、[开发计划](../planning/development-plan.md) |
@@ -97,7 +97,32 @@ WPF 素材由 `scripts/probe-selection.ps1` 创建，仅含自编英文；它不
 
 本轮是实际浏览器原生取词正常流程；Edge 使用相同处理分支，但没有扩大到多浏览器兼容矩阵、故障注入、压力或全量回归，也没有新增全局快捷键至查询窗口的人工验收。没有读写个人数据库或剪贴板，没有重启、替换正在运行的 0.8.2 安装版；本次交付源码，不生成新安装包。各次耗时只说明本次调用，不作为性能保证。
 
-## 8 修订记录
+## 8 浏览器空焦点接口与网页选区定位修复（0.8.5）
+
+2026-10-16，FR-03、TC-07。已核实本机正在运行的安装版确为 0.8.4；用户反馈通常首次 Alt+C 返回 empty_selection，第二次成功。上轮 0.8.4 只解决接口发布的短暂等待，未解决焦点路径本身没有覆盖网页文档的情况。
+
+### 原因与真实浏览器复现
+
+旧代码找到焦点链的第一个 TextPattern 就停止，即使其选区为空，也不再检查其他祖先或网页文档。按照 [Microsoft GetSelection 契约](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomationtextpattern-getselection)，空插入点可以合法返回空范围，不能据此推断整个网页没有选区。补充查找采用[从已知应用窗口取得子树](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-obtainingelements)，不搜索整个桌面。
+
+本机 Chrome 155.0.8059.84，使用[自编网页夹具](fixtures/browser-selection.html)，原句为 `The server has been migrated for maintenance.`，目标 `maintenance`；没有 tabindex 或脚本强制将句子设为焦点。普通鼠标选词的旧实现能成功，因此不将其冒充失败复现。为核对截图中“可见选区存在而焦点接口为空”的条件，在保留本次网页选区的情况下用 F6、End 将焦点置于浏览器空插入点：
+
+| 观测 | 实际结果 |
+| --- | --- |
+| 0.8.4 原生生产函数 | 返回与截图完全相同的 empty_selection 文案 |
+| 焦点控件 | UIA 类型 Edit、类 OmniboxViewViews，GetSelection 为一个空范围 |
+| 同一窗口网页 Document | GetSelection 返回 `maintenance`，说明文字仍可由原生接口取得 |
+| 修复后同一窗口、同一选区 | 生产 `selected_text` 一次返回 `maintenance`、完整自编原句和 chrome.exe 来源 |
+
+证据位于工作区 `output/playwright/selection-0.8.5`，含选区截图、`browser-shell-before.txt` 与 `browser-shell-after.json`，只有自编内容。F6 是用于稳定构造焦点分离的诊断步骤，不代表用户在实际网页按过 F6，也不能证明用户页面首次焦点变化的具体触发时刻。
+
+### 修复与验证范围
+
+浏览器不再停在首个空文字接口；焦点链无结果时，限定原 HWND 内可见 Document 的当前选区继续读取。仍保留 0.8.4 的短暂就绪重读，实际前台变化、密码字段及长度检查保持，不增加剪贴板或模拟复制回退。非浏览器的原路径不变。
+
+已通过 Windows desktop `windows_probe` 编译、版本一致性检查及上述最小正常取词验证。全局 Alt+C 至查询小窗的本轮验证尚未执行：安装版继续运行，切换至隔离本地修复版的确认仍待用户回复；不将原生读取通过冒充该完整流程通过。未扩大到 Edge 兼容矩阵、故障注入、压力或全量回归，不自动生成安装包。
+
+## 9 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -106,3 +131,4 @@ WPF 素材由 `scripts/probe-selection.ps1` 创建，仅含自编英文；它不
 | 0.3 | 2026-10-10 | 记录 0.4.2 托盘左右键和菜单跳转的用户实际确认 |
 | 0.4 | 2026-10-11 | 记录 Pot 基本能力核对、本机快捷键匹配与升级保存的最小证据 |
 | 0.5 | 2026-10-15 | 记录 Chrome 首次失败第二次成功的真实复现、0.8.4 就绪重读及全新窗口首次调用通过 |
+| 0.6 | 2026-10-16 | 记录 0.8.4 空焦点接口与非空网页选区的真实复现、0.8.5 文档定位修复和实际验证边界 |

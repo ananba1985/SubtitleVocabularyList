@@ -503,7 +503,7 @@ pub fn selected_text(origin: &CaptureOrigin) -> Result<SelectedText, AppError> {
         // Chromium enables accessibility on demand. The first request may see
         // the browser shell before the renderer publishes its TextPattern.
         // Keep this client alive, but obtain fresh focused elements each time.
-        let browser = matches!(origin.application.to_ascii_lowercase().as_str(), "chrome.exe" | "msedge.exe" | "chromium.exe");
+        let browser = chromium_origin(origin);
         let started = Instant::now();
         let ready_window = Duration::from_millis(1500);
         loop {
@@ -541,7 +541,7 @@ fn selected_text_once(origin: &CaptureOrigin, automation: &IUIAutomation) -> Res
                 Err(_) => break,
             }
         }
-        if GetForegroundWindow() != HWND(origin.window as *mut _) || !belongs {
+        if GetForegroundWindow() != HWND(origin.window as *mut _) || (!belongs && !chromium_origin(origin)) {
             return Err(AppError::new(
                 "capture_changed",
                 "前台窗口已变化，请在原应用重新选择文字。",
@@ -550,31 +550,74 @@ fn selected_text_once(origin: &CaptureOrigin, automation: &IUIAutomation) -> Res
         if element.CurrentIsPassword().map_err(native_error)?.as_bool() {
             return Err(AppError::new("unsupported", "此输入区域不支持划词采集。"));
         }
-        let mut candidate = element;
-        let mut found = None;
-        for _ in 0..16 {
-            if let Ok(pattern) =
-                candidate.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
-            {
-                found = Some(pattern);
-                break;
-            }
-            if let Ok(window) = candidate.CurrentNativeWindowHandle()
-                && window == HWND(origin.window as *mut _)
-            {
-                break;
-            }
-            match walker.GetParentElement(&candidate) {
-                Ok(parent) => candidate = parent,
-                Err(_) => break,
+        let mut supported = false;
+        if belongs {
+            let mut candidate = element;
+            for _ in 0..16 {
+                if let Ok(pattern) =
+                    candidate.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+                {
+                    supported = true;
+                    match text_pattern_selection(origin, &pattern) {
+                        Err(error) if chromium_origin(origin) && error.code == "empty_selection" => {},
+                        result => return result,
+                    }
+                }
+                if let Ok(window) = candidate.CurrentNativeWindowHandle()
+                    && window == HWND(origin.window as *mut _)
+                {
+                    break;
+                }
+                match walker.GetParentElement(&candidate) {
+                    Ok(parent) => candidate = parent,
+                    Err(_) => break,
+                }
             }
         }
-        let pattern = found.ok_or_else(|| {
+        // A browser's focused control can be outside the selected document,
+        // especially while its accessibility tree is first being published.
+        // Only inspect visible documents under the original foreground HWND.
+        if chromium_origin(origin) {
+            let root = automation.ElementFromHandle(HWND(origin.window as *mut _)).map_err(native_error)?;
+            let document = automation.CreatePropertyCondition(UIA_ControlTypePropertyId, &UIA_DocumentControlTypeId.0.into()).map_err(native_error)?;
+            let visible = automation.CreatePropertyCondition(UIA_IsOffscreenPropertyId, &false.into()).map_err(native_error)?;
+            let condition = automation.CreateAndCondition(&document, &visible).map_err(native_error)?;
+            let documents = root.FindAll(TreeScope_Descendants, &condition).map_err(native_error)?;
+            for index in 0..documents.Length().map_err(native_error)?.min(32) {
+                if GetForegroundWindow() != HWND(origin.window as *mut _) {
+                    return Err(AppError::new("capture_changed", "前台窗口已变化，请在原应用重新选择文字。"));
+                }
+                let document = documents.GetElement(index).map_err(native_error)?;
+                if let Ok(pattern) = document.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) {
+                    supported = true;
+                    match text_pattern_selection(origin, &pattern) {
+                        Err(error) if error.code == "empty_selection" => {},
+                        result => return result,
+                    }
+                }
+            }
+        }
+        Err(if supported {
+            empty_selection()
+        } else {
             AppError::new(
                 "unsupported",
                 "此应用未提供可用的文字选区，可以使用截图 OCR 或手动收录。",
             )
-        })?;
+        })
+    }
+}
+
+fn chromium_origin(origin: &CaptureOrigin) -> bool {
+    matches!(origin.application.to_ascii_lowercase().as_str(), "chrome.exe" | "msedge.exe" | "chromium.exe")
+}
+
+fn empty_selection() -> AppError {
+    AppError::new("empty_selection", "没有选中文字。本次未使用剪贴板旧内容，请先选择后重试。")
+}
+
+fn text_pattern_selection(origin: &CaptureOrigin, pattern: &IUIAutomationTextPattern) -> Result<SelectedText, AppError> {
+    unsafe {
         let ranges = pattern.GetSelection().map_err(native_error)?;
         let mut selected = Vec::new();
         let mut contexts = Vec::new();
@@ -593,10 +636,7 @@ fn selected_text_once(origin: &CaptureOrigin, automation: &IUIAutomation) -> Res
             }
         }
         if selected.is_empty() {
-            return Err(AppError::new(
-                "empty_selection",
-                "没有选中文字。本次未使用剪贴板旧内容，请先选择后重试。",
-            ));
+            return Err(empty_selection());
         }
         if GetForegroundWindow() != HWND(origin.window as *mut _) {
             return Err(AppError::new(

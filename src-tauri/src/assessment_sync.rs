@@ -414,9 +414,20 @@ pub(crate) fn export_on(
     scope: &str,
     id: &str,
 ) -> Result<AssessmentPacket, AppError> {
-    let _timing = crate::local_profile::phase("assessment.export");
-    let s = load_session(c, id)?;
-    let base: Option<String> = c
+    let base = load_base(c, scope, id)?;
+    let mut settings = Vec::new();
+    let packet = export_with_base(c, root, scope, id, base.as_ref(), &mut settings)?;
+    write_settings(c, &settings)?;
+    Ok(packet)
+}
+
+fn load_base(
+    c: &Connection,
+    scope: &str,
+    id: &str,
+) -> Result<Option<AssessmentDocument>, AppError> {
+    let _timing = crate::local_profile::phase("assessment.base_decode");
+    let raw: Option<String> = c
         .query_row(
             "SELECT base_json FROM assessment_sync_state WHERE account_key=? AND session_id=?",
             params![scope, id],
@@ -424,26 +435,56 @@ pub(crate) fn export_on(
         )
         .optional()?
         .flatten();
-    let base = base
+    Ok(raw
         .as_deref()
         .map(serde_json::from_str::<AssessmentDocument>)
-        .transpose()?;
-    let device: Option<String> = c
-        .query_row(
-            "SELECT value_json FROM settings WHERE key='assessment_device_v1'",
-            [],
-            |r| r.get(0),
-        )
-        .optional()?;
-    let device = if let Some(device) = device {
-        serde_json::from_str::<String>(&device)?
+        .transpose()?)
+}
+
+fn write_settings(c: &Connection, settings: &[(String, String)]) -> Result<(), AppError> {
+    let mut statement = c.prepare("INSERT INTO settings(key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json WHERE settings.value_json IS NOT excluded.value_json")?;
+    for (key, value) in settings {
+        statement.execute(params![key, value])?;
+    }
+    Ok(())
+}
+
+fn export_with_base(
+    c: &Connection,
+    root: &std::path::Path,
+    scope: &str,
+    id: &str,
+    base: Option<&AssessmentDocument>,
+    settings: &mut Vec<(String, String)>,
+) -> Result<AssessmentPacket, AppError> {
+    let _timing = crate::local_profile::phase("assessment.export");
+    let s = load_session(c, id)?;
+    let origin = if let Some(base) = base {
+        base.bundle.origin_device_id.clone()
     } else {
-        let v = Uuid::new_v4().to_string();
-        c.execute(
-            "INSERT INTO settings(key,value_json) VALUES ('assessment_device_v1',?)",
-            [canonical(&v)?],
-        )?;
-        v
+        let device: Option<String> = c
+            .query_row(
+                "SELECT value_json FROM settings WHERE key='assessment_device_v1'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let device = if let Some(device) = device {
+            serde_json::from_str::<String>(&device)?
+        } else {
+            let v = Uuid::new_v4().to_string();
+            settings.push(("assessment_device_v1".into(), canonical(&v)?));
+            v
+        };
+        c.query_row(
+            "SELECT value_json FROM settings WHERE key=?",
+            [format!("assessment_origin:{}", s.id)],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .map(|v| serde_json::from_str::<String>(&v))
+        .transpose()?
+        .unwrap_or(device)
     };
     let mut q=c.prepare("SELECT id,position,snapshot_json,interaction_json FROM assessment_session_items WHERE session_id=? ORDER BY position")?;
     let rows = q
@@ -503,9 +544,16 @@ pub(crate) fn export_on(
     let mut retained_by_slot = BTreeMap::new();
     if let Some(base) = &base {
         for report in &base.bundle.reports {
-            let slot: Option<String> = c.query_row("SELECT value_json FROM settings WHERE key=?",
-                [report_slot_key(id,&report.digest)], |r|r.get(0)).optional()?;
-            if let Some(slot) = slot { retained_by_slot.entry(slot).or_insert(report); }
+            let slot: Option<String> = c
+                .query_row(
+                    "SELECT value_json FROM settings WHERE key=?",
+                    [report_slot_key(id, &report.digest)],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(slot) = slot {
+                retained_by_slot.entry(slot).or_insert(report);
+            }
         }
     }
     for row in q.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
@@ -520,10 +568,7 @@ pub(crate) fn export_on(
         let report: AssessmentReport = serde_json::from_value(v)?;
         let report_json = canonical(&report)?;
         let checksum = digest(report_json.as_bytes());
-        c.execute(
-            "INSERT OR REPLACE INTO settings(key,value_json) VALUES (?,?)",
-            params![report_slot_key(id, &checksum), slot.to_string()],
-        )?;
+        settings.push((report_slot_key(id, &checksum), slot.to_string()));
         reports.insert(
             checksum.clone(),
             ReportFacts {
@@ -570,19 +615,7 @@ pub(crate) fn export_on(
     let packet = AssessmentPacket {
         protocol: "assessment-1".into(),
         schema_version: 1,
-        origin_device_id: if let Some(base) = base {
-            base.bundle.origin_device_id
-        } else {
-            c.query_row(
-                "SELECT value_json FROM settings WHERE key=?",
-                [format!("assessment_origin:{}", s.id)],
-                |r| r.get::<_, String>(0),
-            )
-            .optional()?
-            .map(|v| serde_json::from_str::<String>(&v))
-            .transpose()?
-            .unwrap_or(device)
-        },
+        origin_device_id: origin,
         session: SessionFacts {
             id: s.id,
             state: s.state,
@@ -606,17 +639,20 @@ pub(crate) fn export_on(
 }
 
 // Cached digests describe complete exported facts, never a truncated history or an acknowledgement.
-fn cache_packet(
+fn cache_received_packet(
     c: &Connection,
     root: &std::path::Path,
     scope: &str,
-    id: &str,
+    remote: &AssessmentDocument,
 ) -> Result<(AssessmentPacket, String), AppError> {
+    let id = &remote.session_id;
     c.execute(
         "INSERT OR IGNORE INTO assessment_sync_accounts(account_key,updated_at) VALUES (?,?)",
         params![scope, chrono::Utc::now().timestamp_millis()],
     )?;
-    let packet = export_on(c, root, scope, id)?;
+    let mut settings = Vec::new();
+    let packet = export_with_base(c, root, scope, id, Some(remote), &mut settings)?;
+    write_settings(c, &settings)?;
     let hash = packet_digest(&packet)?;
     let mut references = 0usize;
     for link in &packet.collection_links {
@@ -811,13 +847,13 @@ fn save_report(c: &Connection, id: &str, report: &ReportFacts) -> Result<(), App
     )?;
     Ok(())
 }
-fn apply_on(
+// Callers validate incoming, merged or preserved packets before applying them.
+fn apply_validated_on(
     c: &Connection,
     root: &std::path::Path,
     scope: &str,
     packet: &AssessmentPacket,
 ) -> Result<(), AppError> {
-    packet.validate()?;
     let s = &packet.session;
     let prior: Option<i64> = c
         .query_row(
@@ -894,12 +930,9 @@ fn apply_on(
 impl Store {
     fn prepared_assessment(&self, scope: &str, id: &str) -> Result<Arc<PreparedPacket>, AppError> {
         loop {
-            let (packet, epoch, references) = {
+            let (packet, epoch, references, settings) = {
                 let mut c = self.connection()?;
-                let _transaction = crate::local_profile::phase("assessment.read_tx");
-                let tx = c.transaction()?;
-                tx.execute("INSERT OR IGNORE INTO assessment_sync_accounts(account_key,updated_at) VALUES (?,?)",params![scope,chrono::Utc::now().timestamp_millis()])?;
-                let epoch: i64 = tx.query_row(
+                let epoch: i64 = c.query_row(
                     "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
                     [id],
                     |r| r.get(0),
@@ -910,29 +943,46 @@ impl Store {
                         .cloned()
                 });
                 if let Some(cached) = cached {
-                    tx.commit()?;
                     return Ok(cached);
                 }
-                if matches!(
+                let _transaction = crate::local_profile::phase("assessment.read_tx");
+                let changes = c.total_changes();
+                let tx = c.transaction()?;
+                let report = if matches!(
                     load_session(&tx, id)?.state.as_str(),
                     "completed" | "ended_early"
                 ) {
-                    report_on(&tx, id)?;
-                }
-                let packet = export_on(&tx, self.root(), scope, id)?;
+                    Some(crate::assessment_reports::report_for_export(&tx, id)?)
+                } else {
+                    None
+                };
+                let base = load_base(&tx, scope, id)?;
+                let mut settings = Vec::new();
+                let packet =
+                    export_with_base(&tx, self.root(), scope, id, base.as_ref(), &mut settings)?;
                 let epoch: i64 = tx.query_row(
                     "SELECT epoch FROM assessment_sync_dirty WHERE session_id=?",
                     [id],
                     |r| r.get(0),
                 )?;
+                if let Some(report) = report {
+                    settings.push((
+                        format!("assessment_current_report:{id}"),
+                        format!("[{epoch},{}]", report.revision),
+                    ));
+                }
                 let mut references = 0;
                 for link in &packet.collection_links {
                     if entry_alias(&tx, scope, &link.entry_id, false)?.is_none() {
                         references += 1;
                     }
                 }
+                // Existing reports and device/slot indices need no separate write commit.
+                // A genuinely missing business report is still committed before detaching.
+                let _commit = (tx.total_changes() != changes)
+                    .then(|| crate::local_profile::phase("assessment.write_commit"));
                 tx.commit()?;
-                (packet, epoch, references)
+                (packet, epoch, references, settings)
             };
             // Hashing the detached complete snapshot does not occupy the business connection.
             let hash = packet_digest(&packet)?;
@@ -953,10 +1003,23 @@ impl Store {
                     [id],
                     |r| r.get(0),
                 )?;
-                if current != epoch {
+                // The first export also depends on the as-yet-unpublished device id.
+                // Another Store may have initialized it while hashing was detached.
+                let device_changed = settings
+                    .iter()
+                    .any(|(key, _)| key == "assessment_device_v1")
+                    && tx.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM settings WHERE key='assessment_device_v1')",
+                        [],
+                        |r| r.get::<_, bool>(0),
+                    )?;
+                if current != epoch || device_changed {
                     false
                 } else {
+                    tx.execute("INSERT OR IGNORE INTO assessment_sync_accounts(account_key,updated_at) VALUES (?,?)",params![scope,chrono::Utc::now().timestamp_millis()])?;
+                    write_settings(&tx, &settings)?;
                     tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,cached_epoch,cached_digest,cached_pending_references) VALUES (?,?,?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET cached_epoch=excluded.cached_epoch,cached_digest=excluded.cached_digest,cached_pending_references=excluded.cached_pending_references",params![scope,id,epoch,prepared.hash,prepared.references])?;
+                    let _commit = crate::local_profile::phase("assessment.write_commit");
                     tx.commit()?;
                     true
                 }
@@ -1031,7 +1094,7 @@ impl Store {
                     ],
                 )?;
                 let copy = preserved_copy(&local, &archive)?;
-                apply_on(tx, self.root(), scope, &copy)?;
+                apply_validated_on(tx, self.root(), scope, &copy)?;
                 let copy_base = AssessmentDocument {
                     session_id: copy.session.id.clone(),
                     revision: 0,
@@ -1058,7 +1121,7 @@ impl Store {
                     "DELETE FROM settings WHERE substr(key,1,?1)=?2",
                     params![prefix.len(), prefix],
                 )?;
-                apply_on(tx, self.root(), scope, &remote.bundle)?;
+                apply_validated_on(tx, self.root(), scope, &remote.bundle)?;
                 tx.execute("UPDATE assessment_sync_state SET base_json=?,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL,conflict_json=NULL WHERE account_key=? AND session_id=?",params![canonical(&remote)?,scope,input.session_id])?;
                 let acknowledged =
                     packet_digest(&export_on(tx, self.root(), scope, &input.session_id)?)?;
@@ -1219,6 +1282,7 @@ impl Store {
             }
             let push = push.unwrap();
             tx.execute("UPDATE assessment_sync_state SET pending_json=?,pending_change_id=?,pending_digest=? WHERE account_key=? AND session_id=?",params![payload,push.change_id,prepared.hash,scope,id])?;
+            let _commit = crate::local_profile::phase("assessment.write_commit");
             tx.commit()?;
             return Ok(Some(push));
         }
@@ -1258,8 +1322,16 @@ impl Store {
         let _encoding = crate::local_profile::phase("assessment.saved_encode");
         let payload = canonical(&doc)?;
         drop(_encoding);
-        let c = self.connection()?;
-        c.execute("UPDATE assessment_sync_state SET base_json=?,acknowledged_digest=pending_digest,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL WHERE account_key=? AND session_id=? AND pending_change_id=?",params![payload,scope,push.bundle.session.id,push.change_id])?;
+        let mut c = self.connection()?;
+        let tx = c.transaction()?;
+        // Only advance an exact frozen projection. New local facts must remain dirty.
+        let reusable: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM assessment_sync_state s JOIN assessment_sync_dirty d ON d.session_id=s.session_id WHERE s.account_key=? AND s.session_id=? AND s.pending_change_id=? AND s.cached_epoch=d.epoch AND s.cached_digest=s.pending_digest)",params![scope,push.bundle.session.id,push.change_id],|r|r.get(0))?;
+        tx.execute("UPDATE assessment_sync_state SET base_json=?,acknowledged_digest=pending_digest,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL WHERE account_key=? AND session_id=? AND pending_change_id=?",params![payload,scope,push.bundle.session.id,push.change_id])?;
+        if reusable {
+            tx.execute("UPDATE assessment_sync_state SET cached_epoch=(SELECT epoch FROM assessment_sync_dirty WHERE session_id=?2) WHERE account_key=?1 AND session_id=?2",params![scope,push.bundle.session.id])?;
+        }
+        let _commit = crate::local_profile::phase("assessment.write_commit");
+        tx.commit()?;
         Ok(())
     }
     pub fn assessment_sync_receive(
@@ -1272,31 +1344,45 @@ impl Store {
         if remote.session_id != remote.bundle.session.id || remote.revision < 1 {
             return Err(invalid("测试变更关联无效。"));
         }
+        let _encoding = crate::local_profile::phase("assessment.receive_encode");
+        let remote_json = canonical(remote)?;
+        drop(_encoding);
         let mut c = self.connection()?;
         let _transaction = crate::local_profile::phase("assessment.receive_tx");
         let tx = c.transaction()?;
-        let saved:Option<(Option<String>,Option<String>)>=tx.query_row("SELECT base_json,acknowledged_digest FROM assessment_sync_state WHERE account_key=? AND session_id=?",params![scope,remote.session_id],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
-        let base = saved
-            .as_ref()
-            .and_then(|r| r.0.as_deref())
-            .map(serde_json::from_str::<AssessmentDocument>)
-            .transpose()?;
-        if base.as_ref().is_some_and(|b| b.revision >= remote.revision) {
+        let saved:Option<(Option<String>,i64,bool)>=tx.query_row("SELECT s.acknowledged_digest,s.remote_revision,COALESCE(s.cached_epoch=d.epoch AND s.cached_digest=s.acknowledged_digest,0) FROM assessment_sync_state s JOIN assessment_sync_dirty d ON d.session_id=s.session_id WHERE s.account_key=? AND s.session_id=?",params![scope,remote.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
+        if saved.as_ref().is_some_and(|s| s.1 >= remote.revision) {
             return Ok(true);
         }
+        let unchanged = saved.as_ref().is_some_and(|s| s.2);
+        let base = if unchanged {
+            None
+        } else {
+            load_base(&tx, scope, &remote.session_id)?
+        };
         let exists = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM assessment_sessions WHERE id=?)",
             [&remote.session_id],
             |r| r.get::<_, bool>(0),
         )?;
-        let local = if exists {
-            Some(export_on(&tx, self.root(), scope, &remote.session_id)?)
+        let local = if exists && !unchanged {
+            let mut settings = Vec::new();
+            let local = export_with_base(
+                &tx,
+                self.root(),
+                scope,
+                &remote.session_id,
+                base.as_ref(),
+                &mut settings,
+            )?;
+            write_settings(&tx, &settings)?;
+            Some(local)
         } else {
             None
         };
         let local_hash = local.as_ref().map(packet_digest).transpose()?;
         let apply = if let Some(local) = &local {
-            if saved.as_ref().and_then(|r| r.1.as_ref()) == local_hash.as_ref() {
+            if saved.as_ref().and_then(|r| r.0.as_ref()) == local_hash.as_ref() {
                 Ok(remote.bundle.clone())
             } else if let Some(base) = &base {
                 merge(&base.bundle, local, &remote.bundle)
@@ -1313,19 +1399,21 @@ impl Store {
         };
         match apply {
             Ok(packet) => {
-                apply_on(&tx, self.root(), scope, &packet)?;
-                tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,base_json) VALUES (?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET base_json=excluded.base_json,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL,conflict_json=NULL",params![scope,remote.session_id,canonical(remote)?])?;
-                let (_, hash) = cache_packet(&tx, self.root(), scope, &remote.session_id)?;
+                apply_validated_on(&tx, self.root(), scope, &packet)?;
+                tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,base_json) VALUES (?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET base_json=excluded.base_json,pending_json=NULL,pending_change_id=NULL,pending_digest=NULL,conflict_json=NULL",params![scope,remote.session_id,remote_json])?;
+                let (_, hash) = cache_received_packet(&tx, self.root(), scope, remote)?;
                 // A merged local append must still be pushed; a plain receive is acknowledged locally.
                 let merged = local.is_some()
-                    && saved.as_ref().and_then(|r| r.1.as_ref()) != local_hash.as_ref()
+                    && saved.as_ref().and_then(|r| r.0.as_ref()) != local_hash.as_ref()
                     && base.is_some();
                 tx.execute("UPDATE assessment_sync_state SET acknowledged_digest=? WHERE account_key=? AND session_id=?",params![if merged{None}else{Some(hash)},scope,remote.session_id])?;
+                let _commit = crate::local_profile::phase("assessment.write_commit");
                 tx.commit()?;
                 Ok(true)
             }
             Err(error) => {
                 tx.execute("INSERT INTO assessment_sync_state(account_key,session_id,conflict_json) VALUES (?,?,?) ON CONFLICT(account_key,session_id) DO UPDATE SET conflict_json=excluded.conflict_json",params![scope,remote.session_id,canonical(&json!({"local":local,"remote":remote,"reason":error.message}))?])?;
+                let _commit = crate::local_profile::phase("assessment.write_commit");
                 tx.commit()?;
                 Ok(false)
             }

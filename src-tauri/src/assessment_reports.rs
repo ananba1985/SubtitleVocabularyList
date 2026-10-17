@@ -200,6 +200,19 @@ fn remember_report(c: &Connection, id: &str, slot: i64) -> Result<(), AppError> 
 }
 
 pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, AppError> {
+    report_with_cache(c, id, true)
+}
+
+// Snapshot preparation publishes this derived index together with its digest.
+pub(crate) fn report_for_export(c: &Connection, id: &str) -> Result<AssessmentReport, AppError> {
+    report_with_cache(c, id, false)
+}
+
+fn report_with_cache(
+    c: &Connection,
+    id: &str,
+    remember: bool,
+) -> Result<AssessmentReport, AppError> {
     let _timing = crate::local_profile::phase("assessment.report");
     let s = load_session(c, id)?;
     if !matches!(s.state.as_str(), "completed" | "ended_early") {
@@ -381,7 +394,9 @@ pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, Ap
         let (slot, raw) = saved?;
         let mut prior: AssessmentReport = serde_json::from_str(&raw)?;
         if report_content(c, &prior)? == content {
-            remember_report(c, id, slot)?;
+            if remember {
+                remember_report(c, id, slot)?;
+            }
             prior.revision = slot;
             return Ok(prior);
         }
@@ -397,7 +412,9 @@ pub(crate) fn report_on(c: &Connection, id: &str) -> Result<AssessmentReport, Ap
             report.generated_at
         ],
     )?;
-    remember_report(c, id, report.revision)?;
+    if remember {
+        remember_report(c, id, report.revision)?;
+    }
     Ok(report)
 }
 impl Store {

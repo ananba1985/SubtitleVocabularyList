@@ -244,6 +244,12 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .unwrap();
     assert_eq!(first.bundle.reports.len(), 2);
     source.assessment_sync_saved(scope, &first, 1).unwrap();
+    let assert_acknowledged = |store: &Store| {
+        assert!(store.connection().unwrap().query_row(
+            "SELECT s.cached_epoch=d.epoch AND s.cached_digest=s.acknowledged_digest FROM assessment_sync_state s JOIN assessment_sync_dirty d ON d.session_id=s.session_id WHERE s.account_key=? AND s.session_id=?",
+            params![scope,session.id], |r|r.get::<_,bool>(0)).unwrap());
+    };
+    assert_acknowledged(&source);
     let peer_dir = tempfile::tempdir().unwrap();
     let peer = Store::open(peer_dir.path()).unwrap();
     peer.assessment_sync_capability(scope, Some("assessment-1"))
@@ -253,8 +259,8 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .assessment_sync_media(&media.digest, &media.format)
         .unwrap();
     peer.assessment_save_remote_media(media, &bytes).unwrap();
-    assert!(peer
-        .assessment_sync_receive(
+    assert!(
+        peer.assessment_sync_receive(
             scope,
             &AssessmentDocument {
                 session_id: session.id.clone(),
@@ -262,7 +268,8 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
                 bundle: first.bundle.clone(),
             }
         )
-        .unwrap());
+        .unwrap()
+    );
     source
         .connection()
         .unwrap()
@@ -277,8 +284,9 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .unwrap()
         .unwrap();
     source.assessment_sync_saved(scope, &metadata, 2).unwrap();
-    assert!(peer
-        .assessment_sync_receive(
+    assert_acknowledged(&source);
+    assert!(
+        peer.assessment_sync_receive(
             scope,
             &AssessmentDocument {
                 session_id: session.id.clone(),
@@ -286,7 +294,8 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
                 bundle: metadata.bundle.clone(),
             }
         )
-        .unwrap());
+        .unwrap()
+    );
     let reused = peer.assessment_report(&session.id, None).unwrap();
     assert_eq!(reused["revisions"].as_array().unwrap().len(), 2);
     assert_eq!(reused["report"]["counts"]["unknown"], 1);
@@ -301,10 +310,11 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
             .unwrap()["items"][0]["answer"]["result"],
         "unknown"
     );
-    assert!(peer
-        .assessment_freeze_push(scope, &session.id)
-        .unwrap()
-        .is_none());
+    assert!(
+        peer.assessment_freeze_push(scope, &session.id)
+            .unwrap()
+            .is_none()
+    );
     let original = &first.bundle.answers[0];
     peer.assessment_correct(&CorrectAssessment {
         answer_id: original.answer.id.clone(),
@@ -322,25 +332,41 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .unwrap();
     assert_eq!(corrected.bundle.reports.len(), 3);
     assert_eq!(corrected.bundle.corrections.len(), 1);
+    assert_eq!(
+        serde_json::to_value(&corrected.bundle.items).unwrap(),
+        serde_json::to_value(&first.bundle.items).unwrap()
+    );
+    assert_eq!(
+        corrected.bundle.answers.len(), first.bundle.answers.len()
+    );
+    assert_eq!(
+        serde_json::to_value(&corrected.bundle.answers[0].answer).unwrap(),
+        serde_json::to_value(&original.answer).unwrap()
+    );
     for report in &first.bundle.reports {
-        assert!(corrected
-            .bundle
-            .reports
-            .iter()
-            .any(|r| r.digest == report.digest && r.report_json == report.report_json));
+        assert!(
+            corrected
+                .bundle
+                .reports
+                .iter()
+                .any(|r| r.digest == report.digest && r.report_json == report.report_json)
+        );
     }
     peer.assessment_sync_saved(scope, &corrected, 3).unwrap();
+    assert_acknowledged(&peer);
     source.assessment_save_remote_media(media, &bytes).unwrap();
-    assert!(source
-        .assessment_sync_receive(
-            scope,
-            &AssessmentDocument {
-                session_id: session.id.clone(),
-                revision: 3,
-                bundle: corrected.bundle.clone(),
-            }
-        )
-        .unwrap());
+    assert!(
+        source
+            .assessment_sync_receive(
+                scope,
+                &AssessmentDocument {
+                    session_id: session.id.clone(),
+                    revision: 3,
+                    bundle: corrected.bundle.clone(),
+                }
+            )
+            .unwrap()
+    );
     let current = source.assessment_report(&session.id, None).unwrap();
     assert_eq!(current["revisions"].as_array().unwrap().len(), 3);
     assert_eq!(current["report"]["counts"]["correct"], 1);
@@ -374,10 +400,32 @@ fn reports_reuse_business_content_across_sync_and_keep_history() {
         .filter(|s| s.operation == "assessment.freeze")
         .collect::<Vec<_>>();
     assert_eq!(freezes.len(), 4);
-    assert!(freezes
+    assert!(
+        freezes
+            .iter()
+            .all(|s| !s.timings.contains_key("assessment.export")
+                && !s.timings.contains_key("assessment.digest")
+                && !s.timings.contains_key("assessment.read_tx"))
+    );
+    let receives = samples
         .iter()
-        .all(|s| !s.timings.contains_key("assessment.export")
-            && !s.timings.contains_key("assessment.digest")));
+        .filter(|s| s.operation == "assessment.receive")
+        .collect::<Vec<_>>();
+    assert_eq!(receives.len(), 3);
+    assert!(
+        receives
+            .iter()
+            .all(|s| s.timings["assessment.export"].calls == 1
+                && s.timings["assessment.digest"].calls == 1)
+    );
+    // Existing business reports need just the combined metadata publication commit.
+    assert!(
+        samples
+            .iter()
+            .filter(|s| s.operation == "assessment.status")
+            .take(2)
+            .all(|s| s.timings["assessment.write_commit"].calls == 1)
+    );
     assert_eq!(
         samples
             .iter()

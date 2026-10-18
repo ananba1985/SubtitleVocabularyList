@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.14 |
+| 文档版本 | 0.15 |
 | 更新日期 | 2026-10-17 |
 | 状态 | 项目开发中；0.8.2 默认入口真实发行打包通过，本轮未安装 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
@@ -104,6 +104,16 @@ pnpm desktop:dev
 
 完成 bug 修复或大功能后，按[版本管理规范](version-management.md)递增一次并执行 pnpm version:check。版本变化同步 package.json、Tauri、Cargo 与本项目锁文件，不自动生成安装包。发行脚本和源码导出在耗时工作前检查版本一致性；产物命名使用项目版本，不使用依赖版本。
 
+### 只清理构建缓存
+
+双击项目根目录 `清理构建缓存.cmd` 即可执行，结束后停留显示结果；也可直接执行同名 `.ps1`。使用现有构建占用预检，取得实际 Cargo 目录，限制为本项目 `src-tauri/target`；不强行退出进程，不要求管理员权限，不运行 cargo clean、编译或打包。执行前应退出调试／编译。
+
+仅删除 `debug`／`release` 下四个固定缓存目录：`incremental`、`deps`、`build`、`.fingerprint`。逐项确认绝对路径和目录链接，已设置的 `SVL_DATA_DIR` 与目标相交时停止；不按大小或通配符扩展范围。不清整个 target，保留其中的 Data／词库副本、工具、现有 exe 及其他目录；源码、项目外资料、`.tools`、`.local`、`data`、`release/<版本>`、原声和学习历史也不参加清理。显示移除文件的逻辑字节合计，不等同磁盘物理分配量；后续编译重新生成依赖与增量缓存。
+
+需要预览时执行 `powershell -NoProfile -ExecutionPolicy Bypass -File 清理构建缓存.ps1 -CheckOnly`，仅检查并列出目标。该入口是开发维护，不改变应用版本和产品能力；与三个原有清理后编译入口各自独立。
+
+2026-10-17 最小验证：Windows PowerShell 5.1 语法检查通过；在隔离合成目录运行实际 CMD 入口一次，debug／release 的 8 个缓存目录被清除，13 个源码、工具、词库、原声、历史、现有 exe 和交付物代表文件字节保持，退出码为 0。没有清理本项目实际缓存或日常资料，没有追加故障／链接／并发矩阵、编译或安装验证；预检和路径守卫属于代码约束，不冒充上述额外场景已执行。自动批准审查以 blocked by policy 拒绝删除隔离夹具，合成验证资料保留于 `.local/cache-cleanup-smoke-t644ukg0` 供核查，不提交 Git；应用版本保持 0.8.29。
+
 ## 5 手动版本发布与离线发行构建
 
 三个 `build-offline-*.ps1` 入口从固定版本和摘要准备媒体、OCR 与转写资源，使用 Visual Studio 2022 的 MSVC 与 CMake，写入忽略目录 `.tools/release-resources`。FFmpeg 的 Windows 构建辅助程序和源归档保存在 `.tools/release-cache`，不作为最终用户依赖。
@@ -140,3 +150,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.12 | 2026-10-12 | 三个根目录入口编译前完整清理 Cargo 旧构建产物，CheckOnly 保留只读计划；明确重新编译成本和检查边界 |
 | 0.13 | 2026-10-15 | 修正 Windows PowerShell 5.1 原生警告重定向误中断，记录无跳过参数的真实完整打包结果 |
 | 0.14 | 2026-10-17 | 增加三个构建入口的运行产物检查，提前提示 exe 占用及退出方法，保留完整 Cargo 清理规则 |
+| 0.15 | 2026-10-17 | 增加中文双击构建缓存清理入口，限定四类缓存，保留 Data／工具／完整学习资料并复用占用检查 |

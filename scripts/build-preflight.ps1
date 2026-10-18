@@ -1,5 +1,5 @@
 ﻿function Assert-SvlCargoBuildIdle {
-    param([Parameter(Mandatory=$true)][string]$Workspace)
+    param([Parameter(Mandatory=$true)][string]$Workspace, [switch]$PassThru)
 
     $svlManifest = Join-Path $Workspace 'src-tauri/Cargo.toml'
     $svlMetadataJson = & cargo metadata --manifest-path $svlManifest --no-deps --format-version 1
@@ -10,7 +10,10 @@
     $svlRunning = @(Get-CimInstance Win32_Process | Where-Object {
         $_.ExecutablePath -and $_.ExecutablePath.StartsWith($svlTargetPrefix, [StringComparison]::OrdinalIgnoreCase)
     })
-    if ($svlRunning.Count -eq 0) { return }
+    if ($svlRunning.Count -eq 0) {
+        if ($PassThru) { return $svlTarget }
+        return
+    }
 
     $svlDetails = ($svlRunning | ForEach-Object { "PID $($_.ProcessId): $($_.ExecutablePath)" }) -join [Environment]::NewLine
     throw @"

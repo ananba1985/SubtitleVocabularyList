@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.63 |
-| 更新日期 | 2026-10-17 |
+| 文档版本 | 0.64 |
+| 更新日期 | 2026-10-18 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
 
@@ -37,7 +37,7 @@
 | 笔记本继续开发交接 | [development/laptop-handoff.md](development/laptop-handoff.md) | 当前代码、检查点、站点恢复、未完成项和停止状态 | 完整目标保留，按用户要求在其他环境继续 |
 | 导入选择与查询增量 | [testing/import-query-results.md](testing/import-query-results.md) | 多轨/外置/转写、有序采集、实际解释和手动网络请求 | 不以合成事件替代新跨进程采集或整体安装验收 |
 | Pot 替代功能设计 | [design/pot-replacement.md](design/pot-replacement.md) | 独立小窗、自动翻译、监听、服务与插件，会话／数据／接口及需求追溯 | 实际实施范围以增量验证为准，不据设计声明全部 Pot 插件兼容 |
-| Pot 替代增量验证 | [testing/pot-replacement-results.md](testing/pot-replacement-results.md) | 查询／缓存／收录、双服务与插件生命周期、实际窗口及用户确认 | 核心合成服务不冒充真实外部服务，未确认场景保留状态 |
+| Pot 替代增量验证 | [testing/pot-replacement-results.md](testing/pot-replacement-results.md) | 查询／缓存／收录、双服务与插件、流式及 0.8.30 自动查询方式 | 区分核心正常流程、直接真实模型和实际窗口；缩写准确性及未覆盖场景保留边界 |
 | Pot 替代开发计划 | [planning/pot-replacement-plan.md](planning/pot-replacement-plan.md) | M-09 至 M-13 的优先级、依赖、交付、最小正常验证和当前状态 | 已按用户授权实施首版，额外测试仍需另行授权 |
 | 选区翻译并替换设计 | [design/selection-replacement.md](design/selection-replacement.md) | FR-19 写作选句、独立快捷键、原位替换、目标核对与 M-14／TC-48 追溯 | 0.6.0 首版实际模块和剪贴板范围，不声明全应用兼容 |
 | 选区翻译替换验证 | [testing/selection-replacement-results.md](testing/selection-replacement-results.md) | 真实输入框、译文回填、焦点、两侧内容、原生撤销、剪贴板及业务库核对 | 区分用户确认、实际采样、失败修正与未覆盖边界 |
@@ -205,3 +205,4 @@
 | 0.61 | 2026-10-17 | 索引 0.8.27 异步任务结果关联及最小正常验证，模块／类型优化完成，继续对象回收和容量边界 |
 | 0.62 | 2026-10-17 | 索引 0.8.28 站点引用迁移／有界回收、完整资料保持与版本 31 部署证据，继续容量边界 |
 | 0.63 | 2026-10-17 | 索引 0.8.29 容量评估、只读诊断和提前检查，记录本轮清单收尾及条件性后续边界 |
+| 0.64 | 2026-10-18 | 索引 0.8.30 自动区分词语／段落、完整翻译及最小验证，保留真实窗口与语义边界 |

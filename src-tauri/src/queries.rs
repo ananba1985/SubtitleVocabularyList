@@ -45,6 +45,29 @@ pub struct QueryInput {
     pub origin: QueryOrigin,
 }
 impl QueryInput {
+    fn resolved_mode(&self) -> &str {
+        if self.mode != "auto" {
+            return &self.mode;
+        }
+        let target = self.target.trim();
+        let words = target.split_whitespace().count();
+        // A conservative text heuristic, not a grammatical parser. Keep short
+        // vocabulary queries; translate longer or visibly punctuated passages.
+        if words > 6
+            || target.contains(['\n', '\r', '。', '！', '？'])
+            || words > 1
+                && (target.ends_with(['.', '!', '?'])
+                    || target.contains(". ")
+                    || target.contains("! ")
+                    || target.contains("? ")
+                    || target.contains(';'))
+        {
+            "translate"
+        } else {
+            "explain"
+        }
+    }
+
     fn explanation_context(&self) -> &str {
         // A capture may repeat the selected text as its enclosing line.
         // Keep that original capture in the session, but do not require a sentence translation.
@@ -201,7 +224,7 @@ impl QueryRuntime {
         input.target = input.target.trim().to_owned();
         if input.target.chars().count() > 4000
             || input.context.chars().count() > 20000
-            || !matches!(input.mode.as_str(), "explain" | "translate")
+            || !matches!(input.mode.as_str(), "auto" | "explain" | "translate")
             || input.source_language.len() > 24
             || input.target_language.len() > 24
             || input.target.contains('\0')
@@ -268,7 +291,7 @@ impl QueryRuntime {
         let input = QueryInput {
             target: String::new(),
             context: String::new(),
-            mode: "explain".into(),
+            mode: "auto".into(),
             source_language: source_language(),
             target_language: target_language(),
             origin: QueryOrigin {
@@ -554,13 +577,16 @@ impl Application {
         let settings = self.settings()?;
         let providers = self.store.providers()?;
         let mut state = self.queries.state.lock().unwrap();
-        let input = state
+        let mut input = state
             .sessions
             .get(&session_id)
             .filter(|s| s.input_revision == expected_input_revision)
             .ok_or_else(|| AppError::new("conflict", "输入已改变，请重新查询。"))?
             .input
             .clone();
+        // Keep the selected auto mode in the UI session. Work and cache identity
+        // use the resolved mode, so a word definition cannot stand in for a passage.
+        input.mode = input.resolved_mode().to_owned();
         explanations::validate_input(&input.target, &input.context)?;
         cancel_locked(&mut state, &session_id);
         let query_id = Uuid::new_v4().to_string();
@@ -570,12 +596,17 @@ impl Application {
                 p.enabled
                     && (!automatic || p.auto_query)
                     && (provider_ids.is_empty() || provider_ids.contains(&p.id))
+                    && (input.mode != "translate" || p.supports_translation())
             })
             .collect::<Vec<_>>();
         if selected.is_empty() {
             return Err(AppError::new(
                 "not_found",
-                "请先启用查询服务；自动入口只使用允许自动查询的服务。",
+                if input.mode == "translate" {
+                    "请先启用支持整段翻译的查询服务；自动入口只使用允许自动查询的服务。"
+                } else {
+                    "请先启用查询服务；自动入口只使用允许自动查询的服务。"
+                },
             ));
         }
         {

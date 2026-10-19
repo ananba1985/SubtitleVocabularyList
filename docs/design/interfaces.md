@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.53 |
-| 更新日期 | 2026-10-17 |
+| 文档版本 | 0.54 |
+| 更新日期 | 2026-10-18 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-09；ARC-10 实施中 |
@@ -197,7 +197,7 @@ CMD-38 至 CMD-44 已在 0.5.0 接通，字段、事件与取消契约见 [Pot �
 | CMD-43 | providers_list/update | 非敏感服务配置、调用范围和凭据引用 | FR-17、FR-18 |
 | CMD-44 | plugin_install/remove | 版本与能力明确的 JSON 配置安装／卸载 | FR-18 |
 
-实际参数：translation_session_open 为 `{input:QueryInput,sessionId?:string}`；QueryInput 包含 target、context、mode（explain／translate）、sourceLanguage、targetLanguage 和 origin。get 的 sessionId 可空，空时返回当前会话。query_start 为 `{sessionId,expectedInputRevision,providerIds,automatic,persist}`；providerIds 空表示所有已启用服务，automatic 时还筛选 autoQuery。cancel 为 `{sessionId,queryId?:string}`。返回完整 QuerySession，含输入版本、查询标识和各服务独立状态／值／错误；query_updated 只通知标识，当前快照通过 get 读取。
+实际参数：translation_session_open 为 `{input:QueryInput,sessionId?:string}`；QueryInput 包含 target、context、mode（auto／explain／translate）、sourceLanguage、targetLanguage 和 origin。0.8.30 查询入口默认 auto，查询时统一解析实际 explain／translate，QuerySession.input 保留用户选择；显式模式保持。get 的 sessionId 可空，空时返回当前会话。query_start 为 `{sessionId,expectedInputRevision,providerIds,automatic,persist}`；providerIds 空表示所有已启用且支持本次能力的服务，automatic 时还筛选 autoQuery，整段翻译排除仅支持词典的服务。cancel 为 `{sessionId,queryId?:string}`。返回完整 QuerySession，含输入版本、查询标识和各服务独立状态／值／错误；query_updated 只通知标识，当前快照通过 get 读取。mode 仍为原字符串字段，不新增 DTO 字段或命令。
 
 0.8.7 起，内置本地模型的 running 结果可以带临时 QueryValue，字段形状不变，仅含已经解码的正文片段；ready 才表示完整且通过校验的有效结果。客户端收到流式 query_updated 后重新 get，沿用原有输入版本及查询标识核对。临时值不能收录或写入查询缓存，失败清除临时值；持久化表结构不变。具体等待状态和输出规则见 [Pot 替代设计第 4 节](pot-replacement.md#4-会话取消与进度)。
 
@@ -393,3 +393,4 @@ TaskSnapshot 新增可空的 subject，保存在既有 snapshot_json 中，不�
 | 0.51 | 2026-10-17 | 明确报告按业务内容复用及本机查询位置语义，保持命令参数、DTO 字段和原报告 JSON |
 | 0.52 | 2026-10-17 | 准备进度、分来源统计与失败明细由 Rust 生成给任务页，保留通用动态结果与旧历史边界 |
 | 0.53 | 2026-10-17 | 13 个已知启动命令通过 TaskHandle 关联具体完成 DTO，移除等待结果手写断言，保留原 JSON、进度及历史 |
+| 0.54 | 2026-10-18 | 查询 mode 增加 auto 并统一解析实际能力，保留用户选择、DTO 字段及原缓存身份 |

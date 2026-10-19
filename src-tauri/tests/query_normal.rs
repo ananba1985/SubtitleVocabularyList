@@ -129,7 +129,7 @@ fn captured_word_is_explained_without_a_sentence_and_saved_for_reuse() {
     let mut input = QueryInput {
         target: "Certified".into(),
         context: "Certified".into(),
-        mode: "explain".into(),
+        mode: "auto".into(),
         source_language: "en".into(),
         target_language: "zh-CN".into(),
         origin: QueryOrigin { kind: "selection".into(), ..Default::default() },
@@ -160,6 +160,72 @@ fn captured_word_is_explained_without_a_sentence_and_saved_for_reuse() {
     let session = finished(&app, &session.session_id);
     assert_eq!(session.results[0].cache_source, "stored");
     assert_eq!(session.results[0].value.as_ref().unwrap().meaning, "经认证的；合格的");
+}
+
+#[test]
+fn automatic_paragraph_translates_complete_text_and_reuses_translation_cache() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(directory.path()).unwrap());
+    let target = "The visitors have left the museum and are asking me for directions outside. I will print a few cards to hand out";
+    let translated = "参观者已经离开博物馆，正在外面向我问路。我会打印几张卡片发给他们。";
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let settings = Settings {
+        model_url: format!("http://{}", listener.local_addr().unwrap()),
+        ..Default::default()
+    };
+    let previous = subtitle_vocabulary_list_core::explanations::Explanation {
+        meaning: "方向".into(), translation: String::new(), notes: "已有词义资料。".into(),
+    };
+    store.save_explanation(target, "", &previous, &settings.model_url, &settings.model_name).unwrap();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut data = Vec::new();
+        let request = loop {
+            let mut buffer = [0; 4096];
+            let size = stream.read(&mut buffer).unwrap();
+            assert!(size > 0);
+            data.extend_from_slice(&buffer[..size]);
+            if let Some(end) = data.windows(4).position(|p| p == b"\r\n\r\n") {
+                let length: usize = String::from_utf8_lossy(&data[..end]).lines()
+                    .find_map(|line| line.to_lowercase().strip_prefix("content-length:")
+                        .map(|n| n.trim().parse().unwrap())).unwrap();
+                if data.len() >= end + 4 + length {
+                    break serde_json::from_slice::<serde_json::Value>(&data[end + 4..end + 4 + length]).unwrap();
+                }
+            }
+        };
+        let input: serde_json::Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(input["target"], target);
+        assert_eq!(input["context"], target);
+        assert!(request["messages"][0]["content"].as_str().unwrap().contains("将 target 完整译成"));
+        assert_eq!(request["max_tokens"], 2048);
+        let value = json!({"meaning":"","translation":translated,"notes":""});
+        let response = json!({"choices":[{"finish_reason":"stop","message":{"content":value.to_string()}}]}).to_string();
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+    });
+    let app = Arc::new(Application::new(Arc::clone(&store), TaskManager::new(Arc::clone(&store), Arc::new(|_| {})), settings));
+    let input = QueryInput {
+        target: target.into(), context: String::new(), mode: "auto".into(),
+        source_language: "en".into(), target_language: "zh-CN".into(), origin: QueryOrigin::default(),
+    };
+    let session = app.queries.open(input.clone(), None).unwrap();
+    app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+    let completed = finished(&app, &session.session_id);
+    server.join().unwrap();
+    assert_eq!(completed.input.mode, "auto");
+    assert_eq!(completed.results[0].cache_source, "provider");
+    assert_eq!(completed.results[0].value.as_ref().unwrap().translation, translated);
+    assert!(completed.results[0].value.as_ref().unwrap().meaning.is_empty());
+    assert_eq!(store.explanation(target, "").unwrap().unwrap(), previous);
+    // Explicit translation and automatic translation share the valid translation
+    // cache. Neither can accidentally reuse a stored word explanation.
+    let session = app.queries.open(QueryInput { mode: "translate".into(), ..input }, None).unwrap();
+    app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+    let reused = finished(&app, &session.session_id);
+    assert_eq!(reused.results[0].cache_source, "cache");
+    assert_eq!(reused.results[0].value.as_ref().unwrap().translation, translated);
+    assert!(store.list_entries("", 0, 40).unwrap().is_empty());
 }
 
 #[test]

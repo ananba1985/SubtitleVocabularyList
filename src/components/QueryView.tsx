@@ -15,7 +15,7 @@ import { ProviderSettings } from "./ProviderSettings";
 const empty: QueryInput = {
   target: "",
   context: "",
-  mode: "explain",
+  mode: "auto",
   sourceLanguage: "en",
   targetLanguage: "zh-CN",
   origin: { kind: "input", sourceId: null, sourceTitle: "", locationKey: "" },
@@ -346,6 +346,7 @@ export function QueryView() {
               change({ ...draft, mode: e.target.value as QueryInput["mode"] })
             }
           >
+            <option value="auto">自动识别</option>
             <option value="explain">词义解释</option>
             <option value="translate">整段翻译</option>
           </select>

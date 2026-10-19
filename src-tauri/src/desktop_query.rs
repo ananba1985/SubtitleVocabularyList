@@ -203,12 +203,7 @@ impl ClipboardWatcher {
                                 let input = QueryInput {
                                     target: text.into(),
                                     context: String::new(),
-                                    mode: if crate::ocr::infer_kind(text) == "sentence" {
-                                        "translate"
-                                    } else {
-                                        "explain"
-                                    }
-                                    .into(),
+                                    mode: "auto".into(),
                                     source_language: "en".into(),
                                     target_language: "zh-CN".into(),
                                     origin: QueryOrigin {
@@ -446,7 +441,7 @@ pub fn open_input(app: &AppHandle) -> Result<(), AppError> {
     let input = QueryInput {
         target: String::new(),
         context: String::new(),
-        mode: "explain".into(),
+        mode: "auto".into(),
         source_language: "en".into(),
         target_language: "zh-CN".into(),
         origin: QueryOrigin::default(),
@@ -456,7 +451,6 @@ pub fn open_input(app: &AppHandle) -> Result<(), AppError> {
 }
 pub fn open_capture(app: &AppHandle, payload: &serde_json::Value) -> Result<(), AppError> {
     let text = payload["text"].as_str().unwrap_or_default();
-    let kind = payload["kind"].as_str().unwrap_or("word");
     let app_state = app.state::<Arc<Application>>().inner().clone();
     let origin = QueryOrigin {
         kind: if payload["captureKind"].as_str() == Some("ocr") {
@@ -473,12 +467,7 @@ pub fn open_capture(app: &AppHandle, payload: &serde_json::Value) -> Result<(), 
         QueryInput {
             target: text.into(),
             context: payload["context"].as_str().unwrap_or_default().into(),
-            mode: if kind == "sentence" {
-                "translate"
-            } else {
-                "explain"
-            }
-            .into(),
+            mode: "auto".into(),
             source_language: "en".into(),
             target_language: "zh-CN".into(),
             origin,

@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.16 |
+| 文档版本 | 0.17 |
 | 更新日期 | 2026-10-20 |
-| 状态 | 项目开发中；0.8.2 默认入口真实发行打包通过，本轮未安装 |
+| 状态 | 项目开发中；0.8.32 默认入口真实发行打包通过，本轮未安装 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
 ## 1 用途与安装位置
@@ -130,9 +130,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 
 0.8.32 增加可双击的 `生成安装包.cmd`；同名 `.ps1` 右键“使用 PowerShell 运行”时，默认完成或失败后等待 Enter，避免新开的窗口立刻关闭。CMD 自身停留显示结果；`pnpm desktop:package` 内置 `-NoPause`，在原终端返回，保留非零退出码。`-CheckOnly` 只显示计划，不构建也不等待输入。
 
-每次调用在 `.local/package-logs/package-<时间>-<PID>.log` 保存完整执行记录。原生 stdout 通过 Out-Host 展示并进入 transcript；异常同时记录消息、脚本位置和调用栈。入口与本地调试／构建共用子进程 PATH 准备，最后恢复原 PATH，不更改系统配置；JSON 配置显式使用 UTF-8，脚本含 BOM 供 Windows PowerShell 5.1 读取中文。该入口不跳过干净源码、运行中产物、许可、资源摘要等原有检查。
+每次调用在 `.local/package-logs/package-<时间>-<PID>.log` 保存入口执行记录。原生 stdout 通过 Out-Host 展示并进入 transcript；异常同时记录消息、脚本位置和调用栈。离线工具另有 `diagnostics` 详细日志；Windows PowerShell transcript 不保证收录嵌套原生命令的全部 stderr 编译进度。入口与本地调试／构建共用子进程 PATH 准备，最后恢复原 PATH，不更改系统配置；JSON 配置显式使用 UTF-8，脚本含 BOM 供 Windows PowerShell 5.1 读取中文。该入口不跳过干净源码、运行中产物、许可、资源摘要等原有检查。
 
-用户本次右键运行所得日志在干净源码检查处停止，原因是修复文件当时尚未提交；这不是完整打包失败原因的通用结论。初始只读检查正常，入口改动后再核对计划、日志和停留；真实默认打包将在修复提交后执行，结果另记[发行记录](../testing/offline-release-results.md)，不将 CheckOnly 写成真实打包通过。
+用户本次右键运行所得日志在干净源码检查处停止，原因是修复文件当时尚未提交；这不是打包失败原因的通用结论。提交修复后，2026-10-20 实际执行 `生成安装包.ps1 -NoPause`，未传 `-CheckOnly` 或 `-SkipToolBuild`，默认工具重建、应用编译、NSIS、独立目录、源码材料及摘要完整完成，退出 0。产物为 0.8.32，构建源码为 `f553cd79b94c28be0f1afc1abc4f3a428a24d1ec`；实际大小、摘要和日志见[发行记录](../testing/offline-release-results.md#7-0832-打包窗口保留与实际生成)。本轮未安装或启动应用，不将初始 CheckOnly 写成真实打包通过。
 
 已有本次源码构建、校验过的资源时，可指定 `-SkipToolBuild`。入口仍收集许可、构建 NSIS、检查资源摘要并导出源码材料。交付目录按 tauri.conf.json 的版本生成 `release/<版本>`，包含安装器、`standalone/SubtitleVocabularyList.exe` 及其完整 `tools`、源码材料 ZIP 与 SHA256SUMS；此目录不提交 Git。源码未提交、依赖条款缺失或原始 Cargo 归档摘要不符时停止。独立 exe 使用随目录的发行资源，复制或移动时须保留整个 standalone 目录；用户词库仍留在应用数据目录。脚本不启动或安装程序。`pnpm desktop:package` 是复用已准备工具的手动快捷入口，资源未准备时执行上面的完整脚本。最终用户说明见[安装使用](../release/installation.md)，实际结果见[安装验证](../testing/offline-release-results.md)。
 
@@ -158,3 +158,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.14 | 2026-10-17 | 增加三个构建入口的运行产物检查，提前提示 exe 占用及退出方法，保留完整 Cargo 清理规则 |
 | 0.15 | 2026-10-17 | 增加中文双击构建缓存清理入口，限定四类缓存，保留 Data／工具／完整学习资料并复用占用检查 |
 | 0.16 | 2026-10-20 | 修复右键打包窗口关闭导致错误丢失，增加 CMD、停留、私有完整日志及终端退出语义，保留原打包检查 |
+| 0.17 | 2026-10-20 | 补记 0.8.32 默认完整打包退出 0、源码身份和实际交付物，明确 transcript 与工具详细日志边界 |

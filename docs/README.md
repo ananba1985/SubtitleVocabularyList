@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.65 |
+| 文档版本 | 0.66 |
 | 更新日期 | 2026-10-20 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -43,7 +43,7 @@
 | 选区翻译并替换设计 | [design/selection-replacement.md](design/selection-replacement.md) | FR-19 写作选句、独立快捷键、原位替换、目标核对与 M-14／TC-48 追溯 | 0.6.0 首版实际模块和剪贴板范围，不声明全应用兼容 |
 | 选区翻译替换验证 | [testing/selection-replacement-results.md](testing/selection-replacement-results.md) | 真实输入框、译文回填、焦点、两侧内容、原生撤销、剪贴板及业务库核对 | 区分用户确认、实际采样、失败修正与未覆盖边界 |
 | 网站听读功能本地整合 | [testing/practice-integration-results.md](testing/practice-integration-results.md) | 网站／本地功能对照、FR-13 实施与实际导入、播放、位置和统一收录证据 | 开发验证与真人听感、网站部署、安装包验收分别记录 |
-| 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 候选包可安装不表示完整发布验收完成 |
+| 离线安装与交付增量 | [testing/offline-release-results.md](testing/offline-release-results.md)、[release/installation.md](release/installation.md) | 随包资源、实装、旧库迁移、播放器、许可源码资料与使用方法 | 0.8.32 默认完整打包通过；本轮未安装，历史实装与当前产物证据分别保留 |
 | 保存恢复增量 | [testing/recovery-results.md](testing/recovery-results.md) | 实际进程终止、文件/SQLite 提交窗口、旧资料保持与取消竞态 | 原生核心进程证据不替代全部桌面和异常条件 |
 | 性能与隔离增量 | [testing/performance-results.md](testing/performance-results.md) | 参考硬件、后台命令／事件与类型、同步增长控制、完整资料复用和提交统计、派生对象回收 | 记录本地复用、类型与模块、0.8.28 站点引用迁移及有界回收；正常样本不代替长期 SLO、真实竞争、GUI 响应或线上空间量测 |
 | 当前验收覆盖审计 | [testing/acceptance-status.md](testing/acceptance-status.md) | 0.1 基线需求、42 个历史计划场景、阶段门槛和缺失条件 | “增量已验证”不代表完整版本已达成 |
@@ -208,3 +208,4 @@
 | 0.63 | 2026-10-17 | 索引 0.8.29 容量评估、只读诊断和提前检查，记录本轮清单收尾及条件性后续边界 |
 | 0.64 | 2026-10-18 | 索引 0.8.30 自动区分词语／段落、完整翻译及最小验证，保留真实窗口与语义边界 |
 | 0.65 | 2026-10-20 | 索引 0.8.31 当前用户开机启动设置、资料路径与原生最小正常验证，保留真实登录边界 |
+| 0.66 | 2026-10-20 | 索引 0.8.32 右键打包窗口修复、实际默认完整打包与交付物核对，保留未安装及日志边界 |

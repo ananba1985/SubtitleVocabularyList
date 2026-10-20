@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.15 |
-| 更新日期 | 2026-10-17 |
+| 文档版本 | 0.16 |
+| 更新日期 | 2026-10-20 |
 | 状态 | 项目开发中；0.8.2 默认入口真实发行打包通过，本轮未安装 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
@@ -128,6 +128,12 @@ pnpm desktop:dev
 powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 ```
 
+0.8.32 增加可双击的 `生成安装包.cmd`；同名 `.ps1` 右键“使用 PowerShell 运行”时，默认完成或失败后等待 Enter，避免新开的窗口立刻关闭。CMD 自身停留显示结果；`pnpm desktop:package` 内置 `-NoPause`，在原终端返回，保留非零退出码。`-CheckOnly` 只显示计划，不构建也不等待输入。
+
+每次调用在 `.local/package-logs/package-<时间>-<PID>.log` 保存完整执行记录。原生 stdout 通过 Out-Host 展示并进入 transcript；异常同时记录消息、脚本位置和调用栈。入口与本地调试／构建共用子进程 PATH 准备，最后恢复原 PATH，不更改系统配置；JSON 配置显式使用 UTF-8，脚本含 BOM 供 Windows PowerShell 5.1 读取中文。该入口不跳过干净源码、运行中产物、许可、资源摘要等原有检查。
+
+用户本次右键运行所得日志在干净源码检查处停止，原因是修复文件当时尚未提交；这不是完整打包失败原因的通用结论。初始只读检查正常，入口改动后再核对计划、日志和停留；真实默认打包将在修复提交后执行，结果另记[发行记录](../testing/offline-release-results.md)，不将 CheckOnly 写成真实打包通过。
+
 已有本次源码构建、校验过的资源时，可指定 `-SkipToolBuild`。入口仍收集许可、构建 NSIS、检查资源摘要并导出源码材料。交付目录按 tauri.conf.json 的版本生成 `release/<版本>`，包含安装器、`standalone/SubtitleVocabularyList.exe` 及其完整 `tools`、源码材料 ZIP 与 SHA256SUMS；此目录不提交 Git。源码未提交、依赖条款缺失或原始 Cargo 归档摘要不符时停止。独立 exe 使用随目录的发行资源，复制或移动时须保留整个 standalone 目录；用户词库仍留在应用数据目录。脚本不启动或安装程序。`pnpm desktop:package` 是复用已准备工具的手动快捷入口，资源未准备时执行上面的完整脚本。最终用户说明见[安装使用](../release/installation.md)，实际结果见[安装验证](../testing/offline-release-results.md)。
 
 `temporary-offline-test.ps1` 为整体验收准备临时防火墙规则，需要管理员权限及用户确认 UAC。调用者提供隔离安装目录和 `.tools` 内的新信号目录；只阻断这个程序和四个工具的非回环出站流量，保留本机模型访问。正常执行在收到 `offline-done` 或最长 15 分钟租期结束后删除本次规则；若异常终止管理员进程，应根据信号中记录的规则名核对清理。脚本准备和语法检查不代表实际离线验收通过。
@@ -151,3 +157,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.13 | 2026-10-15 | 修正 Windows PowerShell 5.1 原生警告重定向误中断，记录无跳过参数的真实完整打包结果 |
 | 0.14 | 2026-10-17 | 增加三个构建入口的运行产物检查，提前提示 exe 占用及退出方法，保留完整 Cargo 清理规则 |
 | 0.15 | 2026-10-17 | 增加中文双击构建缓存清理入口，限定四类缓存，保留 Data／工具／完整学习资料并复用占用检查 |
+| 0.16 | 2026-10-20 | 修复右键打包窗口关闭导致错误丢失，增加 CMD、停留、私有完整日志及终端退出语义，保留原打包检查 |

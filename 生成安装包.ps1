@@ -1,14 +1,28 @@
-param([string]$ResourcesDirectory='.tools\release-resources',[switch]$SkipToolBuild,[switch]$CheckOnly)
+﻿param([string]$ResourcesDirectory='.tools\release-resources',[switch]$SkipToolBuild,[switch]$CheckOnly,[switch]$NoPause)
 $ErrorActionPreference='Stop'
 $svlWorkspace=$PSScriptRoot
 $svlScripts=Join-Path $svlWorkspace 'scripts'
-. (Join-Path $svlScripts 'build-preflight.ps1')
-Push-Location $svlWorkspace
+$svlExitCode=0
+$svlPreviousPath=$env:Path
+$svlTranscriptStarted=$false
+$svlLocationPushed=$false
+$svlLogPath=Join-Path $svlWorkspace ('.local/package-logs/package-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff')+'-'+$PID+'.log')
 try {
+New-Item -ItemType Directory -Path (Split-Path $svlLogPath -Parent) -Force | Out-Null
+Start-Transcript -LiteralPath $svlLogPath -Force | Out-Null
+$svlTranscriptStarted=$true
+Write-Host "完整打包日志：$svlLogPath"
+. (Join-Path $svlScripts 'development-environment.ps1')
+. (Join-Path $svlScripts 'build-preflight.ps1')
+$svlEnvironment=Get-SvlDevelopmentEnvironment
+$env:Path=$svlEnvironment.Path
+Push-Location $svlWorkspace
+$svlLocationPushed=$true
+& {
 & node (Join-Path $svlScripts 'version.mjs') check
 if($LASTEXITCODE -ne 0){throw 'Application versions are inconsistent.'}
 if(-not(Test-Path -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json'))){throw 'Run this script from the SubtitleVocabularyList workspace.'}
-$svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
+$svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $svlVersion=$svlConfig.version
 $svlDelivery=Join-Path $svlWorkspace ('release/'+$svlVersion)
 if($CheckOnly){
@@ -79,4 +93,19 @@ $svlSums=foreach($svlName in $svlOutputs){(Get-FileHash -LiteralPath (Join-Path 
 $svlSums | Set-Content -LiteralPath (Join-Path $svlDelivery 'SHA256SUMS.txt') -Encoding utf8
 Write-Output "Release installer: $svlDelivery"
 Write-Output "Standalone executable: $(Join-Path $svlStandalone 'SubtitleVocabularyList.exe')"
-} finally { Pop-Location }
+} | Out-Host
+} catch {
+    $svlExitCode=1
+    Write-Host ('安装包生成失败：'+$_.Exception.Message) -ForegroundColor Red
+    if($_.InvocationInfo.PositionMessage){Write-Host $_.InvocationInfo.PositionMessage}
+    if($_.ScriptStackTrace){Write-Host $_.ScriptStackTrace}
+    Write-Host "请保留完整日志：$svlLogPath"
+} finally {
+    if($svlLocationPushed){Pop-Location}
+    $env:Path=$svlPreviousPath
+    if($svlTranscriptStarted){Stop-Transcript | Out-Null}
+    if(-not $CheckOnly -and -not $NoPause){
+        Read-Host '执行结束，按 Enter 关闭窗口' | Out-Null
+    }
+}
+exit $svlExitCode

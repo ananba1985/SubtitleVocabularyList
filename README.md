@@ -105,6 +105,8 @@
 
 常用的三个入口均放在项目根目录：[本地调试运行.ps1](本地调试运行.ps1) 用于本地调试运行，[本地打包运行.ps1](本地打包运行.ps1) 生成本地调试 exe，[生成安装包.ps1](生成安装包.ps1) 生成安装包和独立运行目录。内部辅助脚本仍放在 `scripts/`。
 
+手动打包可直接双击 [生成安装包.cmd](生成安装包.cmd)，或右键同名 `.ps1` 选择“使用 PowerShell 运行”。默认结束后停留显示结果，完整日志保存在 `.local/package-logs/`；失败会显示具体位置并保留非零退出码。打包前需提交源码、保持工作区干净；没有通过该检查时不开始清理和编译。`pnpm desktop:package` 在原终端返回，不额外等待按键。
+
 只需释放构建缓存时，双击根目录 [清理构建缓存.cmd](清理构建缓存.cmd)。它调用同名 PowerShell 脚本，仅删除本项目 `src-tauri/target/debug` 和 `release` 下的 `incremental`、`deps`、`build`、`.fingerprint`，显示结果后停留，不编译或启动应用。先保存输入并退出调试／编译；检测到构建目录里的程序仍运行时会提示 PID／路径并停止。源码、工具、词库、原声、学习历史、各 Data、安装包及验证资料保留；下次编译需要重建缓存。详细范围及 `-CheckOnly` 预览见[开发环境说明](docs/development/windows-environment.md#只清理构建缓存)。
 
 新 Windows 机器的开发与媒体环境脚本见[开发环境说明](docs/development/windows-environment.md)，包含已实际验证的依赖版本、资源位置与权限要求。

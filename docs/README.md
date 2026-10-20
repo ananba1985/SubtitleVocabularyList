@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.64 |
-| 更新日期 | 2026-10-18 |
+| 文档版本 | 0.65 |
+| 更新日期 | 2026-10-20 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
 
@@ -27,6 +27,7 @@
 | 原型验证记录 | [testing/prototype-results.md](testing/prototype-results.md) | 实际环境、工具、素材标识、结果和未覆盖项 | 只证明具体原型边界，不代替完整功能验收 |
 | 桌面增量验证 | [testing/desktop-import-results.md](testing/desktop-import-results.md) | 实际界面操作、保存播放、重启取消与未覆盖项 | 区分具体桌面证据与整体验收 |
 | Windows 增量验证 | [testing/windows-capture-results.md](testing/windows-capture-results.md) | 跨进程选区、系统声音、配置与失败取消 | 区分用户实际确认、程序检查和未覆盖环境 |
+| 开机启动增量 | [testing/autostart-results.md](testing/autostart-results.md) | 当前用户启动登记、开关回读、资料目录及最小原生正常验证 | 0.8.31 源码已接入；不把隔离注册表正常写读当作真实重新登录或安装验收 |
 | OCR 增量验证 | [testing/ocr-results.md](testing/ocr-results.md) | 实际截图、物理坐标、识别合并与失败边界 | 数学缩放检查与实际屏幕兼容分别记录 |
 | 复习策略设计 | [design/review-policy.md](design/review-policy.md) | 初始间隔、掌握、专项与判分修正规则 | 规则测试不代表测验模块已交付 |
 | 测验增量验证 | [testing/review-results.md](testing/review-results.md) | 题目、持久化、判分修正、实际听力与重启证据 | 区分核心夹具、真实 WebView2、听感与离线整体验收 |
@@ -206,3 +207,4 @@
 | 0.62 | 2026-10-17 | 索引 0.8.28 站点引用迁移／有界回收、完整资料保持与版本 31 部署证据，继续容量边界 |
 | 0.63 | 2026-10-17 | 索引 0.8.29 容量评估、只读诊断和提前检查，记录本轮清单收尾及条件性后续边界 |
 | 0.64 | 2026-10-18 | 索引 0.8.30 自动区分词语／段落、完整翻译及最小验证，保留真实窗口与语义边界 |
+| 0.65 | 2026-10-20 | 索引 0.8.31 当前用户开机启动设置、资料路径与原生最小正常验证，保留真实登录边界 |

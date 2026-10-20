@@ -115,6 +115,8 @@ svl_ipc_macros::catalog! {
         system::app_info,
         system::settings_get,
         system::settings_update,
+        system::autostart_get,
+        system::autostart_set,
         system::task_get,
         system::tasks_list,
         system::tasks_history,

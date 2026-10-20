@@ -50,6 +50,8 @@ pub mod credentials;
 #[cfg(all(windows, feature = "desktop"))]
 mod app_paths;
 #[cfg(all(windows, feature = "desktop"))]
+mod autostart;
+#[cfg(all(windows, feature = "desktop"))]
 mod desktop_capture;
 #[cfg(all(windows, feature = "desktop"))]
 mod desktop_ocr;

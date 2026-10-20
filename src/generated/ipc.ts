@@ -301,6 +301,8 @@ export interface CommandMap {
   assessment_sync_conflicts: { args: undefined; result: Array<AssessmentSyncConflict> };
   assessment_sync_keep_both: { args: { input: KeepAssessmentBoth }; result: AssessmentKeepBothReply };
   assessment_sync_status: { args: undefined; result: AssessmentSyncStatus };
+  autostart_get: { args: undefined; result: boolean };
+  autostart_set: { args: { enabled: boolean }; result: boolean };
   candidate_decide: { args: { sourceId: string; key: string; exampleId: string; decision: string }; result: void };
   candidate_examples: { args: { sourceId: string; key: string }; result: Array<CandidateExample> };
   candidates_list: { args: { sourceId: string; search?: string | null; kind?: string | null; onlyPending?: boolean | null; showKnown?: boolean | null; offset?: number | null; limit?: number | null }; result: Array<Candidate> };

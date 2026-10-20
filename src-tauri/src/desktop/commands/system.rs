@@ -69,6 +69,17 @@ pub(crate) async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
 }
 
 #[svl_ipc_macros::command]
+pub(crate) async fn autostart_get() -> Result<bool, AppError> {
+    background(crate::autostart::enabled).await
+}
+
+#[svl_ipc_macros::command]
+pub(crate) async fn autostart_set(app: AppState<'_>, enabled: bool) -> Result<bool, AppError> {
+    let root = app.store.root().to_path_buf();
+    background(move || crate::autostart::set_enabled(enabled, &root)).await
+}
+
+#[svl_ipc_macros::command]
 pub(crate) async fn settings_get(app: AppState<'_>) -> Result<Settings, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.settings()).await

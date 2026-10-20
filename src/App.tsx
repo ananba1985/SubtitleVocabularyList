@@ -20,6 +20,7 @@ import { KnownTargetsManager } from "./components/KnownTargetsManager";
 import { PracticeView, type PracticePanel } from "./components/PracticeView";
 import { collectionQueue } from "./collectionQueue";
 import { ReplacementSettings } from "./components/ReplacementSettings";
+import { StartupSettings } from "./components/StartupSettings";
 import { applyTaskUpdate, type TaskUpdate } from "./taskUpdates";
 
 type Tab =
@@ -456,7 +457,8 @@ export default function App() {
               refreshKey={refreshKey}
               onChanged={() => setRefreshKey((value) => value + 1)}
             />
-            <h2>窗口与关闭行为</h2>
+            <h2>启动与关闭行为</h2>
+            <StartupSettings />
             <label>
               点击关闭按钮时
               <select

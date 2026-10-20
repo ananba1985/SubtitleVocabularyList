@@ -1,13 +1,15 @@
 ﻿function Assert-SvlCargoBuildIdle {
-    param([Parameter(Mandatory=$true)][string]$Workspace, [switch]$PassThru)
+    param([Parameter(Mandatory=$true)][string]$Workspace, [switch]$PassThru, [switch]$ReadOnly)
 
     $svlManifest = Join-Path $Workspace 'src-tauri/Cargo.toml'
-    $svlMetadataJson = & cargo metadata --manifest-path $svlManifest --no-deps --format-version 1
+    $svlMetadataArguments = @('metadata', '--manifest-path', $svlManifest, '--no-deps', '--format-version', '1')
+    if ($ReadOnly) { $svlMetadataArguments += @('--locked', '--offline') }
+    $svlMetadataJson = & cargo @svlMetadataArguments
     if ($LASTEXITCODE -ne 0) { throw '无法确定 Cargo 构建目录，未开始清理。' }
     $svlMetadata = $svlMetadataJson | ConvertFrom-Json
     $svlTarget = [IO.Path]::GetFullPath($svlMetadata.target_directory).TrimEnd([char[]]'\/')
     $svlTargetPrefix = $svlTarget + [IO.Path]::DirectorySeparatorChar
-    $svlRunning = @(Get-CimInstance Win32_Process | Where-Object {
+    $svlRunning = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
         $_.ExecutablePath -and $_.ExecutablePath.StartsWith($svlTargetPrefix, [StringComparison]::OrdinalIgnoreCase)
     })
     if ($svlRunning.Count -eq 0) {

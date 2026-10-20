@@ -11,34 +11,25 @@ try {
 New-Item -ItemType Directory -Path (Split-Path $svlLogPath -Parent) -Force | Out-Null
 Start-Transcript -LiteralPath $svlLogPath -Force | Out-Null
 $svlTranscriptStarted=$true
-Write-Host "完整打包日志：$svlLogPath"
+Write-Host "打包执行记录：$svlLogPath"
 . (Join-Path $svlScripts 'development-environment.ps1')
 . (Join-Path $svlScripts 'build-preflight.ps1')
+. (Join-Path $svlScripts 'package-preflight.ps1')
 $svlEnvironment=Get-SvlDevelopmentEnvironment
 $env:Path=$svlEnvironment.Path
 Push-Location $svlWorkspace
 $svlLocationPushed=$true
 & {
-& node (Join-Path $svlScripts 'version.mjs') check
-if($LASTEXITCODE -ne 0){throw 'Application versions are inconsistent.'}
-if(-not(Test-Path -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json'))){throw 'Run this script from the SubtitleVocabularyList workspace.'}
-$svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-$svlVersion=$svlConfig.version
+$svlPreflight=Assert-SvlPackageReady -Workspace $svlWorkspace -ResourcesDirectory $ResourcesDirectory -SkipToolBuild:$SkipToolBuild
+$svlVersion=$svlPreflight.Version
+$svlResources=$svlPreflight.Resources
+$svlRequired=$svlPreflight.RequiredResources
 $svlDelivery=Join-Path $svlWorkspace ('release/'+$svlVersion)
 if($CheckOnly){
-    Write-Output 'Plan: verify no process is running from this Cargo build directory.'
-    Write-Output 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
-    Write-Output ('Plan: build NSIS installer and standalone executable into '+$svlDelivery)
-    Write-Output ('Rebuild offline tools: '+(-not $SkipToolBuild))
-    Write-Output 'Plan: prepare Google/ECDICT from pinned sources into .tools/release-dictionaries (no personal data).'
-    Write-Output 'Plan: install/update explicit dictionary files in <installation directory>/Data/dictionaries; keep personal Data files.'
-    Write-Output 'Release packaging requires committed, clean source; no build or installation was performed.'
+    Write-Output ('预检结束，退出码 0；正式打包输出目录：'+$svlDelivery)
+    Write-Output '本次只检查前置条件并保存执行记录，没有清理、编译、下载、启动或安装程序。'
     return
 }
-if(& git status --porcelain){throw 'Commit intended changes before packaging a source-matched release.'}
-$svlResources=if([IO.Path]::IsPathRooted($ResourcesDirectory)){[IO.Path]::GetFullPath($ResourcesDirectory)}else{[IO.Path]::GetFullPath((Join-Path $svlWorkspace $ResourcesDirectory))}
-if($svlResources -ne [IO.Path]::GetFullPath((Join-Path $svlWorkspace '.tools/release-resources'))){throw 'The installer configuration maps .tools/release-resources; use that resource directory.'}
-Assert-SvlCargoBuildIdle -Workspace $svlWorkspace
 $svlDictionaries=Join-Path $svlWorkspace '.tools/release-dictionaries'
 & python -X utf8 (Join-Path $svlScripts 'prepare-base-dictionary.py') --release-dir $svlDictionaries
 if($LASTEXITCODE -ne 0){throw 'Reference dictionary preparation failed; installer compilation was not started.'}
@@ -52,7 +43,6 @@ if(-not $SkipToolBuild){
     & (Join-Path $svlScripts 'build-offline-whisper.ps1') -ResourcesDirectory $ResourcesDirectory
     & (Join-Path $svlScripts 'build-offline-ffmpeg.ps1') -ResourcesDirectory $ResourcesDirectory
 }
-$svlRequired=@('ffmpeg/ffmpeg.exe','ffmpeg/ffprobe.exe','tesseract/tesseract.exe','tesseract/tessdata/eng.traineddata','whisper/whisper-cli.exe','whisper/ggml-base.en.bin')
 $svlManifest=@()
 foreach($svlRelative in $svlRequired){
     $svlPath=Join-Path $svlResources $svlRelative
@@ -96,10 +86,11 @@ Write-Output "Standalone executable: $(Join-Path $svlStandalone 'SubtitleVocabul
 } | Out-Host
 } catch {
     $svlExitCode=1
-    Write-Host ('安装包生成失败：'+$_.Exception.Message) -ForegroundColor Red
+    $svlFailureLabel=if($CheckOnly){'打包前检查失败：'}else{'安装包生成失败：'}
+    Write-Host ($svlFailureLabel+$_.Exception.Message) -ForegroundColor Red
     if($_.InvocationInfo.PositionMessage){Write-Host $_.InvocationInfo.PositionMessage}
     if($_.ScriptStackTrace){Write-Host $_.ScriptStackTrace}
-    Write-Host "请保留完整日志：$svlLogPath"
+    Write-Host "请保留执行记录：$svlLogPath"
 } finally {
     if($svlLocationPushed){Pop-Location}
     $env:Path=$svlPreviousPath

@@ -107,6 +107,8 @@
 
 手动打包可直接双击 [生成安装包.cmd](生成安装包.cmd)，或右键同名 `.ps1` 选择“使用 PowerShell 运行”。默认结束后停留显示结果，入口执行记录保存在 `.local/package-logs/`，离线工具另有详细构建日志；失败会显示具体位置并保留非零退出码。打包前需提交源码、保持工作区干净；没有通过该检查时不开始清理和编译。`pnpm desktop:package` 在原终端返回，不额外等待按键。
 
+打包前可执行 `powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1 -CheckOnly`。从 0.8.33 起，它实际检查开发命令、版本、未提交文件、构建目录内的运行进程、前端依赖及所选模式的工具／资源，用中文集中列出阻塞原因和处理方法；通过返回 0，发现问题返回 1。`pnpm desktop:package -CheckOnly` 检查复用工具的模式。预检只保存执行记录，不清理、编译、下载或启动应用；通过后仍需手动打包。
+
 只需释放构建缓存时，双击根目录 [清理构建缓存.cmd](清理构建缓存.cmd)。它调用同名 PowerShell 脚本，仅删除本项目 `src-tauri/target/debug` 和 `release` 下的 `incremental`、`deps`、`build`、`.fingerprint`，显示结果后停留，不编译或启动应用。先保存输入并退出调试／编译；检测到构建目录里的程序仍运行时会提示 PID／路径并停止。源码、工具、词库、原声、学习历史、各 Data、安装包及验证资料保留；下次编译需要重建缓存。详细范围及 `-CheckOnly` 预览见[开发环境说明](docs/development/windows-environment.md#只清理构建缓存)。
 
 新 Windows 机器的开发与媒体环境脚本见[开发环境说明](docs/development/windows-environment.md)，包含已实际验证的依赖版本、资源位置与权限要求。

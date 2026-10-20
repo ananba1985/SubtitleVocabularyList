@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.17 |
+| 文档版本 | 0.18 |
 | 更新日期 | 2026-10-20 |
-| 状态 | 项目开发中；0.8.32 默认入口真实发行打包通过，本轮未安装 |
+| 状态 | 项目开发中；0.8.33 打包预检已接入，正常入口验证在提交后补记；历史 0.8.32 完整打包记录保持 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
 ## 1 用途与安装位置
@@ -60,7 +60,7 @@ pnpm desktop:dev
 
 本次定位到上一轮保留的隔离调试客户端占用了 `src-tauri/target/debug/subtitle-vocabulary-list.exe`，已正常退出并核对该进程结束。Windows PowerShell 5.1 下四个脚本语法检查、真实 Cargo 目录空闲时的预检及三个入口 `-CheckOnly` 通过，记录保留在 `.local/build-preflight-0.8.9`。没有为验证创建额外占用进程，没有实际清理 Cargo、重新打包或安装；本次不宣称完成 0.8.9 安装包验证。
 
-三个入口的 `-CheckOnly` 会按执行顺序显示清理和编译计划，不执行清理、编译或启动。每次实际执行都会从清理后的 Cargo 构建目录重新编译，不能复用之前的编译产物，耗时将增加；同一次开发运行中的源码热更新和 Tauri 后续重编译保持原行为。`pnpm desktop:dev`、`pnpm desktop:build`、`pnpm desktop:package` 及调试 CMD 均继续调用这些根目录入口，无需另记手动清理步骤。
+开发和本地调试构建入口的 `-CheckOnly` 显示清理和编译计划；发行入口从 0.8.33 起改为执行第 5 节说明的真实前置检查。三者均不执行清理、编译或启动。每次正式构建都会从清理后的 Cargo 构建目录重新编译，不能复用之前的编译产物，耗时将增加；同一次开发运行中的源码热更新和 Tauri 后续重编译保持原行为。`pnpm desktop:dev`、`pnpm desktop:build`、`pnpm desktop:package` 及调试 CMD 均继续调用这些根目录入口，无需另记手动清理步骤。
 
 本轮最小检查：三个入口语法检查通过，使用 Windows PowerShell 5.1 执行各自 `-CheckOnly` 均返回 0，显示先清理再编译的计划；实际 `cargo clean --manifest-path src-tauri/Cargo.toml --dry-run` 返回 0，预览 59,494 个文件、约 63.5 GiB 的文件大小合计，没有删除文件。未执行实际清理、编译或安装包构建。此项为构建脚本维护，应用版本保持 0.6.1。
 
@@ -84,7 +84,7 @@ pnpm desktop:build
 
 `本地打包运行.ps1` 使用 debug 和 no-bundle，不要求 Git 工作区干净；输出 `.local/build/SubtitleVocabularyList.exe` 与 `run-local.ps1`。优先执行生成的 launcher，它会补齐本机 PATH 和指定的数据目录。此 exe 仍依赖当前工作区、本机媒体工具和 WebView2，不用来代替独立发行目录。调试代码和本地 exe 默认使用 `D:\SubtitleVocabularyList\Data`，可通过脚本 `-DataDirectory` 或进程 `SVL_DATA_DIR` 显式覆盖；发行程序默认使用可执行文件目录下的 Data。主窗、小窗缓存及进程临时目录位于资料目录内，迁移和实际验证见[目录说明](data-directory.md)。
 
-三个脚本均支持 `-CheckOnly`；开发运行、调试构建和发行打包的执行计划可在不启动应用、不构建安装包的情况下检查。此次在工作区父目录使用 Windows PowerShell 5.1 执行三个 CheckOnly 均通过，识别到本机 FFmpeg/ffprobe/Tesseract、Whisper 与模型；PowerShell 语法和 Rust 全目标检查通过；以模拟 pnpm/cargo 验证了本地构建的 debug/no-bundle 参数、exe 导出、生成 launcher 的语法、带空格路径及环境恢复，没有调用真实编译器或启动程序。未据这些检查声称本轮启动了调试程序或生成了新安装包。
+三个脚本均支持 `-CheckOnly`。以下为早期仅检查执行计划的历史记录；发行入口从 0.8.33 起的真实预检边界见第 5 节。此前在工作区父目录使用 Windows PowerShell 5.1 执行三个 CheckOnly 均通过，识别到本机 FFmpeg/ffprobe/Tesseract、Whisper 与模型；PowerShell 语法和 Rust 全目标检查通过；以模拟 pnpm/cargo 验证了本地构建的 debug/no-bundle 参数、exe 导出、生成 launcher 的语法、带空格路径及环境恢复，没有调用真实编译器或启动程序。未据这些检查声称本轮启动了调试程序或生成了新安装包。
 
 2026-10-11 根目录入口迁移后，在工作区父目录用 Windows PowerShell 5.1 执行三个脚本的 `-CheckOnly`，均返回 0，工作区、数据目录和输出目录正确；三个入口及源码导出脚本的语法检查通过。未启动客户端、生成 exe 或构建安装包；此项维护保持应用版本 0.6.0。
 
@@ -128,7 +128,28 @@ pnpm desktop:dev
 powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 ```
 
-0.8.32 增加可双击的 `生成安装包.cmd`；同名 `.ps1` 右键“使用 PowerShell 运行”时，默认完成或失败后等待 Enter，避免新开的窗口立刻关闭。CMD 自身停留显示结果；`pnpm desktop:package` 内置 `-NoPause`，在原终端返回，保留非零退出码。`-CheckOnly` 只显示计划，不构建也不等待输入。
+0.8.32 增加可双击的 `生成安装包.cmd`；同名 `.ps1` 右键“使用 PowerShell 运行”时，默认完成或失败后等待 Enter，避免新开的窗口立刻关闭。CMD 自身停留显示结果；`pnpm desktop:package` 内置 `-NoPause`，在原终端返回，保留非零退出码。PowerShell 的 `-CheckOnly` 不等待输入；CMD 仍保留自身的按键停留。
+
+0.8.33 起，`生成安装包.ps1 -CheckOnly` 与正式打包共用 `scripts/package-preflight.ps1`，在任何清理、底库准备和构建之前实际执行以下检查：
+
+| 检查 | 阻塞时的中文说明／处理 |
+| --- | --- |
+| 开发命令及前端依赖 | 检查 Git、Node、pnpm、Cargo、Python，以及项目内 Tauri／TypeScript／Vite 入口；缺失时提示准备开发环境或执行 `pnpm install --frozen-lockfile` |
+| 版本与源码状态 | 执行统一版本检查；列出已暂存、未暂存和未跟踪文件，要求先核对并提交需要打包的源码；不自动提交或还原 |
+| Cargo 目录与运行进程 | 使用 `cargo metadata --no-deps --locked --offline` 只读取得实际目录，检查与固定打包路径一致；复用现有进程检查，列出该目录内运行程序的 PID／路径及退出方法，不终止进程 |
+| C++ 工具链 | 检查 Visual Studio 的 C++ 安装；默认重建模式再检查其 CMake／环境入口及 Git for Windows Bash 的文件是否存在 |
+| 资源目录与打包模式 | 检查资源路径与安装配置一致；`-SkipToolBuild` 检查六个关键工具／模型文件存在，缺失时提示先用默认入口准备；默认模式允许尚未生成的资源，由正式流程准备 |
+
+独立问题集中编号报告，预检通过返回 0、发现阻塞返回 1，正式打包也执行同一组检查。预检只写 `.local/package-logs/` 执行记录，不执行清理、编译、下载、资源生成或应用启动，不读写个人数据库；默认模式的资源、底库、依赖许可和源码材料仍由正式流程准备及校验。存在性检查不代表工具已经成功执行，网络可达性、完整资源摘要、依赖许可、编译和安装结果不由预检保证。开发运行／本地调试构建的 CheckOnly 语义保持原有计划预览。
+
+```powershell
+# 检查默认重建工具的模式
+powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1 -CheckOnly
+# 检查 pnpm 快捷入口复用已有工具的模式
+pnpm desktop:package -CheckOnly
+```
+
+本轮三个相关脚本的 Windows PowerShell 5.1 语法检查通过；为满足源码干净条件，真实正常入口检查在提交修改后执行，结果补记[发行验证记录](../testing/offline-release-results.md#8-0833-打包前置检查)。本轮不重新构建或安装发行包。
 
 每次调用在 `.local/package-logs/package-<时间>-<PID>.log` 保存入口执行记录。原生 stdout 通过 Out-Host 展示并进入 transcript；异常同时记录消息、脚本位置和调用栈。离线工具另有 `diagnostics` 详细日志；Windows PowerShell transcript 不保证收录嵌套原生命令的全部 stderr 编译进度。入口与本地调试／构建共用子进程 PATH 准备，最后恢复原 PATH，不更改系统配置；JSON 配置显式使用 UTF-8，脚本含 BOM 供 Windows PowerShell 5.1 读取中文。该入口不跳过干净源码、运行中产物、许可、资源摘要等原有检查。
 
@@ -159,3 +180,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1
 | 0.15 | 2026-10-17 | 增加中文双击构建缓存清理入口，限定四类缓存，保留 Data／工具／完整学习资料并复用占用检查 |
 | 0.16 | 2026-10-20 | 修复右键打包窗口关闭导致错误丢失，增加 CMD、停留、私有完整日志及终端退出语义，保留原打包检查 |
 | 0.17 | 2026-10-20 | 补记 0.8.32 默认完整打包退出 0、源码身份和实际交付物，明确 transcript 与工具详细日志边界 |
+| 0.18 | 2026-10-20 | 将发行 CheckOnly 改为共用真实预检，中文汇总源码、占用、开发依赖及模式资源问题，明确退出码和只读边界 |

@@ -5,7 +5,7 @@
 | 文档编号 | DOC-DEV-001 |
 | 文档版本 | 0.18 |
 | 更新日期 | 2026-10-20 |
-| 状态 | 项目开发中；0.8.33 打包预检已接入，正常入口验证在提交后补记；历史 0.8.32 完整打包记录保持 |
+| 状态 | 项目开发中；0.8.33 两种模式的真实打包预检正常通过，本轮未打包；历史 0.8.32 完整打包记录保持 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
 ## 1 用途与安装位置
@@ -149,7 +149,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1 -CheckOn
 pnpm desktop:package -CheckOnly
 ```
 
-本轮三个相关脚本的 Windows PowerShell 5.1 语法检查通过；为满足源码干净条件，真实正常入口检查在提交修改后执行，结果补记[发行验证记录](../testing/offline-release-results.md#8-0833-打包前置检查)。本轮不重新构建或安装发行包。
+本轮三个相关脚本的 Windows PowerShell 5.1 语法检查、统一版本检查通过。提交修改后，在干净源码上实际执行默认 `生成安装包.ps1 -CheckOnly` 和 `pnpm desktop:package -CheckOnly`，两者均完成真实预检并退出 0；Cargo.lock 摘要及 Git 工作区保持。实际命令、日志和验证边界见[发行验证记录](../testing/offline-release-results.md#8-0833-打包前置检查)。本轮没有重新构建或安装发行包。
 
 每次调用在 `.local/package-logs/package-<时间>-<PID>.log` 保存入口执行记录。原生 stdout 通过 Out-Host 展示并进入 transcript；异常同时记录消息、脚本位置和调用栈。离线工具另有 `diagnostics` 详细日志；Windows PowerShell transcript 不保证收录嵌套原生命令的全部 stderr 编译进度。入口与本地调试／构建共用子进程 PATH 准备，最后恢复原 PATH，不更改系统配置；JSON 配置显式使用 UTF-8，脚本含 BOM 供 Windows PowerShell 5.1 读取中文。该入口不跳过干净源码、运行中产物、许可、资源摘要等原有检查。
 

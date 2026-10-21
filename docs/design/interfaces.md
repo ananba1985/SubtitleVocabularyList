@@ -3,11 +3,11 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.55 |
-| 更新日期 | 2026-10-20 |
+| 文档版本 | 0.56 |
+| 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
-| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-19；FR-20 至 FR-24 实施中；NFR-02 至 NFR-05 |
-| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-09；ARC-10 实施中 |
+| 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 已确认、尚未实现；NFR-02 至 NFR-05 |
+| 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-10；ARC-11 为计划模块 |
 | 关联设计 | [数据模型](data-model.md)、[应用流程](application-flows.md) |
 
 本契约定义界面与 Rust 核心的命令、任务查询、错误和外部适配边界。下列目录保留完整 0.1 的逻辑契约；当前已实现参数另列，不把后续提案当作现有接口。站点认证与协议仍需按 OPEN-04、TECH-06 对齐。
@@ -225,6 +225,12 @@ assessment_preview/start 使用后台线程计算并在开始事务内冻结；s
 
 0.8.18 的 assessment_report_get、assessment_history_list 与 assessment_report_items 参数及 DTO 字段保持。报告与历史摘要中的 revision 表示本机报告查询位置，用于详情及旧版本选择；不要求等于 session_get 的会话 revision。默认读取按业务内容选择已有或新增报告，单纯同步修订及本机音频定位变化复用旧版本；收到的原报告 JSON 和摘要不改写。比较及可信收录也使用选中的本机报告位置，详见[报告设计第 5、6 节](vocabulary-assessment.md#5-判分报告与复测)。
 
+### 2.5 边看边学命令（预留，未实现）
+
+FR-25 至 FR-29 的 CMD-63 至 CMD-70 唯一维护于[边看边学设计 §7.2](watch-and-learn.md#72-拟新增命令)：打开、状态、播放控制、视频视图区、暂停上下文、帧 OCR 重试、准备统一收录及关闭。播放器上下文带 sessionId 和 contextRevision，查询、OCR 和草稿核对其预期版本；事件只通知标识后读取快照。
+
+翻译复用 CMD-38 至 CMD-41 等 translation 会话命令，确认收录继续用 CMD-09；实现时扩展 watch 来源及必要 DTO，并使用现有类型生成链，不建立平行查询或提交协议。上述命令仅预留编号，当前未注册、未生成类型，不能作为可调用接口。
+
 ## 3 收录请求与提交结果
 
 CMD-29 的 `meaningScope` 增加 `dictionary`：词义来自独立底库，`notes` 保留来源与词形匹配信息，`translation` 只组合已保存的整句译文，不查询模型。小窗 Qwen `explain` 入口命中底库时 `cacheSource=dictionary`，直接返回，既有 `stored/cache/provider` 保持；`translate` 模式不将词典释义冒充完整译文。底库文件、导入与统计口径见[离线基础词库设计](base-dictionary.md)。
@@ -408,3 +414,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.53 | 2026-10-17 | 13 个已知启动命令通过 TaskHandle 关联具体完成 DTO，移除等待结果手写断言，保留原 JSON、进度及历史 |
 | 0.54 | 2026-10-18 | 查询 mode 增加 auto 并统一解析实际能力，保留用户选择、DTO 字段及原缓存身份 |
 | 0.55 | 2026-10-20 | 增加 CMD-61／62 当前用户启动登记命令、原生错误及固定资料目录参数，保持 Settings 和存储契约 |
+| 0.56 | 2026-10-21 | 索引边看边学 CMD-63 至 CMD-70 与上下文版本提案，复用原查询及确认提交；未注册实现 |

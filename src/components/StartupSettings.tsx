@@ -31,7 +31,7 @@ export function StartupSettings() {
   }
   return (
     <>
-      <label className="checkbox">
+      <label className="check-label">
         <input
           type="checkbox"
           checked={enabled === true}

@@ -9,6 +9,32 @@
   line-height: 1.55;
   font-size: 14px;
 }
+.workspace-watch { display:flex; flex-direction:column; height:100vh; overflow:auto; padding-bottom:12px; }
+.workspace-watch .workspace-header { flex:none; margin-bottom:12px; }
+.workspace-watch .eyebrow { display:none; }
+.watch-view { display:flex; flex-direction:column; gap:10px; flex:1; min-height:440px; }
+.watch-toolbar,.watch-options,.watch-caption-heading,.watch-caption-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.watch-toolbar select { flex:1; min-width:160px; max-width:500px; }
+.watch-toolbar button { white-space:nowrap; }
+.watch-stage { position:relative; flex:1; min-height:220px; background:#101714; border:1px solid #20392f; color:#c2d2c7; }
+.watch-empty { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; }
+.watch-empty strong { font-size:22px; }
+.app-shell.watch-fullscreen { display:block; }
+.watch-fullscreen > .sidebar,.watch-fullscreen .workspace-header,.watch-fullscreen .watch-toolbar,.watch-fullscreen .watch-options { display:none; }
+.watch-fullscreen .workspace-watch { padding:0; height:100vh; overflow:hidden; background:#000; }
+.watch-fullscreen .watch-view { min-height:0; height:100vh; gap:0; }
+.watch-fullscreen .watch-stage { min-height:0; border:0; }
+.watch-fullscreen .watch-caption { display:none; }
+.watch-caption { padding:10px 16px; background:#fff; border:1px solid #d8e0d8; border-radius:10px; max-height:190px; overflow:auto; }
+.watch-caption-heading { justify-content:space-between; font-size:13px; color:#64786b; }
+.watch-caption-actions { justify-content:space-between; }
+.watch-sentence { font-size:18px; user-select:text; white-space:pre-wrap; margin-top:4px; }
+.watch-translation { margin:4px 0; font-size:16px; }
+.watch-options { padding:12px; background:#eef3e9; border-radius:8px; }
+.watch-options label { display:flex; align-items:center; gap:6px; margin:0; }
+.watch-options input[type="number"] { width:85px; }
+.watch-options .check-label { display:flex; }
+@media (max-width:760px) { .watch-toolbar select {max-width:100%;} }
 * {
   box-sizing: border-box;
 }

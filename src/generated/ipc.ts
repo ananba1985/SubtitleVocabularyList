@@ -160,6 +160,8 @@ export type Page<T> = { items: Array<T>, total: number, };
 
 export type PixelRect = { x: number, y: number, width: number, height: number, };
 
+export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, };
+
 export type PluginField = { id: string, label: string, secret: boolean, required: boolean, };
 
 export type PluginManifest = { id: string, name: string, version: string, protocolVersion: number, minHostVersion: string, license: string, capabilities: Array<string>, allowedHosts: Array<string>, endpoint: string, method: string, fields: Array<PluginField>, headers: { [key in string]: string }, params: { [key in string]: string }, body: JsonValue, meaningPointer: string, translationPointer: string, notesPointer: string, };
@@ -232,7 +234,7 @@ export type ScreenBounds = { x: number, y: number, width: number, height: number
 
 export type ScreenSessionView = { id: string, bounds: ScreenBounds, imagePath: string, };
 
-export type Settings = { modelUrl: string, modelName: string, modelConcurrency: number, modelBatchSize: number, offlineMode: boolean, selectionShortcut: string, ocrShortcut: string, inputShortcut: string, replacementShortcut: string, replacementProviderId: string, systemVoice: string, closeToTray: boolean, siteUrl: string, tools: MediaTools, };
+export type Settings = { modelUrl: string, modelName: string, modelConcurrency: number, modelBatchSize: number, offlineMode: boolean, selectionShortcut: string, ocrShortcut: string, inputShortcut: string, replacementShortcut: string, replacementProviderId: string, systemVoice: string, closeToTray: boolean, watchAutoCollect: boolean, watchCollectDelaySeconds: number, siteUrl: string, tools: MediaTools, };
 
 export type SourceProgress = { sourceId: string, title: string, current: number, total: number, };
 
@@ -270,7 +272,17 @@ export type TaskUpdate = { visibleInList: boolean, id: string, operationId: stri
 
 export type TransitionAssessment = { sessionId: string, expectedRevision: number, operationId: string, action: string, itemId: string | null, draftText: string, draftOption: string | null, };
 
-export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "practice" | "reviews" | "leech" | "sync" | "tasks" | "settings";
+export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "watch" | "practice" | "reviews" | "leech" | "sync" | "tasks" | "settings";
+
+export type WatchContext = { revision: number, sourceId: string, exampleId: string, text: string, translation: string, translationRevision: string, startMs: number, endMs: number, textSource: string, previous: boolean, };
+
+export type WatchControl = { action: string, value: number | null, text: string | null, expectedRevision: number | null, };
+
+export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, audioId: number | null, subtitleDelay: number, };
+
+export type WatchTrack = { id: number, kind: string, title: string, selected: boolean, };
+
+export type WatchViewport = { x: number, y: number, width: number, height: number, visible: boolean, };
 
 export interface CommandMap {
   app_info: { args: undefined; result: AppInfo };
@@ -381,4 +393,9 @@ export interface CommandMap {
   translation_window_hide: { args: undefined; result: void };
   translation_window_pin: { args: { pinned: boolean }; result: void };
   tray_action_get: { args: undefined; result: TrayNavigation | null };
+  watch_control: { args: { control: WatchControl }; result: PlayerSnapshot };
+  watch_open: { args: { path?: string | null; sourceId?: string | null }; result: PlayerSnapshot };
+  watch_progress_get: { args: undefined; result: WatchProgress | null };
+  watch_state_get: { args: undefined; result: PlayerSnapshot };
+  watch_viewport_set: { args: { viewport: WatchViewport }; result: void };
 }

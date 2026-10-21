@@ -44,6 +44,10 @@ mod sync_tests;
 pub mod synchronization;
 pub mod tasks;
 pub mod vocabulary;
+pub mod watch;
+
+#[cfg(all(windows, feature = "desktop"))]
+mod player;
 
 #[cfg(all(windows, feature = "desktop"))]
 pub mod credentials;

@@ -21,11 +21,13 @@ import { PracticeView, type PracticePanel } from "./components/PracticeView";
 import { collectionQueue } from "./collectionQueue";
 import { ReplacementSettings } from "./components/ReplacementSettings";
 import { StartupSettings } from "./components/StartupSettings";
+import { WatchView } from "./components/WatchView";
 import { applyTaskUpdate, type TaskUpdate } from "./taskUpdates";
 
 type Tab =
   | "library"
   | "episodes"
+  | "watch"
   | "practice"
   | "reviews"
   | "assessment"
@@ -51,6 +53,7 @@ export default function App() {
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [refreshKey, setRefreshKey] = useState(0);
+  const [watchFullscreen, setWatchFullscreen] = useState(false);
   const [voices, setVoices] = useState<SystemVoice[]>([]),
     [native, setNative] = useState<NativeStatus | null>(null);
   const [skippedCapture, setSkippedCapture] = useState<CollectionSeed | null>(
@@ -198,6 +201,15 @@ export default function App() {
   }, [tasks, refresh]);
   const active = tasks.filter((task) => !terminal(task));
   const report = (error: unknown) => setError(message(error));
+  useEffect(() => {
+    const stop = listen("watch_collected", () => {
+      setRefreshKey((value) => value + 1);
+      refresh().catch(() => {});
+    });
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
+  }, [refresh]);
   const saved = () => {
     setSeed(null);
     setNotice("收录成功，例句与原声已按选择保存。");
@@ -205,7 +217,9 @@ export default function App() {
     refresh().catch(report);
   };
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell${tab === "watch" && watchFullscreen ? " watch-fullscreen" : ""}`}
+    >
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">SV</span>
@@ -220,6 +234,7 @@ export default function App() {
           {(
             [
               ["library", "我的单词本"],
+              ["watch", "边看边学"],
               ["episodes", "观看前预习"],
               ["practice", "听读练习"],
               ["reviews", "主动回忆测验"],
@@ -265,17 +280,20 @@ export default function App() {
         </div>
       </aside>
       <main
-        className={`workspace${tab === "practice" ? " workspace-practice" : tab === "assessment" ? " workspace-assessment" : ""}`}
+        className={`workspace${tab === "watch" ? " workspace-watch" : tab === "practice" ? " workspace-practice" : tab === "assessment" ? " workspace-assessment" : ""}`}
       >
         <header className="workspace-header">
           <div>
-            {tab !== "episodes" && tab !== "practice" && tab !== "assessment" && (
-              <p className="eyebrow">英语学习，从真实语境开始</p>
-            )}
+            {tab !== "episodes" &&
+              tab !== "practice" &&
+              tab !== "assessment" && (
+                <p className="eyebrow">英语学习，从真实语境开始</p>
+              )}
             <h1>
               {
                 {
                   library: "我的单词本",
+                  watch: "边看边学",
                   episodes: "观看前预习",
                   practice: "听读练习",
                   reviews: "主动回忆测验",
@@ -403,6 +421,15 @@ export default function App() {
             refreshKey={refreshKey}
             collect={setSeed}
             report={report}
+          />
+        )}
+        {tab === "watch" && (
+          <WatchView
+            settings={settings}
+            onSettings={setSettings}
+            collect={setSeed}
+            collectionOpen={!!seed}
+            onFullscreenChange={setWatchFullscreen}
           />
         )}
         {tab === "episodes" && (

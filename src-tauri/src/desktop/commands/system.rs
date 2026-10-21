@@ -33,6 +33,7 @@ pub(crate) enum TrayNavigation {
     Collect,
     Import,
     Episodes,
+    Watch,
     Practice,
     Reviews,
     Leech,

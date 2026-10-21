@@ -331,6 +331,23 @@ pub(crate) fn collect_on(
     transaction: &Connection,
     input: &CollectionInput,
 ) -> Result<CollectionResult, AppError> {
+    collect_with_trigger_on(root, transaction, input, false)
+}
+
+pub(crate) fn collect_auto_on(
+    root: &std::path::Path,
+    transaction: &Connection,
+    input: &CollectionInput,
+) -> Result<CollectionResult, AppError> {
+    collect_with_trigger_on(root, transaction, input, true)
+}
+
+fn collect_with_trigger_on(
+    root: &std::path::Path,
+    transaction: &Connection,
+    input: &CollectionInput,
+    automatic: bool,
+) -> Result<CollectionResult, AppError> {
     validate(input)?;
     let request_hash = digest(&serde_json::to_vec(input)?);
     let now = crate::reviews::event_time(&transaction)?;
@@ -449,7 +466,11 @@ pub(crate) fn collect_on(
         created,
         example_ids,
     };
-    transaction.execute("INSERT INTO collection_actions(operation_id,request_hash,entry_id,source_id,result_json,created_at) VALUES (?,?,?,?,?,?)", params![input.operation_id, request_hash, entry_id, input.examples.first().and_then(|e| e.source_id.as_ref()), serde_json::to_string(&result)?, now])?;
+    let mut receipt = serde_json::to_value(&result)?;
+    if automatic {
+        receipt["trigger"] = "watch_pause".into();
+    }
+    transaction.execute("INSERT INTO collection_actions(operation_id,request_hash,entry_id,source_id,result_json,created_at) VALUES (?,?,?,?,?,?)", params![input.operation_id, request_hash, entry_id, input.examples.first().and_then(|e| e.source_id.as_ref()), serde_json::to_string(&receipt)?, now])?;
     transaction.execute(
         "DELETE FROM settings WHERE key=?",
         [crate::known_targets::target_key(&input.kind, &input.text)],
@@ -506,7 +527,7 @@ impl Store {
 pub(crate) fn get_entry_on(connection: &Connection, id: &str) -> Result<Entry, AppError> {
     let mut entry = connection.query_row(
         "SELECT id,kind,text,match_key,revision,created_at,updated_at,
-          (SELECT COUNT(*) FROM collection_actions WHERE entry_id=entries.id),
+          (SELECT COUNT(*) FROM collection_actions WHERE entry_id=entries.id AND COALESCE(json_extract(result_json,'$.trigger'),'manual')<>'watch_pause'),
           CASE WHEN kind='sentence' THEN
             (SELECT COUNT(DISTINCT e.source_id||':'||CASE WHEN instr(e.location_key,':quote:')>0 THEN substr(e.location_key,1,instr(e.location_key,':quote:')-1) ELSE e.location_key END) FROM entry_examples ee JOIN examples e ON e.id=ee.example_id WHERE ee.entry_id=entries.id AND e.source_id IS NOT NULL)
           ELSE

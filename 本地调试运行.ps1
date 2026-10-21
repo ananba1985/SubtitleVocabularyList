@@ -18,10 +18,14 @@ try {
         Write-Warning "Temporary cleanup deferred: $($_.Exception.Message)"
     }
     if ($CheckOnly) {
+        Write-Host 'Plan: prepare the pinned libmpv runtime if it is missing.'
         Write-Host 'Plan: verify no process is running from this Cargo build directory.'
         Write-Host 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
         Write-Host 'Plan: pnpm tauri dev --config src-tauri/tauri.development.conf.json'
         return
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '.tools/runtime/mpv/libmpv-2.dll'))) {
+        & (Join-Path $PSScriptRoot 'scripts/setup-mpv-development.ps1')
     }
     Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
     & cargo clean --manifest-path (Join-Path $svlEnvironment.Workspace 'src-tauri/Cargo.toml')

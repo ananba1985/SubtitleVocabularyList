@@ -36,6 +36,8 @@ pub struct Settings {
     pub replacement_provider_id: String,
     pub system_voice: String,
     pub close_to_tray: bool,
+    pub watch_auto_collect: bool,
+    pub watch_collect_delay_seconds: u32,
     pub site_url: String,
     pub tools: MediaTools,
 }
@@ -56,6 +58,8 @@ impl Default for Settings {
             replacement_provider_id: "qwen".into(),
             system_voice: String::new(),
             close_to_tray: false,
+            watch_auto_collect: true,
+            watch_collect_delay_seconds: 5,
             site_url: "https://english-copy-practice.hxwjb.chatgpt.site".into(),
             tools: MediaTools::development(runtime),
         }
@@ -353,6 +357,9 @@ impl Application {
     }
 
     pub fn save_settings(&self, mut settings: Settings) -> Result<Settings, AppError> {
+        if settings.watch_collect_delay_seconds == 0 {
+            return Err(AppError::new("invalid_input", "自动收录等待时间必须大于 0 秒。"));
+        }
         if !(1..=16).contains(&settings.model_concurrency) {
             return Err(AppError::new(
                 "invalid_input",

@@ -560,7 +560,7 @@ fn recompute(connection: &Connection, unit_id: &str) -> Result<ReviewState, AppE
         due_at: created_at,
         ..Default::default()
     };
-    let mut query = connection.prepare("SELECT created_at,0,operation_id,'' FROM collection_actions WHERE entry_id=? AND created_at>=?
+    let mut query = connection.prepare("SELECT created_at,0,operation_id,'' FROM collection_actions WHERE entry_id=? AND created_at>=? AND COALESCE(json_extract(result_json,'$.trigger'),'manual')<>'watch_pause'
         UNION ALL SELECT created_at,1,id,policy_version FROM review_attempts WHERE unit_id=? ORDER BY 1,2,3")?;
     let events = query
         .query_map(params![entry_id, created_at, unit_id], |r| {
@@ -574,7 +574,7 @@ fn recompute(connection: &Connection, unit_id: &str) -> Result<ReviewState, AppE
         .collect::<Result<Vec<_>, _>>()?;
     let mut relearn_at = 0;
     for (time, kind, id, policy) in events {
-        let count: u32 = connection.query_row("SELECT COUNT(*) FROM collection_actions WHERE entry_id=? AND created_at>? AND created_at<=?",
+        let count: u32 = connection.query_row("SELECT COUNT(*) FROM collection_actions WHERE entry_id=? AND COALESCE(json_extract(result_json,'$.trigger'),'manual')<>'watch_pause' AND created_at>? AND created_at<=?",
             params![entry_id,state.leech_cleared_at,time],|r|r.get(0))?;
         if kind == 0 {
             relearn_at = time;
@@ -772,11 +772,11 @@ impl Store {
         let connection = self.connection()?;
         let now = Utc::now().timestamp_millis();
         let mut query=connection.prepare("SELECT u.id,u.entry_id,e.text,e.kind,u.scope_key,u.dimension,r.state_json,r.revision,
-            (SELECT COUNT(*) FROM collection_actions c WHERE c.entry_id=u.entry_id AND c.created_at>COALESCE(json_extract(r.state_json,'$.leechClearedAt'),0))
+            (SELECT COUNT(*) FROM collection_actions c WHERE c.entry_id=u.entry_id AND COALESCE(json_extract(c.result_json,'$.trigger'),'manual')<>'watch_pause' AND c.created_at>COALESCE(json_extract(r.state_json,'$.leechClearedAt'),0))
             FROM learning_units u JOIN entries e ON e.id=u.entry_id JOIN review_states r ON r.unit_id=u.id
             WHERE e.archived=0 AND (?='' OR u.dimension=?) AND (u.scope_key<>'entry' OR NOT EXISTS(SELECT 1 FROM meanings m WHERE m.entry_id=u.entry_id))
             AND (?<>'due' OR r.due_at<=?) AND (?<>'leech' OR COALESCE(json_extract(r.state_json,'$.leechActive'),0)=1 OR
-            ((SELECT COUNT(*) FROM collection_actions c WHERE c.entry_id=u.entry_id AND c.created_at>COALESCE(json_extract(r.state_json,'$.leechClearedAt'),0))>=3 AND COALESCE(json_extract(r.state_json,'$.streak'),0)<3))
+            ((SELECT COUNT(*) FROM collection_actions c WHERE c.entry_id=u.entry_id AND COALESCE(json_extract(c.result_json,'$.trigger'),'manual')<>'watch_pause' AND c.created_at>COALESCE(json_extract(r.state_json,'$.leechClearedAt'),0))>=3 AND COALESCE(json_extract(r.state_json,'$.streak'),0)<3))
             ORDER BY r.due_at,u.id LIMIT ? OFFSET ?")?;
         let rows = query
             .query_map(

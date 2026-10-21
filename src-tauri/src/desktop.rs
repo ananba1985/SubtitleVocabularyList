@@ -171,6 +171,7 @@ pub fn run() {
             app.manage(TrayAction::default());
             app.manage(crate::desktop_query::QueryWindowState::default());
             app.manage(crate::desktop_replacement::NativeReplacement::default());
+            app.manage(crate::player::NativePlayer::default());
             let native = app.state::<NativeDesktop>();
             let mut available = ["", "", "", ""];
             let mut failures = Vec::new();
@@ -209,6 +210,7 @@ pub fn run() {
             let ocr = MenuItem::with_id(app, "ocr", "截图收录", true, None::<&str>)?;
             let import = MenuItem::with_id(app, "import", "导入剧集", true, None::<&str>)?;
             let episodes = MenuItem::with_id(app, "episodes", "观看前预习", true, None::<&str>)?;
+            let watch = MenuItem::with_id(app, "watch", "边看边学", true, None::<&str>)?;
             let practice = MenuItem::with_id(app, "practice", "听读练习", true, None::<&str>)?;
             let reviews = MenuItem::with_id(app, "reviews", "主动回忆测验", true, None::<&str>)?;
             let leech = MenuItem::with_id(app, "leech", "易忘词专项", true, None::<&str>)?;
@@ -232,6 +234,7 @@ pub fn run() {
                     &ocr,
                     &import,
                     &learning_separator,
+                    &watch,
                     &episodes,
                     &practice,
                     &reviews,
@@ -272,7 +275,7 @@ pub fn run() {
                     "query"=>{if let Err(error)=crate::desktop_query::open_input(app){desktop_capture::capture_failed(app,&error);}},
                     "clipboard"=>{let watcher=app.state::<crate::desktop_query::ClipboardWatcher>();let status=watcher.status();let _=watcher.set(app,!status.enabled,crate::desktop_query::ClipboardPreferences{debounce_ms:status.debounce_ms,persist_results:status.persist_results});crate::desktop_query::refresh_clipboard_menu(app);},
                     "show" => tray_navigate(app, "library"),
-                    "collect" | "import" | "episodes" | "practice" | "reviews" | "leech"
+                    "collect" | "import" | "watch" | "episodes" | "practice" | "reviews" | "leech"
                     | "sync" | "tasks" | "settings" => tray_navigate(app, event.id.as_ref()),
                     "ocr" => {
                         if let Err(error) = app.state::<NativeDesktop>().ocr_start(app) {
@@ -291,6 +294,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label()=="main" && (matches!(event,tauri::WindowEvent::Resized(_)) || matches!(event,tauri::WindowEvent::Focused(true))) {
+                if let Some(player)=window.app_handle().try_state::<crate::player::NativePlayer>() {player.raise(window.app_handle());}
+            }
+            if window.label()=="main" && (matches!(event,tauri::WindowEvent::CloseRequested{..}) || matches!(event,tauri::WindowEvent::Resized(_)) && window.is_minimized().unwrap_or(false)) {
+                if let Some(player)=window.app_handle().try_state::<crate::player::NativePlayer>() {player.hide();}
+            }
             if window.label()=="translator" && let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();crate::desktop_query::hide_query(window.app_handle());}
             if let Some(id) = window.label().strip_prefix("capture-")
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })

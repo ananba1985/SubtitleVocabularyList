@@ -240,6 +240,7 @@ pub fn capture_failed(app: &AppHandle, error: &AppError) {
     show_main(app);
 }
 pub fn quit(app: &AppHandle) {
+    if let Some(player)=app.try_state::<crate::player::NativePlayer>() {player.shutdown();}
     app.state::<crate::desktop_replacement::NativeReplacement>()
         .cancel();
     let session_id = app

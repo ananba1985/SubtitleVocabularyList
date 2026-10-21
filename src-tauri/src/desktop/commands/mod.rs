@@ -6,6 +6,7 @@ pub(super) mod query;
 pub(super) mod synchronization;
 pub(super) mod system;
 pub(super) mod vocabulary;
+pub(super) mod watch;
 
 use crate::{application::Application, error::AppError};
 use std::sync::Arc;
@@ -33,6 +34,11 @@ where
 
 // Keep all desktop IPC registrations at this single entry point.
 svl_ipc_macros::catalog! {
+        watch::watch_open,
+        watch::watch_state_get,
+        watch::watch_control,
+        watch::watch_viewport_set,
+        watch::watch_progress_get,
         assessment::assessment_preview,
         assessment::assessment_start,
         assessment::assessment_session_get,

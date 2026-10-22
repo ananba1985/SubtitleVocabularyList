@@ -412,7 +412,7 @@ fn mouse_stop() {
         let dimensions = actor.engine.property("osd-dimensions");
         let width = dimensions["w"].as_f64().unwrap();
         let height = dimensions["h"].as_f64().unwrap();
-        // Coordinates of the built-in bottombar's first custom button, scaled
+        // Coordinates of the built-in bottombar's rightmost custom button, scaled
         // using the native OSC's own margin. This never moves the OS cursor.
         let scale = height * actor.engine.number("user-data/osc/margins/b").unwrap() / 56.0;
         let x = (width - 16.0 * scale).round() as i32;
@@ -448,6 +448,82 @@ fn mouse_stop() {
         .unwrap();
         println!(
             "PASS: native OSC mouse stop preserves progress and playlist; {}",
+            root.display()
+        );
+    });
+}
+
+#[test]
+#[ignore = "requires an explicit fresh output directory and silent video fixture"]
+fn native_settings_button() {
+    with_isolated_player(|actor, receiver, store, root, path| {
+        actor
+            .open(store.watch_media(Some(path), None).unwrap())
+            .unwrap();
+        wait(actor, receiver, |a| a.state.loaded && a.state.playing);
+        actor
+            .engine
+            .command(json!([
+                "script-message-to",
+                "osc",
+                "osc-visibility",
+                "always"
+            ]))
+            .unwrap();
+        wait(actor, receiver, |a| {
+            a.engine.number("user-data/osc/margins/b").unwrap_or(0.0) > 0.0
+        });
+        let dimensions = actor.engine.property("osd-dimensions");
+        let width = dimensions["w"].as_f64().unwrap();
+        let height = dimensions["h"].as_f64().unwrap();
+        let scale = height * actor.engine.number("user-data/osc/margins/b").unwrap() / 56.0;
+        let x = (width - 43.0 * scale).round() as i32;
+        let y = (height - 42.0 * scale).round() as i32;
+        actor.engine.command(json!(["mouse", x, y])).unwrap();
+        actor
+            .engine
+            .capture(&root.join("settings-button.png"))
+            .unwrap();
+        actor
+            .engine
+            .command(json!(["keydown", "MBTN_LEFT"]))
+            .unwrap();
+        thread::sleep(Duration::from_millis(30));
+        actor.engine.command(json!(["keyup", "MBTN_LEFT"])).unwrap();
+        // Read the native button event without executing a desktop popup.
+        let until = Instant::now() + Duration::from_secs(8);
+        let mut received = false;
+        while !received && Instant::now() < until {
+            while let Some(event) = actor.engine.event() {
+                if event
+                    .messages
+                    .first()
+                    .is_some_and(|name| name == "svl-settings")
+                {
+                    received = true;
+                    break;
+                }
+            }
+            if !received {
+                thread::sleep(Duration::from_millis(8));
+            }
+        }
+        assert!(
+            received,
+            "Native settings button must emit its menu request"
+        );
+        std::fs::write(
+            root.join("result.json"),
+            serde_json::to_vec_pretty(&json!({
+                "nativeOscMouseClick":true,"settingsMessage":"svl-settings",
+                "windowVisible":false,"audioOutput":false,"desktopPopupOpened":false,
+                "buttonPosition":{"x":x,"y":y}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        println!(
+            "PASS: native settings button emits its menu request; {}",
             root.display()
         );
     });

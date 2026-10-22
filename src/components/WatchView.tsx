@@ -205,6 +205,7 @@ export function WatchView({
       if (!disposed) {
         setFullscreen(value);
         onFullscreenChange(value);
+        if (value && !fullscreen) video.current?.focus({ preventScroll: true });
       }
     };
     void update();
@@ -212,7 +213,25 @@ export function WatchView({
       void update();
     });
     const key = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || collectionOpen) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        collectionOpen ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]',
+          ))
+      )
+        return;
+      if (fullscreen && state?.loaded && event.code === "Space") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) void control("toggle");
+        return;
+      }
       if (event.key === "F11" || (event.key === "Escape" && fullscreen)) {
         event.preventDefault();
         void current
@@ -220,13 +239,13 @@ export function WatchView({
           .then(update);
       }
     };
-    document.addEventListener("keydown", key);
+    document.addEventListener("keydown", key, true);
     return () => {
       disposed = true;
       void stop.then((fn) => fn());
-      document.removeEventListener("keydown", key);
+      document.removeEventListener("keydown", key, true);
     };
-  }, [fullscreen, collectionOpen, onFullscreenChange]);
+  }, [fullscreen, collectionOpen, onFullscreenChange, state?.loaded]);
   useEffect(
     () => () => {
       onFullscreenChange(false);
@@ -543,7 +562,7 @@ export function WatchView({
           </label>
         </div>
         <button disabled={!state?.loaded} onClick={() => void control("menu")}>
-          播放设置
+          ⚙ 播放器设置
         </button>
         <button
           className="text-button"

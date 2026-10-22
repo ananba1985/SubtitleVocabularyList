@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.12 |
+| 文档版本 | 0.13 |
 | 更新日期 | 2026-10-22 |
-| 状态 | 0.16.6 原生 OSC 鼠标停止的真实 Actor 静音正常流程通过；保留自动播放、实装采样及历史窗口／声音边界，未重装或操作桌面 |
+| 状态 | 0.16.7 无界面浏览器全屏焦点／Space 与原生齿轮菜单请求验证通过；保留历史实装及窗口／声音边界，本次未重装或操作桌面 |
 | 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
 
 ## 1 实现与实际检查
@@ -232,7 +232,37 @@ cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --feature
 
 随后用户明确请求用根目录脚本生成 0.16.6 安装包。脚本已退出 0，完成安装器、独立目录、源码材料和摘要生成；版本、关键资源、底库及源码对应核对通过，见[0.16.6 交付记录](../release/0.16.6-release-notes.md)。此次没有运行安装器或追加功能测试，上述真实窗口与声音边界保留。
 
-## 12 修订记录
+## 12 0.16.7 全屏焦点与播放器设置入口
+
+用户补充确认：点击软件的全屏按钮后，焦点默认没有进入播放窗口；只有先点击画面才能空格暂停。代码中 WebView 原先只在视频 DOM 自己有焦点时处理 Space，软件全屏按钮调用窗口 API 后未交接焦点，document 层只处理全屏切换键。因此故障位于宿主输入集成，不能据此说 mpv 没有空格暂停能力。
+
+FR-25／34、TC-59／70 的修复分两层：进入全屏后聚焦视频 DOM，Actor 观察到宿主进入全屏时再在主线程将键盘焦点交给原生视频；全屏 WebView 在捕获阶段对软件窗口非编辑区域的 Space 保底调用既有 toggle，阻止旧按钮默认动作及重复冒泡，长按不重复切换，输入／组合键仍保留自身行为。设置沿用已有播放菜单：窗口按钮改为“⚙ 播放器设置”，原生 OSC 左侧自定义按钮为齿轮并发送 `svl-settings`，停止仍在最右侧；Actor 收到请求后打开同一原生设置菜单，不新增一套偏好存储或播放器。
+
+### 12.1 一次无界面浏览器正常操作
+
+按 Playwright 技能使用 CLI 的独立 headless 会话，夹具直接导入产品实际 WatchView，仅用隔离模块替代 Tauri IPC／窗口服务；没有加载真实视频或正式 Data。固定端口为本机 1437，不运行桌面客户端。
+
+1. 点击真实组件的“⚙ 播放器设置”，实际请求为 menu。
+2. 点击软件“全屏”按钮，窗口服务夹具返回全屏状态，真实组件更新后 document.activeElement 为视频区域。
+3. 点击夹具中代表软件其他区域的按钮，焦点明确不在视频。执行一次 Playwright `press Space` 后，fullscreen=true、playing=false、toggle 请求恰好 1 次；再按一次后 playing=true，总请求恰好 2 次，未重新激活全屏按钮。
+
+正常操作通过。证据位于 `output/playwright/player-focus-0167/` 的夹具、`fullscreen-focus.txt`、`software-focus-space.txt` 和 `resumed.txt`；CLI 快照保留在 `.playwright-cli/`。仅有夹具 favicon 404，不是产品请求失败。会话和 Vite 服务已结束，未移动系统鼠标或向用户桌面发送按键。该结果证明真实 React 输入与焦点分配，不能代替 Windows 原生 HWND 的真实焦点往返或实际视频声音。
+
+### 12.2 一次原生齿轮命中正常流程
+
+`player::native_tests::native_settings_button` 复用真实 Actor／Engine 及隔离 Store，使用无音轨合成视频、不可见 HWND，关闭音轨且静音、禁用自动收录。向 mpv 内部投递一次齿轮坐标的鼠标点击，实际收到 `svl-settings` CLIENT_MESSAGE；测试直接读取消息，不执行桌面菜单弹出。
+
+```powershell
+$env:SVL_PLAYER_TEST_OUTPUT = 'D:/Projects/codex/SubtitleVocabularyList/output/player-settings-0167'
+$env:SVL_PLAYER_TEST_VIDEO = 'D:/Projects/codex/SubtitleVocabularyList/output/player-ui-acceptance-0161/UI Series/Episode1.mkv'
+cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --features ipc-types player::native_tests::native_settings_button -- --ignored --exact --nocapture
+```
+
+结果 **1 项通过，118 项过滤**，正常流程 0.90 秒；`result.json` 记录坐标 924,565、窗口不可见、无声音、未弹出桌面菜单。命名目录内的早期合成截图没有包含控制条，不把该图作为齿轮实际呈现的证明；按钮原生命中消息与外观／真实菜单验收分别记录。既有测试程序图标提示保留。`pnpm build` 的版本、Rust IPC、TypeScript 和 Vite 检查通过，保留既有大分块提示。
+
+本次未运行正式安装版、未执行新的真实桌面／声音测试，也未生成 0.16.7 安装器；已有 0.16.6 包不因源码修复自动更新。
+
+## 13 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -245,3 +275,4 @@ cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --feature
 | 0.10 | 2026-10-22 | 记录 0.16.5 主动打开后直接播放及避免视图区重建暂停的修复，登记五个入口的单次静音后台正常结果 |
 | 0.11 | 2026-10-22 | 补齐工具栏、原生 OSC 和右键菜单鼠标停止，记录单次内部鼠标命中、停止及进度／列表保持的后台正常证据 |
 | 0.12 | 2026-10-22 | 关联根目录脚本实际生成的 0.16.6 验证包及必要交付核对，不扩大实际窗口验收范围 |
+| 0.13 | 2026-10-22 | 记录软件按钮全屏后的焦点修复、真实 WatchView 的 headless Space 正常操作及原生齿轮菜单请求，保留真实桌面边界 |

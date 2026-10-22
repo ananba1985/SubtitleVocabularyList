@@ -2276,7 +2276,11 @@ impl Actor {
                 Some(mpv::PlayerEvent {
                     id: 16, messages, ..
                 }) => {
-                    if messages.first().is_some_and(|name| name == "svl-stop") {
+                    if messages.first().is_some_and(|name| name == "svl-settings") {
+                        if let Err(error) = self.show_menu() {
+                            self.state.error = Some(error.message);
+                        }
+                    } else if messages.first().is_some_and(|name| name == "svl-stop") {
                         if let Err(error) = self.control(WatchControl {
                             action: "close".into(),
                             value: None,
@@ -2471,6 +2475,12 @@ impl Actor {
                         self.fullscreen = native;
                         let _ = window.set_fullscreen(native);
                     }
+                }
+                if !was_fullscreen && self.fullscreen {
+                    let host = self.window;
+                    let _ = self.handle.run_on_main_thread(move || unsafe {
+                        let _ = SetFocus(Some(HWND(host as *mut _)));
+                    });
                 }
                 if was_fullscreen && !self.fullscreen && self.state.status == "counting" {
                     self.clock.cancel();

@@ -26,6 +26,17 @@ pub struct Event {
     pub data: *mut c_void,
 }
 #[repr(C)]
+struct Hook {
+    name: *const c_char,
+    id: u64,
+}
+pub struct PlayerEvent {
+    pub id: i32,
+    pub hook: Option<u64>,
+    pub error: i32,
+    pub end_reason: Option<i32>,
+}
+#[repr(C)]
 struct Param {
     kind: i32,
     data: *mut c_void,
@@ -126,6 +137,7 @@ pub struct Engine {
     report_swap: unsafe extern "C" fn(*mut c_void),
     render_free: unsafe extern "C" fn(*mut c_void),
     destroy: unsafe extern "C" fn(*mut c_void),
+    hook_continue: unsafe extern "C" fn(*mut c_void, u64) -> i32,
 }
 
 unsafe extern "C" fn update(ctx: *mut c_void) {
@@ -216,6 +228,13 @@ impl Engine {
                 }
                 if initialize(handle) < 0 {
                     return Err(error("初始化失败"));
+                }
+                let hook_add = sym!(
+                    "mpv_hook_add",
+                    unsafe extern "C" fn(*mut c_void, u64, *const c_char, i32) -> i32
+                );
+                if hook_add(handle, 0, c"on_load".as_ptr(), 0) < 0 {
+                    return Err(error("无法连接换集事件"));
                 }
                 Ok(())
             })();
@@ -313,6 +332,10 @@ impl Engine {
                 ),
                 render_free: sym!("mpv_render_context_free", unsafe extern "C" fn(*mut c_void)),
                 destroy,
+                hook_continue: sym!(
+                    "mpv_hook_continue",
+                    unsafe extern "C" fn(*mut c_void, u64) -> i32
+                ),
                 _library: library,
                 handle,
                 render,
@@ -555,10 +578,29 @@ impl Engine {
             value
         }
     }
-    pub fn event(&self) -> Option<i32> {
+    pub fn event(&self) -> Option<PlayerEvent> {
         unsafe {
             let e = (self.wait)(self.handle, 0.0);
-            (!e.is_null() && (*e).id != 0).then(|| (*e).id)
+            (!e.is_null() && (*e).id != 0).then(|| PlayerEvent {
+                id: (*e).id,
+                hook: ((*e).id == 25 && !(*e).data.is_null())
+                    .then(|| (*((*e).data as *const Hook)).id),
+                error: if (*e).id == 7 && !(*e).data.is_null() {
+                    *((*e).data.cast::<i32>().add(1))
+                } else {
+                    (*e).error
+                },
+                end_reason: ((*e).id == 7 && !(*e).data.is_null())
+                    .then(|| *((*e).data.cast::<i32>())),
+            })
+        }
+    }
+    pub fn continue_load(&self, id: u64) -> Result<(), AppError> {
+        let result = unsafe { (self.hook_continue)(self.handle, id) };
+        if result < 0 {
+            Err(error("无法继续加载视频"))
+        } else {
+            Ok(())
         }
     }
     pub fn translation(&self, text: &str, width: i32, height: i32) -> Result<(), AppError> {

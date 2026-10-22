@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.63 |
+| 文档版本 | 0.64 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -290,6 +290,12 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 
 0.8.17 不改变 IPC、业务包或 json-delta-1 线上字段。相邻确认版本的下载可直接返回服务端保存的已校验 delta／deltaRef；完整下载和冲突文档仍必须先从内部检查点／差量还原完整业务包，不能把 history 封装作为 bundle 返回。内部字段见[站点历史存储契约](../../protocol/svl-history-1.json)，不暴露为新增前端 DTO。
 
+### CMD-84 播放列表（0.14.0，已注册）
+
+`watch_playlist_update(change: PlaylistChange) -> PlayerSnapshot`。change 为 `{action, paths, index, destination}`，index／destination 可空且从 0 起算。append 接受本地视频或目录路径（单层自然排序、去重）；select／restore／previous／next 切集；move 调整列表，remove 移除；clear 停播并清空。旧 `watch_open` 保留，打开的单集加入同一队列。
+
+PlayerSnapshot 新增 `playback: {preferences:{speed,volume,muted,autoNext},playlist:[{path,title,sourceId}],currentPath}` 及可空 playlistIndex。无原生会话时 watch_state_get 后台读取保存列表和偏好，不启动播放；点击 restore 才加载并保持暂停。watch_control 增加 speed（value 0.1～4）、mute（value 0／1）、auto_next（value 0／1）；原 volume 保留。快照反映原生键／OSC 对实际倍速和声音的修改。watch_progress_get 旧返回保留，WatchProgress 新增默认空的 externalSubtitles 及可空 secondarySubtitleId，按文件保存由控制器处理。全部 DTO 由 Rust 生成。
+
 ## 4 任务与事件
 
 任务查询是当前执行状态和结果的权威入口。业务后台与失败诊断读取 SQLite，正常临时操作读取有限内存回执；事件建议采用以下最小结构：
@@ -454,3 +460,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.62 | 2026-10-21 | 登记 CMD-75 至 CMD-83 在线字幕配置、检索下载、核对导入和偏移契约及当前来源资产加载 |
 
 | 0.63 | 2026-10-21 | CMD-69 增加可空 clipRange，复用预览与收录接口；已暂停 audio_focus 保留上下文 |
+| 0.64 | 2026-10-21 | 登记 CMD-84 播放队列、PlaybackState 快照及速度／静音／连播控制 |

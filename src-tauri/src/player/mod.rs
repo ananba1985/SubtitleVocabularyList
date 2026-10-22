@@ -3,6 +3,7 @@ mod mpv;
 use crate::{
     application::Application,
     error::AppError,
+    playback::{PlaybackState, PlaylistChange, PlaylistItem},
     watch::{DisplayClock, WatchContext, WatchMedia, WatchProgress},
 };
 use serde::{Deserialize, Serialize};
@@ -79,6 +80,8 @@ pub struct PlayerSnapshot {
     pub translation_visible_at: Option<i64>,
     pub collection_started_at: Option<i64>,
     pub frame: Option<WatchFrame>,
+    pub playback: PlaybackState,
+    pub playlist_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -107,6 +110,8 @@ enum Message {
     Key(Option<String>),
     Mouse(f64, f64, Option<bool>),
     Open(WatchMedia, Reply),
+    Playlist(PlaylistChange, Vec<PlaylistItem>, Reply),
+    Prepared(u64, u64, Result<WatchMedia, AppError>),
     Control(WatchControl, Option<Reply>),
     Viewport(i32, i32, bool),
     Saved(
@@ -396,6 +401,28 @@ impl NativePlayer {
             .map(|s| s.clone())
             .map_err(|_| failure("播放状态不可用"))
     }
+    pub fn playlist(
+        &self,
+        handle: &tauri::AppHandle,
+        change: PlaylistChange,
+        items: Vec<PlaylistItem>,
+    ) -> Result<PlayerSnapshot, AppError> {
+        let sender = self.ensure_worker(handle)?;
+        let (tx, rx) = mpsc::channel();
+        sender
+            .send(Message::Playlist(change, items, tx))
+            .map_err(|_| failure("播放会话已结束"))?;
+        rx.recv_timeout(Duration::from_secs(15))
+            .map_err(|_| failure("等待播放列表操作超时"))?
+    }
+    pub fn control_ready(
+        &self,
+        handle: &tauri::AppHandle,
+        control: WatchControl,
+    ) -> Result<PlayerSnapshot, AppError> {
+        self.ensure_worker(handle)?;
+        self.control(control)
+    }
     pub fn control(&self, control: WatchControl) -> Result<PlayerSnapshot, AppError> {
         let sender = self
             .sender
@@ -530,6 +557,10 @@ struct Actor {
     last_notice: String,
     ocr_cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     audio_active: bool,
+    prepared_media: Option<WatchMedia>,
+    load_generation: u64,
+    progress: Option<WatchProgress>,
+    progress_at: Instant,
 }
 fn failure(detail: impl Into<String>) -> AppError {
     AppError::new("player_unavailable", detail)
@@ -544,6 +575,22 @@ impl Actor {
         window: isize,
     ) -> Self {
         let settings = application.settings().unwrap_or_default();
+        let playback = application.store.playback_state().unwrap_or_default();
+        for (key, value) in [
+            ("speed", json!(playback.preferences.speed)),
+            ("volume", json!(playback.preferences.volume)),
+            ("mute", json!(playback.preferences.muted)),
+            (
+                "keep-open",
+                json!(if playback.preferences.auto_next {
+                    "yes"
+                } else {
+                    "always"
+                }),
+            ),
+        ] {
+            let _ = engine.command(json!(["set_property", key, value]));
+        }
         Self {
             engine,
             application,
@@ -554,6 +601,7 @@ impl Actor {
                 renderer: "libmpv/OpenGL".into(),
                 status: "idle".into(),
                 volume: 100.0,
+                playback,
                 ..Default::default()
             },
             media: None,
@@ -578,6 +626,10 @@ impl Actor {
             last_notice: String::new(),
             ocr_cancel: None,
             audio_active: false,
+            prepared_media: None,
+            load_generation: 0,
+            progress: None,
+            progress_at: Instant::now(),
         }
     }
     fn receive(&mut self, message: Message) {
@@ -629,6 +681,27 @@ impl Actor {
             Message::Open(media, reply) => {
                 let result = self.open(media).map(|_| self.state.clone());
                 let _ = reply.send(result);
+            }
+            Message::Playlist(change, items, reply) => {
+                let result = self.playlist(change, items).map(|_| self.state.clone());
+                let _ = reply.send(result);
+            }
+            Message::Prepared(generation, hook, result) => {
+                let mut failed = false;
+                if generation == self.load_generation {
+                    match result {
+                        Ok(media) => self.accept_media(media),
+                        Err(error) => {
+                            self.state.error = Some(error.message);
+                            self.state.status = "failed".into();
+                            failed = true;
+                        }
+                    }
+                }
+                let _ = self.engine.continue_load(hook);
+                if failed {
+                    let _ = self.engine.command(json!(["stop"]));
+                }
             }
             Message::Control(control, reply) => {
                 let result = self.control(control).map(|_| self.state.clone());
@@ -690,6 +763,7 @@ impl Actor {
                 }
             }
             Message::Shutdown(reply) => {
+                self.save_progress();
                 self.invalidate();
                 self.stopped = true;
                 self.shutdown_reply = Some(reply);
@@ -725,28 +799,266 @@ impl Actor {
     }
     fn open(&mut self, media: WatchMedia) -> Result<(), AppError> {
         self.save_progress();
+        self.hydrate_queue()?;
+        let path = media.path.to_string_lossy().into_owned();
+        let index = if let Some(index) = self
+            .state
+            .playback
+            .playlist
+            .iter()
+            .position(|p| p.path == path)
+        {
+            index
+        } else {
+            self.engine.command(json!(["loadfile", path, "append"]))?;
+            self.state.playback.playlist.push(PlaylistItem {
+                path,
+                title: media.title.clone(),
+                source_id: media.source_id.clone(),
+            });
+            self.state.playback.playlist.len() - 1
+        };
+        self.prepared_media = Some(media);
+        self.engine
+            .command(json!(["set_property", "pause", true]))?;
+        self.engine.command(json!(["playlist-play-index", index]))?;
+        self.sync_playlist()?;
+        Ok(())
+    }
+    fn hydrate_queue(&self) -> Result<(), AppError> {
+        if self.engine.number("playlist-count").unwrap_or(0.0) == 0.0 {
+            for item in &self.state.playback.playlist {
+                self.engine
+                    .command(json!(["loadfile", item.path, "append"]))?;
+            }
+        }
+        Ok(())
+    }
+    fn playlist(
+        &mut self,
+        change: PlaylistChange,
+        items: Vec<PlaylistItem>,
+    ) -> Result<(), AppError> {
+        self.save_progress();
+        self.hydrate_queue()?;
+        let index = change.index.unwrap_or(0);
+        let count = self.state.playback.playlist.len();
+        match change.action.as_str() {
+            "append" => {
+                let first = items.first().map(|item| item.path.clone());
+                for item in items {
+                    if !self
+                        .state
+                        .playback
+                        .playlist
+                        .iter()
+                        .any(|p| p.path == item.path)
+                    {
+                        self.engine
+                            .command(json!(["loadfile", item.path, "append"]))?;
+                        self.state.playback.playlist.push(item);
+                    }
+                }
+                if self.state.path.is_empty() && !self.state.playback.playlist.is_empty() {
+                    let index = first
+                        .and_then(|path| {
+                            self.state
+                                .playback
+                                .playlist
+                                .iter()
+                                .position(|p| p.path == path)
+                        })
+                        .unwrap_or(0);
+                    self.engine
+                        .command(json!(["set_property", "pause", true]))?;
+                    self.engine.command(json!(["playlist-play-index", index]))?;
+                }
+            }
+            "select" | "restore" => {
+                let index = if change.action == "restore" {
+                    self.state
+                        .playback
+                        .current_path
+                        .as_ref()
+                        .and_then(|path| {
+                            self.state
+                                .playback
+                                .playlist
+                                .iter()
+                                .position(|p| &p.path == path)
+                        })
+                        .unwrap_or(0)
+                } else {
+                    index
+                };
+                if index >= count {
+                    return Err(failure("请选择播放列表中的视频"));
+                }
+                self.invalidate();
+                if !self.state.loaded {
+                    self.engine
+                        .command(json!(["set_property", "pause", true]))?;
+                }
+                self.engine.command(json!(["playlist-play-index", index]))?;
+            }
+            "previous" | "next" => {
+                self.invalidate();
+                self.engine.command(json!([
+                    if change.action == "next" {
+                        "playlist-next"
+                    } else {
+                        "playlist-prev"
+                    },
+                    "weak"
+                ]))?;
+            }
+            "remove" if index < count => {
+                if self.state.playlist_index == Some(index) {
+                    self.invalidate();
+                }
+                self.engine.command(json!(["playlist-remove", index]))?;
+            }
+            "move" if index < count => {
+                let dest = change
+                    .destination
+                    .filter(|d| *d < count)
+                    .ok_or_else(|| failure("无效的播放列表位置"))?;
+                // mpv's destination is an insertion point in the original list.
+                self.engine.command(json!([
+                    "playlist-move",
+                    index,
+                    if dest > index { dest + 1 } else { dest }
+                ]))?;
+            }
+            "clear" => {
+                self.control(WatchControl {
+                    action: "close".into(),
+                    value: None,
+                    text: None,
+                    expected_revision: None,
+                })?;
+                self.engine.command(json!(["playlist-clear"]))?;
+                self.state.playback.current_path = None;
+            }
+            _ => return Err(failure("无效的播放列表操作")),
+        }
+        self.sync_playlist()?;
+        Ok(())
+    }
+    fn sync_playlist(&mut self) -> Result<(), AppError> {
+        let before = self.state.playback.clone();
+        let entries = self.engine.property("playlist");
+        let old = &self.state.playback.playlist;
+        let queue = entries
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| {
+                let path = p["filename"].as_str()?.to_owned();
+                Some(
+                    old.iter()
+                        .find(|e| e.path == path)
+                        .cloned()
+                        .unwrap_or_else(|| PlaylistItem {
+                            title: std::path::Path::new(&path)
+                                .file_stem()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .into_owned(),
+                            path,
+                            source_id: None,
+                        }),
+                )
+            })
+            .collect();
+        self.state.playback.playlist = queue;
+        if self.state.playback.playlist.is_empty() {
+            self.state.playback.current_path = None;
+        }
+        self.state.playlist_index = self
+            .engine
+            .number("playlist-pos")
+            .filter(|n| *n >= 0.0)
+            .map(|n| n as usize);
+        if before != self.state.playback {
+            self.application
+                .store
+                .save_playback_state(&self.state.playback)?;
+        }
+        Ok(())
+    }
+    fn begin_file(&mut self) {
+        self.save_progress();
         self.invalidate();
+        self.load_generation += 1;
+        self.state.session_id = uuid::Uuid::new_v4().to_string();
+        self.state.loaded = false;
+        self.state.playing = false;
         self.state.error = None;
+        self.state.status = "loading".into();
+        self.state.position = 0.0;
+        self.state.duration = 0.0;
+        self.state.tracks.clear();
+        self.media = None;
+        self.progress = None;
+        self.bound_sid = None;
+    }
+    fn prepare_file(&mut self, hook: u64) {
+        let path = self
+            .engine
+            .property("path")
+            .as_str()
+            .unwrap_or("")
+            .to_owned();
+        self.state.path = path.clone();
+        self.state.playback.current_path = Some(path.clone());
+        let item = self.state.playback.playlist.iter().find(|i| i.path == path);
+        self.state.source_id = item.and_then(|i| i.source_id.clone());
+        self.state.title = item
+            .map(|i| i.title.clone())
+            .unwrap_or_else(|| path.clone());
+        if self
+            .prepared_media
+            .as_ref()
+            .is_some_and(|m| m.path.to_string_lossy() == path)
+        {
+            let media = self.prepared_media.take().unwrap();
+            self.accept_media(media);
+            let _ = self.engine.continue_load(hook);
+        } else {
+            let app = self.application.clone();
+            let sender = self.sender.clone();
+            let generation = self.load_generation;
+            let source = self.state.source_id.clone();
+            std::thread::spawn(move || {
+                let media = app.store.watch_media(Some(&path), source.as_deref());
+                let _ = sender.send(Message::Prepared(generation, hook, media));
+            });
+        }
+        if let Err(error) = self.sync_playlist() {
+            self.state.error = Some(error.message);
+        }
+    }
+    fn accept_media(&mut self, media: WatchMedia) {
         self.restore = self
             .application
             .store
-            .watch_progress()?
-            .filter(|p| p.path == media.path.to_string_lossy());
-        self.state.session_id = uuid::Uuid::new_v4().to_string();
-        self.state.path = media.path.to_string_lossy().into_owned();
-        self.state.title = media.title.clone();
+            .watch_progress_for(&self.state.path)
+            .ok()
+            .flatten();
         self.state.source_id = media.source_id.clone();
-        self.state.loaded = false;
-        self.state.playing = false;
-        self.state.position = 0.0;
-        self.state.duration = 0.0;
-        self.state.status = "loading".into();
-        self.bound_sid = None;
-        self.engine
-            .command(json!(["set_property", "pause", true]))?;
-        self.engine.command(json!(["loadfile", self.state.path]))?;
+        self.state.title = media.title.clone();
+        for item in &mut self.state.playback.playlist {
+            if item.path == self.state.path {
+                item.source_id = media.source_id.clone();
+                item.title = media.title.clone();
+            }
+        }
         self.media = Some(media);
-        Ok(())
+        let _ = self
+            .application
+            .store
+            .save_playback_state(&self.state.playback);
     }
     fn control(&mut self, control: WatchControl) -> Result<(), AppError> {
         if control
@@ -757,6 +1069,36 @@ impl Actor {
         }
         self.state.error = None;
         match control.action.as_str() {
+            "speed" => {
+                let speed = control
+                    .value
+                    .filter(|n| n.is_finite() && (0.1..=4.0).contains(n))
+                    .ok_or_else(|| failure("倍速范围为 0.1 至 4"))?;
+                self.engine
+                    .command(json!(["set_property", "speed", speed]))?;
+            }
+            "mute" => {
+                self.engine.command(json!([
+                    "set_property",
+                    "mute",
+                    control.value.unwrap_or(0.0) != 0.0
+                ]))?;
+            }
+            "auto_next" => {
+                self.state.playback.preferences.auto_next = control.value.unwrap_or(1.0) != 0.0;
+                self.engine.command(json!([
+                    "set_property",
+                    "keep-open",
+                    if self.state.playback.preferences.auto_next {
+                        "yes"
+                    } else {
+                        "always"
+                    }
+                ]))?;
+                self.application
+                    .store
+                    .save_playback_state(&self.state.playback)?;
+            }
             "play" | "pause" | "toggle" => {
                 if !self.state.loaded {
                     return Ok(());
@@ -1019,6 +1361,7 @@ impl Actor {
                 self.save_progress();
                 self.invalidate();
                 self.engine.command(json!(["stop"]))?;
+                self.load_generation += 1;
                 self.media = None;
                 self.state.loaded = false;
                 self.state.title.clear();
@@ -1036,11 +1379,26 @@ impl Actor {
             }
             _ => return Err(failure("未知播放操作")),
         }
+        self.sync_preferences()?;
         Ok(())
     }
     fn loaded(&mut self) {
+        if self.media.is_none() {
+            return;
+        }
         self.state.loaded = true;
         self.state.status = "paused".into();
+        let _ = self
+            .engine
+            .command(json!(["set_property", "secondary-sid", "no"]));
+        let _ = self.engine.command(json!(["set_property", "sub-delay", 0]));
+        if let Some(progress) = &self.restore {
+            for path in &progress.external_subtitles {
+                if std::path::Path::new(path).is_file() {
+                    let _ = self.engine.command(json!(["sub-add", path, "auto"]));
+                }
+            }
+        }
         let tracks = self.engine.property("track-list");
         if let Some(media) = &self.media {
             for (kind, index, key) in [
@@ -1062,23 +1420,49 @@ impl Actor {
         }
         self.bound_sid = self.engine.number("sid").map(|n| n as i64);
         if let Some(progress) = self.restore.take() {
-            if progress.position > 0.0 {
+            let duration = self.engine.number("duration").unwrap_or(0.0);
+            if progress.position > 0.0 && progress.position < (duration - 0.5).max(0.0) {
                 let _ = self
                     .engine
                     .command(json!(["seek", progress.position, "absolute+exact"]));
             }
             if let Some(audio) = progress.audio_id {
-                let _ = self.engine.command(json!(["set_property", "aid", audio]));
+                let _ = self.engine.command(json!([
+                    "set_property",
+                    "aid",
+                    if audio > 0 { json!(audio) } else { json!("no") }
+                ]));
             }
             if let Some(sub) = progress.subtitle_id {
-                let _ = self.engine.command(json!(["set_property", "sid", sub]));
+                let _ = self.engine.command(json!([
+                    "set_property",
+                    "sid",
+                    if sub > 0 { json!(sub) } else { json!("no") }
+                ]));
             }
+            let _ = self.engine.command(json!([
+                "set_property",
+                "secondary-sid",
+                progress
+                    .secondary_subtitle_id
+                    .filter(|s| *s > 0)
+                    .map(|s| json!(s))
+                    .unwrap_or(json!("no"))
+            ]));
             let _ = self.engine.command(json!([
                 "set_property",
                 "sub-delay",
                 progress.subtitle_delay
             ]));
         }
+        self.state.playing = !self.engine.flag("pause");
+        self.state.status = if self.state.playing {
+            "playing"
+        } else {
+            "paused"
+        }
+        .into();
+        self.progress = self.current_progress();
     }
     fn selected_audio_stream(&self) -> Option<usize> {
         self.engine
@@ -1281,16 +1665,36 @@ impl Actor {
     fn tick(&mut self) {
         for _ in 0..32 {
             match self.engine.event() {
-                Some(8) => self.loaded(),
-                Some(20) => {
+                Some(mpv::PlayerEvent { id: 6, .. }) => self.begin_file(),
+                Some(mpv::PlayerEvent {
+                    hook: Some(hook), ..
+                }) => self.prepare_file(hook),
+                Some(mpv::PlayerEvent { id: 8, .. }) => self.loaded(),
+                Some(mpv::PlayerEvent { id: 20, .. }) => {
                     self.invalidate();
                     self.state.playing = self.state.loaded && !self.engine.flag("pause");
                 }
-                Some(7) => {
+                Some(mpv::PlayerEvent {
+                    id: 7,
+                    error,
+                    end_reason,
+                    ..
+                }) => {
+                    // END_FILE has already unloaded the old file. Never read the next
+                    // file's properties into the previous item's resume record.
+                    self.state.loaded = false;
+                    if end_reason == Some(0)
+                        && let Some(progress) = self.progress.as_mut()
+                    {
+                        progress.position = self.state.duration;
+                    }
+                    self.save_progress();
+                    self.invalidate();
                     self.state.playing = false;
-                    self.state.status = "paused".into();
-                    self.clock.cancel();
-                    self.pending_display = false;
+                    if error < 0 {
+                        self.state.error =
+                            Some(format!("视频加载失败（mpv {error}），请检查文件是否可用。"));
+                    }
                 }
                 Some(_) => {}
                 None => break,
@@ -1461,6 +1865,21 @@ impl Actor {
             self.state.duration = self.engine.number("duration").unwrap_or(0.0);
             self.state.playing = self.state.loaded && !self.engine.flag("pause");
             self.state.volume = self.engine.number("volume").unwrap_or(self.state.volume);
+            if self.engine.number("playlist-count").unwrap_or(0.0) > 0.0
+                && let Err(error) = self.sync_playlist()
+            {
+                self.state.error = Some(error.message);
+            }
+            if let Err(error) = self.sync_preferences() {
+                self.state.error = Some(error.message);
+            }
+            if self.state.loaded {
+                self.progress = self.current_progress();
+            }
+            if now.duration_since(self.progress_at) >= Duration::from_secs(5) {
+                self.save_progress();
+                self.progress_at = now;
+            }
             self.state.subtitle_delay = self.engine.number("sub-delay").unwrap_or(0.0);
             self.state.tracks = self
                 .engine
@@ -1509,20 +1928,62 @@ impl Actor {
             );
         }
     }
-    fn save_progress(&self) {
-        if self.state.path.is_empty() {
-            return;
+    fn sync_preferences(&mut self) -> Result<(), AppError> {
+        let old = self.state.playback.preferences.clone();
+        let p = &mut self.state.playback.preferences;
+        p.speed = self.engine.number("speed").unwrap_or(p.speed);
+        p.volume = self.engine.number("volume").unwrap_or(p.volume);
+        p.muted = self.engine.flag("mute");
+        if old != *p {
+            if old.speed != p.speed {
+                let _ = self.engine.command(json!([
+                    "show-text",
+                    format!("倍速 {:.2}×", p.speed),
+                    1500
+                ]));
+            }
+            self.application
+                .store
+                .save_playback_state(&self.state.playback)?;
         }
-        let _ = self.application.store.save_watch_progress(&WatchProgress {
+        Ok(())
+    }
+    fn current_progress(&self) -> Option<WatchProgress> {
+        if !self.state.loaded
+            || self.engine.property("path").as_str() != Some(self.state.path.as_str())
+        {
+            return None;
+        }
+        Some(WatchProgress {
             source_id: self.state.source_id.clone(),
             path: self.state.path.clone(),
-            position: self
-                .engine
-                .number("time-pos")
-                .unwrap_or(self.state.position),
-            subtitle_id: self.engine.number("sid").map(|n| n as i64),
-            audio_id: self.engine.number("aid").map(|n| n as i64),
+            position: if self.engine.flag("eof-reached") {
+                self.engine
+                    .number("duration")
+                    .unwrap_or(self.state.duration)
+            } else {
+                self.engine
+                    .number("time-pos")
+                    .unwrap_or(self.state.position)
+            },
+            subtitle_id: Some(self.engine.number("sid").unwrap_or(0.0) as i64),
+            audio_id: Some(self.engine.number("aid").unwrap_or(0.0) as i64),
             subtitle_delay: self.engine.number("sub-delay").unwrap_or(0.0),
-        });
+            secondary_subtitle_id: Some(self.engine.number("secondary-sid").unwrap_or(0.0) as i64),
+            external_subtitles: self
+                .engine
+                .property("track-list")
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|t| t["type"] == "sub" && t["external"] == true)
+                .filter_map(|t| t["external-filename"].as_str().map(String::from))
+                .collect(),
+        })
+    }
+    fn save_progress(&self) {
+        if let Some(progress) = self.current_progress().or_else(|| self.progress.clone()) {
+            let _ = self.application.store.save_watch_progress(&progress);
+        }
     }
 }

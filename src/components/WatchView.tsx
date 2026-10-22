@@ -7,6 +7,7 @@ import { SubtitleSettings } from "./SubtitleSettings";
 import { WatchQuery, type WatchRequest } from "./WatchQuery";
 import { WatchOcr } from "./WatchOcr";
 import { WatchClip } from "./WatchClip";
+import { WatchPlaylist } from "./WatchPlaylist";
 import type { CollectionSeed, Settings, SourceSummary } from "../types";
 import type {
   PlayerSnapshot,
@@ -169,7 +170,7 @@ export function WatchView({
             height: rect.height - top - bottom,
             // Native window visibility is authoritative. WebView2 can report its
             // own surface occluded when the native fullscreen video covers it.
-            visible: !collectionOpen && !!state.loaded,
+            visible: !collectionOpen && !!state.path,
           },
         }).catch((e) => setError(message(e)));
       });
@@ -191,7 +192,7 @@ export function WatchView({
         viewport: { x: 0, y: 0, width: 1, height: 1, visible: false },
       }).catch(() => {});
     };
-  }, [state?.sessionId, state?.loaded, collectionOpen]);
+  }, [!!state?.path, collectionOpen]);
   const start = async (path?: string, sourceId?: string) => {
     setBusy(true);
     setError("");
@@ -208,17 +209,67 @@ export function WatchView({
       setBusy(false);
     }
   };
-  const chooseVideo = async () => {
-    const path = await open({
-      multiple: false,
-      filters: [
-        {
-          name: "本地视频",
-          extensions: ["mkv", "mp4", "avi", "mov", "webm", "m4v", "ts"],
-        },
-      ],
-    });
-    if (typeof path === "string") await start(path);
+  const playlistChange = async (
+    action: string,
+    index?: number,
+    destination?: number,
+    paths: string[] = [],
+  ) => {
+    setBusy(true);
+    setError("");
+    try {
+      setState(
+        await call("watch_playlist_update", {
+          change: {
+            action,
+            paths,
+            index: index ?? null,
+            destination: destination ?? null,
+          },
+        }),
+      );
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const chooseVideo = async (directory = false) => {
+    try {
+      const path = await open({
+        multiple: !directory,
+        directory,
+        filters: directory
+          ? undefined
+          : [
+              {
+                name: "本地视频",
+                extensions: [
+                  "mkv",
+                  "mp4",
+                  "avi",
+                  "mov",
+                  "webm",
+                  "m4v",
+                  "ts",
+                  "mts",
+                  "m2ts",
+                  "wmv",
+                  "flv",
+                ],
+              },
+            ],
+      });
+      if (path)
+        await playlistChange(
+          "append",
+          undefined,
+          undefined,
+          typeof path === "string" ? [path] : path,
+        );
+    } catch (e) {
+      setError(message(e));
+    }
   };
   const context = state?.context;
   const status = state?.status;
@@ -298,7 +349,7 @@ export function WatchView({
           disabled={busy}
           onClick={() => void chooseVideo().catch((e) => setError(message(e)))}
         >
-          {busy ? "正在打开…" : "打开视频"}
+          {busy ? "正在打开…" : state?.loaded ? "添加视频" : "打开视频"}
         </button>
         {!!sources.length && (
           <>
@@ -322,7 +373,15 @@ export function WatchView({
             </button>
           </>
         )}
-        {!state?.loaded && progress && (
+        {!state?.loaded && !!state?.playback.playlist.length && (
+          <button
+            disabled={busy}
+            onClick={() => void playlistChange("restore")}
+          >
+            继续上次列表
+          </button>
+        )}
+        {!state?.loaded && !state?.playback.playlist.length && progress && (
           <button
             disabled={busy}
             onClick={() =>
@@ -332,6 +391,66 @@ export function WatchView({
             继续上次观看 · {time(progress.position * 1000)}
           </button>
         )}
+        <div className="watch-playback-controls">
+          <button
+            aria-label="上一集"
+            disabled={busy || !state?.loaded || (state.playlistIndex ?? 0) <= 0}
+            onClick={() => void playlistChange("previous")}
+          >
+            上一集
+          </button>
+          <button
+            aria-label="下一集"
+            disabled={
+              busy ||
+              !state?.loaded ||
+              state.playlistIndex === null ||
+              state.playlistIndex >= state.playback.playlist.length - 1
+            }
+            onClick={() => void playlistChange("next")}
+          >
+            下一集
+          </button>
+          <label>
+            倍速{" "}
+            <select
+              aria-label="播放倍速"
+              value={state?.playback.preferences.speed ?? 1}
+              onChange={(e) => void control("speed", Number(e.target.value))}
+            >
+              {[
+                ...new Set([
+                  0.5,
+                  0.75,
+                  1,
+                  1.25,
+                  1.5,
+                  1.75,
+                  2,
+                  3,
+                  4,
+                  state?.playback.preferences.speed ?? 1,
+                ]),
+              ]
+                .sort((a, b) => a - b)
+                .map((speed) => (
+                  <option key={speed} value={speed}>
+                    {Number(speed.toFixed(2))}×
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={state?.playback.preferences.autoNext ?? true}
+              onChange={(e) =>
+                void control("auto_next", e.target.checked ? 1 : 0)
+              }
+            />
+            自动连播
+          </label>
+        </div>
         <button
           className="text-button"
           aria-expanded={options}
@@ -348,6 +467,14 @@ export function WatchView({
           {fullscreen ? "退出全屏" : "全屏"}
         </button>
       </div>
+      {state && (
+        <WatchPlaylist
+          state={state}
+          busy={busy}
+          change={playlistChange}
+          add={chooseVideo}
+        />
+      )}
       {(error || state?.error) && (
         <p role="alert" className="error">
           {error || state?.error}
@@ -442,8 +569,14 @@ export function WatchView({
       >
         {!state?.loaded && (
           <div className="watch-empty">
-            <strong>先看剧，不懂时再暂停</strong>
-            <p>打开本地视频，或选择已导入剧集。</p>
+            <strong>
+              {status === "loading" ? "正在打开视频…" : "先看剧，不懂时再暂停"}
+            </strong>
+            <p>
+              {status === "loading"
+                ? state?.title
+                : "打开本地视频，或选择已导入剧集。"}
+            </p>
           </div>
         )}
       </div>

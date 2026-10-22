@@ -36,6 +36,7 @@ where
 svl_ipc_macros::catalog! {
         watch::watch_open,
         watch::watch_state_get,
+        watch::watch_playlist_update,
         watch::watch_control,
         watch::watch_viewport_set,
         watch::watch_progress_get,

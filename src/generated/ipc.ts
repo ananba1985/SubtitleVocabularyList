@@ -160,7 +160,15 @@ export type Page<T> = { items: Array<T>, total: number, };
 
 export type PixelRect = { x: number, y: number, width: number, height: number, };
 
-export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, frame: WatchFrame | null, };
+export type PlaybackPreferences = { speed: number, volume: number, muted: boolean, autoNext: boolean, };
+
+export type PlaybackState = { preferences: PlaybackPreferences, playlist: Array<PlaylistItem>, currentPath: string | null, };
+
+export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, frame: WatchFrame | null, playback: PlaybackState, playlistIndex: number | null, };
+
+export type PlaylistChange = { action: string, paths: Array<string>, index: number | null, destination: number | null, };
+
+export type PlaylistItem = { path: string, title: string, sourceId: string | null, };
 
 export type PluginField = { id: string, label: string, secret: boolean, required: boolean, };
 
@@ -306,7 +314,7 @@ export type WatchControl = { action: string, value: number | null, text: string 
 
 export type WatchFrame = { path: string, width: number, height: number, positionMs: number, text: string, busy: boolean, error: string | null, };
 
-export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, audioId: number | null, subtitleDelay: number, };
+export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, audioId: number | null, subtitleDelay: number, secondarySubtitleId: number | null, externalSubtitles: Array<string>, };
 
 export type WatchTrack = { id: number, kind: string, title: string, selected: boolean, };
 
@@ -436,6 +444,7 @@ export interface CommandMap {
   watch_collection_prepare: { args: { sessionId: string; expectedRevision: number; clipRange?: WatchClipRange | null }; result: WatchContext };
   watch_control: { args: { control: WatchControl }; result: PlayerSnapshot };
   watch_open: { args: { path?: string | null; sourceId?: string | null }; result: PlayerSnapshot };
+  watch_playlist_update: { args: { change: PlaylistChange }; result: PlayerSnapshot };
   watch_progress_get: { args: undefined; result: WatchProgress | null };
   watch_state_get: { args: undefined; result: PlayerSnapshot };
   watch_viewport_set: { args: { viewport: WatchViewport }; result: void };

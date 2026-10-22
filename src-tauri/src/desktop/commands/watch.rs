@@ -2,6 +2,7 @@ use super::{AppState, background};
 use crate::online_subtitles as online;
 use crate::{
     error::AppError,
+    playback::PlaylistChange,
     player::{NativePlayer, PlayerSnapshot, WatchControl, WatchViewport},
     watch::WatchProgress,
 };
@@ -16,6 +17,12 @@ pub(crate) async fn watch_open(
 ) -> Result<PlayerSnapshot, AppError> {
     let application = app.inner().clone();
     background(move || {
+        handle.state::<NativePlayer>().control(WatchControl {
+            action: "hide".into(),
+            value: None,
+            text: None,
+            expected_revision: None,
+        })?;
         let media = application
             .store
             .watch_media(path.as_deref(), source_id.as_deref())?;
@@ -24,15 +31,56 @@ pub(crate) async fn watch_open(
     .await
 }
 #[svl_ipc_macros::command]
-pub(crate) fn watch_state_get(player: State<'_, NativePlayer>) -> Result<PlayerSnapshot, AppError> {
-    player.state()
+pub(crate) async fn watch_state_get(
+    app: AppState<'_>,
+    player: State<'_, NativePlayer>,
+) -> Result<PlayerSnapshot, AppError> {
+    let mut state = player.state()?;
+    let application = app.inner().clone();
+    background(move || {
+        if state.session_id.is_empty() {
+            state.playback = application.store.playback_state()?;
+        }
+        Ok(state)
+    })
+    .await
+}
+#[svl_ipc_macros::command]
+pub(crate) async fn watch_playlist_update(
+    app: AppState<'_>,
+    handle: tauri::AppHandle,
+    change: PlaylistChange,
+) -> Result<PlayerSnapshot, AppError> {
+    let application = app.inner().clone();
+    background(move || {
+        let items = if change.action == "append" {
+            application.store.playlist_items(&change.paths)?
+        } else {
+            vec![]
+        };
+        handle
+            .state::<NativePlayer>()
+            .playlist(&handle, change, items)
+    })
+    .await
 }
 #[svl_ipc_macros::command]
 pub(crate) async fn watch_control(
     handle: tauri::AppHandle,
     control: WatchControl,
 ) -> Result<PlayerSnapshot, AppError> {
-    background(move || handle.state::<NativePlayer>().control(control)).await
+    background(move || {
+        let player = handle.state::<NativePlayer>();
+        if matches!(
+            control.action.as_str(),
+            "speed" | "volume" | "mute" | "auto_next"
+        ) {
+            player.control_ready(&handle, control)
+        } else {
+            player.control(control)
+        }
+    })
+    .await
 }
 #[svl_ipc_macros::command]
 pub(crate) fn watch_viewport_set(

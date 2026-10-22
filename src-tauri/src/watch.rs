@@ -91,6 +91,10 @@ pub struct WatchProgress {
     pub subtitle_id: Option<i64>,
     pub audio_id: Option<i64>,
     pub subtitle_delay: f64,
+    #[serde(default)]
+    pub secondary_subtitle_id: Option<i64>,
+    #[serde(default)]
+    pub external_subtitles: Vec<String>,
 }
 
 pub struct WatchMedia {
@@ -387,7 +391,19 @@ impl Store {
         value.map(|s| Ok(serde_json::from_str(&s)?)).transpose()
     }
     pub fn save_watch_progress(&self, value: &WatchProgress) -> Result<(), AppError> {
-        self.connection()?.execute("INSERT INTO settings(key,value_json) VALUES ('watch:progress',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",[serde_json::to_string(value)?])?;
+        let mut db = self.connection()?;
+        let tx = db.transaction()?;
+        let json = serde_json::to_string(value)?;
+        for key in [
+            "watch:progress".to_owned(),
+            format!(
+                "watch:progress:{}",
+                crate::vocabulary::digest(value.path.as_bytes())
+            ),
+        ] {
+            tx.execute("INSERT INTO settings(key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", rusqlite::params![key, json])?;
+        }
+        tx.commit()?;
         Ok(())
     }
 

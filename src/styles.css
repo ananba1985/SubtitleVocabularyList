@@ -34,6 +34,9 @@
 .watch-options label { display:flex; align-items:center; gap:6px; margin:0; }
 .watch-options input[type="number"] { width:85px; }
 .watch-options .check-label { display:flex; }
+.watch-subtitles {flex-basis:100%; display:flex; flex-wrap:wrap; align-items:center; gap:8px;}
+.watch-subtitles details {flex-basis:100%;}
+.watch-subtitles select {max-width:500px;}
 @media (max-width:760px) { .watch-toolbar select {max-width:100%;} }
 * {
   box-sizing: border-box;

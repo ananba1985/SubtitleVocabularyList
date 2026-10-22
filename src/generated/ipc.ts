@@ -246,6 +246,10 @@ export type StartAssessment = { config: AssessmentConfig, expectedInventoryRevis
 
 export type Stream = { index: number, codec_type: string, codec_name: string, tags: { [key in string]: string }, };
 
+export type SubtitleInfo = { mediaSha256: string, selectedChineseId: string | null, assets: Array<SubtitleTrackInfo>, warnings: Array<string>, };
+
+export type SubtitleTrackInfo = { id: string, language: string, title: string, origin: string, streamIndex: number | null, format: string, relativePath: string, sha256: string, cueCount: number, };
+
 export type SyncBundleView = { schemaVersion: number, deleted: boolean, entry: SyncEntryView, tables: { [key in string]: Array<{ [key in string]: JsonValue }> }, };
 
 export type SyncConflictView = { id: string, remoteId: string, localId: string | null, text: string, reason: string, remoteRevision: number, local: SyncBundleView | null, remote: SyncBundleView, candidates: Array<Entry>, };
@@ -376,6 +380,9 @@ export interface CommandMap {
   sources_list: { args: undefined; result: Array<SourceSummary> };
   speech_start: { args: { text: string; operationId: string; voiceId?: string | null }; result: TaskHandle<SpeechAudio> };
   speech_voices: { args: undefined; result: Array<SystemVoice> };
+  subtitle_chinese_select: { args: { sourceId: string; assetId?: string | null }; result: SubtitleInfo };
+  subtitle_info_get: { args: { sourceId: string }; result: SubtitleInfo | null };
+  subtitle_prepare_start: { args: { sourceId: string; operationId: string }; result: TaskHandle<SubtitleInfo> };
   sync_conflicts: { args: undefined; result: Array<SyncConflictView> };
   sync_resolve: { args: { input: ResolutionInput; operationId: string }; result: TaskHandle<SyncResolution> };
   sync_start: { args: { operationId: string }; result: TaskHandle<SyncTaskResult> };

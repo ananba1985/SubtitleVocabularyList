@@ -45,6 +45,7 @@ pub mod synchronization;
 pub mod tasks;
 pub mod vocabulary;
 pub mod watch;
+pub mod subtitles;
 
 #[cfg(all(windows, feature = "desktop"))]
 mod player;

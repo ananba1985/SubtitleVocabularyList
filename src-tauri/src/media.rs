@@ -582,7 +582,7 @@ pub fn import_media_with_options(
     Ok(result)
 }
 
-fn external_segments(
+pub(crate) fn external_segments(
     tools: &MediaTools,
     input: &Path,
     directory: &Path,
@@ -683,6 +683,7 @@ pub fn parse_srt(text: &str) -> Result<Vec<Segment>, AppError> {
         .replace('\r', "\n");
     let tags = regex::Regex::new(r"</?(?:i|b|u|font|c)(?:\s[^>]*)?>")
         .expect("fixed subtitle markup pattern");
+    let overrides = regex::Regex::new(r"\{\\[^}]*\}").expect("fixed ASS override pattern");
     let mut result = Vec::new();
     for block in normalized
         .split("\n\n")
@@ -700,7 +701,8 @@ pub fn parse_srt(text: &str) -> Result<Vec<Segment>, AppError> {
             return Err(AppError::new("invalid_data", "字幕结束时间早于开始时间。"));
         }
         let raw = lines[position + 1..].join("\n");
-        let content = tags.replace_all(&raw, "").trim().to_owned();
+        let plain = overrides.replace_all(&raw, "");
+        let content = tags.replace_all(&plain, "").trim().to_owned();
         if !content.is_empty() {
             result.push(Segment {
                 location_key: format!("cue:{}", result.len()),

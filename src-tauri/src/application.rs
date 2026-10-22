@@ -788,6 +788,14 @@ fn import_one(
         ))?)
     };
     if let Some(source) = store.cached_source(&fingerprint)? {
+        if store.subtitle_bundle(&source.id)?.is_none() {
+            let bundle = crate::subtitles::prepare_local(
+                tools, path, store.root(), &video_digest,
+                options.external_subtitle.as_deref(), &context.cancelled,
+                &|stage, current, total| context.progress(stage, current, total, "正在取得本地中英字幕"),
+            )?;
+            store.save_subtitle_bundle(&source.id, &bundle)?;
+        }
         return Ok(source);
     }
     let directory = store
@@ -826,6 +834,16 @@ fn import_one(
             "导入期间视频或字幕文件已变化，请等待文件准备完成后重新导入；已有资料保留。",
         ));
     }
+    let bundle = crate::subtitles::prepare_local(
+        tools, path, store.root(), &video_digest,
+        options.external_subtitle.as_deref(), &context.cancelled,
+        &|stage, current, total| context.progress(stage, current, total, "正在取得本地中英字幕"),
+    )?;
+    for segment in &mut imported.segments {
+        if let Some(english) = crate::subtitles::english_text(&segment.text) {
+            segment.text = english;
+        }
+    }
     if options != media::ImportOptions::default() {
         let subtitle = match imported.text_source.as_str() {
             "external_text" => format!(
@@ -849,13 +867,16 @@ fn import_one(
             serde_json::to_vec_pretty(&imported)?,
         )?;
     }
+    std::fs::write(directory.join("corpus.json"), serde_json::to_vec_pretty(&imported)?)?;
     context.check_cancelled()?;
-    store.install_corpus(
+    let source = store.install_corpus(
         path,
         &fingerprint,
         &imported,
         &directory.join("corpus.json"),
-    )
+    )?;
+    store.save_subtitle_bundle(&source.id, &bundle)?;
+    Ok(source)
 }
 
 fn stage_name(stage: &str) -> &str {

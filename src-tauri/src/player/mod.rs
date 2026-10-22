@@ -803,6 +803,15 @@ impl Actor {
                 self.state.remaining_seconds = None;
                 self.state.status = "cancelled".into();
             }
+            "refresh_subtitles" => {
+                let paused=self.user_pause && self.engine.flag("pause");
+                if let Some(media)=self.media.as_mut() {
+                    media.subtitles=media.source_id.as_deref().map(|id|self.application.store.subtitle_bundle(id)).transpose()?.flatten();
+                }
+                self.invalidate();
+                self.user_pause=paused;
+                if paused { self.pending_context=Some(Instant::now()+Duration::from_millis(60)); }
+            }
             "hide" => {
                 self.engine
                     .command(json!(["set_property", "pause", true]))?;

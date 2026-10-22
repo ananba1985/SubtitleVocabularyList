@@ -6,6 +6,7 @@ import type { PreparationProgress } from "../generated/ipc";
 const PAGE_SIZE = 10;
 const kinds: Record<string, string> = {
   import: "剧集导入",
+  subtitle_import: "中英字幕取得",
   collection: "词条收录",
   preview: "原声准备",
   explanation: "本地解释",

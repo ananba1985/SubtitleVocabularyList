@@ -12,6 +12,8 @@
 
 本轮交付用户指定的“内嵌播放 → 暂停读取已保存译文 → 完整译文绘制后 5 秒自动收录整句”。沿用 mpv 内置 OSC 和默认播放键位，不重做播放／进度／音量控件。未实施功能继续保留在计划中。
 
+后续 0.10.0 本地文本双轨及对应中文复用另见[字幕增量记录](subtitle-import-results.md)。本文保留 0.9.0 历史执行范围，不把新证据补写成当时已实现。
+
 - Windows 本机、Tauri／WebView2 开发程序、Vite `127.0.0.1:1420`，独立标识 `com.subtitlevocabularylist.watch.acceptance`。
 - libmpv 固定构建 20261021，源码提交 `e471496c56`；DLL SHA256 `04e4d27dc385dc18ddd93fbe69c75e635b864f3c6ec53a9122df54c2f7842f4a`。动态资源位于忽略目录 `.tools/runtime/mpv`，准备脚本校验版本与摘要。
 - 原生子 HWND＋OpenGL render API；全屏逻辑区域 1280×800，实际绘制缓冲 2560×1600。暂停中文为原生 ASS OSD。

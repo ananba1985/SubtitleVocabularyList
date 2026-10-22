@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { call, message, time } from "../api";
+import { SubtitleSettings } from "./SubtitleSettings";
 import type { CollectionSeed, Settings, SourceSummary } from "../types";
 import type {
   PlayerSnapshot,
@@ -308,6 +309,12 @@ export function WatchView({
       )}
       {options && (
         <div className="watch-options">
+          <SubtitleSettings
+            sourceId={state?.sourceId ?? selected}
+            onChanged={async () => {
+              await control("refresh_subtitles");
+            }}
+          />
           <label className="check-label">
             <input
               type="checkbox"

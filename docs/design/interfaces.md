@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.58 |
+| 文档版本 | 0.59 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -231,6 +231,18 @@ FR-25 至 FR-29 的 CMD-63 至 CMD-71 唯一维护于[边看边学设计 §7.2](
 
 默认暂停只读导入时保存的句译文；按需补充和查词复用 CMD-38 至 CMD-41 等命令。自动收录由核心在完整译文实际显示后满设定时长再调用同一收录服务，不从 pause 或请求返回时间计时；手动确认继续用 CMD-09。设置复用本机设置入口，默认开启、5 秒；实现时扩展 watch 来源、触发类型、稳定操作标识及必要 DTO，并使用现有类型生成链，不建平行提交协议。播放器核心已接入定时与取消，Settings 新增 watchAutoCollect／watchCollectDelaySeconds；watch_updated 通知 sessionId／revision，watch_collected 通知保存完成后全局刷新。watch_control 的 expectedRevision 可核对暂停上下文，fullscreen／exit_fullscreen 提供原生焦点下的全屏控制；未实现的查询／OCR 命令继续保留，不作为可调用接口。
 
+### 2.6 本地中英字幕命令
+
+0.10.0 为 FR-30／31 新增三个命令，均进入现有 IPC 生成与签名检查链。
+
+| 编号 | 命令 | 输入 | 结果 |
+| --- | --- | --- | --- |
+| CMD-72 | subtitle_info_get | sourceId | 可空 SubtitleInfo：资产摘要、语言、轨号／外置、相对路径、cue 数及当前中文选择；不下发整片 cue |
+| CMD-73 | subtitle_prepare_start | sourceId、operationId | TaskHandle&lt;SubtitleInfo&gt;；单个 subtitle_import 聚合任务，沿用取消与进度 |
+| CMD-74 | subtitle_chinese_select | sourceId、可空 assetId | SubtitleInfo；持久保存中文选择，空值使用既有缓存 |
+
+前端成功后通过 watch_control 的 refresh_subtitles 刷新正在播放的资产，使旧暂停上下文和计时失效。资产及初始时间对应规则见[字幕设计](subtitle-import.md)，在线命令尚未提供。
+
 ## 3 收录请求与提交结果
 
 CMD-29 的 `meaningScope` 增加 `dictionary`：词义来自独立底库，`notes` 保留来源与词形匹配信息，`translation` 只组合已保存的整句译文，不查询模型。小窗 Qwen `explain` 入口命中底库时 `cacheSource=dictionary`，直接返回，既有 `stored/cache/provider` 保持；`translate` 模式不将词典释义冒充完整译文。底库文件、导入与统计口径见[离线基础词库设计](base-dictionary.md)。
@@ -418,3 +430,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.57 | 2026-10-21 | 补充保存译文、实际显示确认、倒计时状态及自动统一收录边界，等待不计时，默认 5 秒；仅提案 |
 
 | 0.58 | 2026-10-21 | 登记边看边学五个实际命令、生成 DTO、自动保存通知和全屏控制；其余命令保持预留 |
+| 0.59 | 2026-10-21 | 登记 CMD-72 至 CMD-74 本地字幕资产、聚合取得和中文选择接口 |

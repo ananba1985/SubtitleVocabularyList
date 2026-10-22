@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.18 |
+| 文档版本 | 0.19 |
 | 更新日期 | 2026-10-20 |
 | 状态 | 项目开发中；0.8.33 两种模式的真实打包预检正常通过，本轮未打包；历史 0.8.32 完整打包记录保持 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
@@ -51,6 +51,8 @@ pnpm desktop:dev
 常用入口 `本地调试运行.ps1`、`本地打包运行.ps1`、`生成安装包.ps1` 均位于项目根目录；环境、清理、媒体构建和源码导出等内部脚本保留在 `scripts/`。既有 pnpm 命令调用根目录入口。
 
 `本地调试运行.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和默认 `D:\SubtitleVocabularyList\Data`，退出后恢复调用环境。开发配置采用与发行相同的应用标识以共用单实例机制，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
+
+隔离功能验收可显式传 `-DataDirectory <测试Data>`、`-Configuration <独立标识的Tauri配置>`，避免复用安装版的单实例和日常词库。`-Incremental` 仅在明确传入时跳过 Cargo 全清理，保留占用预检，供同一开发会话增量编译；默认行为仍清理后编译。0.10.0 已通过这些参数实际启动隔离原生程序，不产生发行包。
 
 开发启动仍调用 `development-cleanup.ps1` 清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。这部分仅处理已定义的临时目录，媒体工具、正常 `node_modules/.vite` 和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后这部分清理。
 

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.71 |
+| 文档版本 | 0.72 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -17,9 +17,10 @@
 | 产品需求 PRD | [requirements/PRD.md](requirements/PRD.md) | 背景、目标、范围、流程、需求编号、业务规则、验收标准、待确认项 | 描述需要满足的行为和结果；具体框架、代码结构和数据库实现属于设计文档 |
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、显示导入时保存的译文、显示后 5 秒自动整句收录、OCR 保底及手动收录 | 等待翻译不计时、快速播放不收录；核心闭环已接入，实际范围见专项结果，OCR／查询扩展待做 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间与保存译文、原生 OSD、显示后计时及去重／统一收录 | 0.9.0 核心闭环已接入，实际范围和原生输入证据见专项结果；OCR／查询扩展待做 |
-| 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-24、依赖、交付门槛及 TC-59 至 TC-64；后续 M-25 至 M-27 | 首个核心闭环已验证，完整模块继续；双语字幕尚未实施，不自动打包 |
+| 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 核心闭环及本地文本双轨通过，完整剩余开发继续，不自动打包 |
 | 边看边学增量验证 | [testing/watch-and-learn-results.md](testing/watch-and-learn-results.md) | 静音隔离库、Computer Use 原生点击／拖动／暂停、显示后 5 秒收录及词库读取 | 输入与渲染缓冲分别记录，说明窗口捕获限制、未完成范围和无发行包 |
-| 双语字幕导入设计 | [design/subtitle-import.md](design/subtitle-import.md) | FR-30／31，本地中英轨优先、在线补缺、时间对齐、既有中文优先及历史保持 | 需求方向已确认，M-25 至 M-27 尚未实施，真实服务未配置和验证 |
+| 双语字幕导入设计 | [design/subtitle-import.md](design/subtitle-import.md) | FR-30／31，本地中英轨优先、在线补缺、时间对齐、既有中文优先及历史保持 | 0.10.0 本地文本双轨与时间复用通过；在线、图片轨及校正待做 |
+| 本地双语字幕验证 | [testing/subtitle-import-results.md](testing/subtitle-import-results.md) | TC-65／67，真实 FFmpeg 导入、Computer Use 选择、暂停中文及旧词条保持 | 记录正常结果、ASS 标记及边缘重叠修正；原生视频捕获限制与未测项如实保留 |
 | 高频词汇与短语水平测试需求 | [PRD 第 3.6 节与 FR-20 至 FR-24](requirements/PRD.md) | 可配置范围、合格题库、分层抽样、独立作答及报告、错词确认收录和复测 | 已确认需求，分阶段实施；不据词频直接换算语言等级，技术设计和发布阶段另行制定 |
 | 高频水平测试设计 | [design/vocabulary-assessment.md](design/vocabulary-assessment.md) | 完整排名索引、题库核对、抽样/判分、数据事务、CMD-46 至 CMD-60、完整历史同步 | M-15 至 M-19 已接入；真实完整历史往返通过，本轮人工验收按用户确认结束，证据边界保留；参数不冒充已校准标准 |
 | 高频水平测试开发计划 | [planning/vocabulary-assessment-plan.md](planning/vocabulary-assessment-plan.md) | M-15 至 M-19 的交付、依赖、完成门槛和 TC-53 至 TC-58 | 已授权实施；M-15 至 M-19 代码接入及 TC-58 正常往返通过，用户确认结束本轮验收，未复核项如实保留，不自动授权扩展测试或打包 |

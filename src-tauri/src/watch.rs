@@ -49,6 +49,7 @@ pub struct WatchMedia {
     pub audio_stream: Option<usize>,
     pub text_source: String,
     pub examples: Vec<CandidateExample>,
+    pub subtitles: Option<crate::subtitles::SubtitleBundle>,
 }
 
 impl Store {
@@ -85,7 +86,12 @@ impl Store {
             return Err(AppError::new("invalid_input", "请选择视频文件。"));
         }
         if let Some((id, _, title, fingerprint, corpus, text_source)) = record {
-            if crate::corpus::file_hash(&file)? != fingerprint {
+            let subtitles = self.subtitle_bundle(&id)?;
+            let expected = subtitles
+                .as_ref()
+                .map(|s| s.media_sha256.as_str())
+                .unwrap_or(&fingerprint);
+            if crate::corpus::file_hash(&file)? != expected {
                 return Err(AppError::new(
                     "conflict",
                     "视频内容与导入资料不一致，请重新导入后再使用原句译文。",
@@ -117,6 +123,7 @@ impl Store {
                 audio_stream: imported.as_ref().map(|v| v.audio_stream),
                 text_source,
                 examples,
+                subtitles,
             })
         } else {
             Ok(WatchMedia {
@@ -131,6 +138,7 @@ impl Store {
                 audio_stream: None,
                 text_source: "subtitle".into(),
                 examples: vec![],
+                subtitles: None,
             })
         }
     }
@@ -155,7 +163,12 @@ impl Store {
                     .find(|e| e.end_ms <= subtitle_time && subtitle_time - e.end_ms <= 3000)
             });
         let Some(e) = example else { return Ok(None) };
-        let translation = self.sentence_translation(&e.text)?.unwrap_or_default();
+        let translation = media
+            .subtitles
+            .as_ref()
+            .and_then(|b| b.translation(e.start_ms, e.end_ms))
+            .or(self.sentence_translation(&e.text)?)
+            .unwrap_or_default();
         Ok(Some(WatchContext {
             revision,
             source_id: media.source_id.clone().unwrap_or_default(),
@@ -218,9 +231,12 @@ impl Store {
             &context.example_id,
             &context.translation,
         )?;
+        let translation = self
+            .subtitle_bundle(&context.source_id)?
+            .and_then(|b| b.translation(context.start_ms, context.end_ms))
+            .or(self.sentence_translation(&context.text)?);
         if example.text != context.text
-            || self.sentence_translation(&context.text)?.as_deref()
-                != Some(context.translation.as_str())
+            || translation.as_deref() != Some(context.translation.as_str())
         {
             return Err(AppError::new(
                 "conflict",

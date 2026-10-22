@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.84 |
+| 文档版本 | 0.85 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -18,7 +18,7 @@
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、已准备译文、显示后 5 秒整句收录、OCR 保底及手动收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
-| 播放能力补齐验证 | [testing/playback-results.md](testing/playback-results.md) | 原生列表、连播、倍速和偏好；0.16.4 完整 mpv 原生 D3D11 输出修正及同源视频证据 | 原生硬解、正常前进、暂停译文和停止的后台静音路径通过，真实窗口音画及 PotPlayer 清晰度比较待确认 |
+| 播放能力补齐验证 | [testing/playback-results.md](testing/playback-results.md) | 原生列表、连播、倍速和偏好；0.16.4 原生 D3D11 修正、隐藏样本及安装版实际播放采样 | 实装取得 DXGI／GPU 视频引擎活动；约 30 秒无呈现丢弃但有一次短暂阻塞，声音、交互及清晰度比较未新增确认 |
 | 文件拖放与打开 | [边看边学设计第 12 节](design/watch-and-learn.md#12-拖放与文件入口0160)、[播放验证](testing/playback-results.md#4-0160-拖放与文件打开) | FR-37／M-33／TC-73、74：视频目录字幕拖放和冷／热启动，保持紧凑界面 | 安装关联配置与本机实际安装验收分别记录 |
 | 常用播放控制 | [design/watch-and-learn.md](design/watch-and-learn.md)、[testing/playback-results.md](testing/playback-results.md#3-0150-常用播放控制) | FR-34 至 FR-36、M-30 至 M-32、TC-70 至 TC-72：原生菜单、双字幕、定位与循环 | 菜单构建和引擎／存储正常路径通过，新增宿主操作未人工验收，不阻塞交付 |
 | 边看边学增量验证 | [testing/watch-and-learn-results.md](testing/watch-and-learn-results.md) | 历史原生输入、Qwen／OCR／手动区间及旧选轨资料播放正常结果和人工步骤 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
@@ -62,7 +62,7 @@
 | 0.1 候选发布与验收 | [release/0.1.0-release-notes.md](release/0.1.0-release-notes.md) | 匹配源码交付、技术验证、兼容边界与用户步骤 | 技术验收与用户实际验收分别记录 |
 | 0.6.1 安装测试包 | [release/0.6.1-release-notes.md](release/0.6.1-release-notes.md) | 同一脚本打包、产物与源码校验、本机安装步骤 | 已生成包，实际安装和使用由用户验证 |
 | 0.16.3 本机安装试用 | [release/0.16.3-release-notes.md](release/0.16.3-release-notes.md) | 根目录脚本、固定 libmpv 资源、产物摘要及真实剧集试用 | 构建与安装结果分开记录，播放器完整依赖源码材料边界另行说明 |
-| 0.16.4 原生播放器修复包 | [release/0.16.4-release-notes.md](release/0.16.4-release-notes.md) | 根目录脚本重新打包、原生 D3D11 修复、匹配源码和交付摘要 | 打包及必要文件核对通过，未执行安装或新增实际音画验收 |
+| 0.16.4 原生播放器修复包 | [release/0.16.4-release-notes.md](release/0.16.4-release-notes.md) | 根目录脚本重新打包、原生 D3D11 修复、匹配源码、交付摘要及实装后台采样 | 打包核对通过，用户已安装；后台呈现证据与声音／交互验收分别记录 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 版本管理 | [development/version-management.md](development/version-management.md) | 三段版本规则、主版本人工控制、统一来源、工具与变更记录 | 递增不表示发布，不触发打包；文档/schema/策略号独立 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
@@ -246,3 +246,4 @@
 | 0.80 | 2026-10-21 | 索引鼠标菜单、音轨字幕和定位循环设计与后台正常证据 |
 
 | 0.81 | 2026-10-21 | 登记文件拖放与打开增量及实际 Computer Use 检查边界 |
+| 0.85 | 2026-10-22 | 索引 0.16.4 安装版实际播放后台采样，区分原生 D3D11／GPU 视频活动、零呈现丢弃和一次短暂呈现阻塞 |

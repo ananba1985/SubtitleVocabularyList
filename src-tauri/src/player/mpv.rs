@@ -1,22 +1,16 @@
-//! Minimal dynamically loaded libmpv C/render API. The library lives for every loaded function.
+//! libmpv client API with mpv-owned native Windows video output and rendering threads.
 #![allow(unsafe_op_in_unsafe_fn)]
 use crate::error::AppError;
 use libloading::Library;
 use serde_json::{Value, json};
 use std::{
+    cell::Cell,
     ffi::{CStr, CString, c_char, c_void},
     path::Path,
     ptr,
-    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
 };
-use windows::Win32::{
-    Foundation::HWND,
-    Graphics::{
-        Dwm::DwmFlush,
-        Gdi::{GetDC, HDC, ReleaseDC},
-        OpenGL::*,
-    },
-};
+use windows::Win32::{Foundation::HWND, Graphics::Dwm::DwmFlush};
 
 #[repr(C)]
 pub struct Event {
@@ -41,23 +35,6 @@ pub struct PlayerEvent {
     pub error: i32,
     pub end_reason: Option<i32>,
     pub messages: Vec<String>,
-}
-#[repr(C)]
-struct Param {
-    kind: i32,
-    data: *mut c_void,
-}
-#[repr(C)]
-struct GlInit {
-    get_proc: unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void,
-    ctx: *mut c_void,
-}
-#[repr(C)]
-struct Fbo {
-    id: i32,
-    width: i32,
-    height: i32,
-    format: i32,
 }
 #[repr(C)]
 union NodeValue {
@@ -129,40 +106,16 @@ unsafe fn node_value(node: &Node) -> Value {
 pub struct Engine {
     _library: Library,
     handle: *mut c_void,
-    render: *mut c_void,
-    dc: HDC,
-    gl: HGLRC,
-    window: HWND,
-    updated: Box<AtomicBool>,
+    pending_display: Cell<Option<Instant>>,
     command_ret: unsafe extern "C" fn(*mut c_void, *const *const c_char, *mut Node) -> i32,
     get: unsafe extern "C" fn(*mut c_void, *const c_char, i32, *mut c_void) -> i32,
     wait: unsafe extern "C" fn(*mut c_void, f64) -> *const Event,
     free_node: unsafe extern "C" fn(*mut Node),
-    render_update: unsafe extern "C" fn(*mut c_void) -> u64,
-    render_frame: unsafe extern "C" fn(*mut c_void, *mut Param) -> i32,
-    report_swap: unsafe extern "C" fn(*mut c_void),
-    render_free: unsafe extern "C" fn(*mut c_void),
     destroy: unsafe extern "C" fn(*mut c_void),
     hook_continue: unsafe extern "C" fn(*mut c_void, u64) -> i32,
     client_name: unsafe extern "C" fn(*mut c_void) -> *const c_char,
 }
 
-unsafe extern "C" fn update(ctx: *mut c_void) {
-    (*(ctx as *const AtomicBool)).store(true, Ordering::Release);
-}
-unsafe extern "C" fn gl_proc(_: *mut c_void, name: *const c_char) -> *mut c_void {
-    if let Some(proc) = wglGetProcAddress(windows::core::PCSTR(name.cast())) {
-        let address = proc as *const () as usize;
-        if address > 3 && address != usize::MAX {
-            return address as *mut c_void;
-        }
-    }
-    static GL: std::sync::OnceLock<Library> = std::sync::OnceLock::new();
-    let lib = GL.get_or_init(|| Library::new("opengl32.dll").expect("Windows OpenGL runtime"));
-    lib.get::<*mut c_void>(CStr::from_ptr(name).to_bytes_with_nul())
-        .map(|s| *s)
-        .unwrap_or(ptr::null_mut())
-}
 fn error(detail: impl std::fmt::Display) -> AppError {
     AppError::new("player_unavailable", format!("内嵌播放器：{detail}"))
 }
@@ -185,26 +138,17 @@ impl Engine {
             );
             let initialize = sym!("mpv_initialize", unsafe extern "C" fn(*mut c_void) -> i32);
             let destroy = sym!("mpv_terminate_destroy", unsafe extern "C" fn(*mut c_void));
-            let render_create = sym!(
-                "mpv_render_context_create",
-                unsafe extern "C" fn(*mut *mut c_void, *mut c_void, *mut Param) -> i32
-            );
-            let set_update = sym!(
-                "mpv_render_context_set_update_callback",
-                unsafe extern "C" fn(
-                    *mut c_void,
-                    Option<unsafe extern "C" fn(*mut c_void)>,
-                    *mut c_void,
-                )
-            );
             let handle = create();
             if handle.is_null() {
                 return Err(error("无法创建播放会话"));
             }
             let prepare = (|| {
                 std::fs::create_dir_all(cache)?;
+                let parent = (window.0 as usize).to_string();
                 for (key, value) in [
-                    ("vo", "libmpv"),
+                    ("vo", "gpu-next,gpu"),
+                    ("gpu-api", "d3d11"),
+                    ("wid", parent.as_str()),
                     ("config", "no"),
                     ("load-scripts", "no"),
                     ("osc", "yes"),
@@ -249,68 +193,6 @@ impl Engine {
                 destroy(handle);
                 return Err(e);
             }
-            let dc = GetDC(Some(window));
-            if dc.0.is_null() {
-                destroy(handle);
-                return Err(error("无法创建视频绘制区域"));
-            }
-            let pixel = PIXELFORMATDESCRIPTOR {
-                nSize: std::mem::size_of::<PIXELFORMATDESCRIPTOR>() as u16,
-                nVersion: 1,
-                dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
-                iPixelType: PFD_TYPE_RGBA,
-                cColorBits: 32,
-                cAlphaBits: 8,
-                cDepthBits: 0,
-                iLayerType: PFD_MAIN_PLANE.0 as u8,
-                ..Default::default()
-            };
-            let format = ChoosePixelFormat(dc, &pixel);
-            if format == 0 {
-                ReleaseDC(Some(window), dc);
-                destroy(handle);
-                return Err(error("没有可用的 OpenGL 像素格式"));
-            }
-            if let Err(e) = SetPixelFormat(dc, format, &pixel) {
-                ReleaseDC(Some(window), dc);
-                destroy(handle);
-                return Err(error(e));
-            }
-            let gl = wglCreateContext(dc).map_err(error)?;
-            wglMakeCurrent(dc, gl).map_err(error)?;
-            let mut init = GlInit {
-                get_proc: gl_proc,
-                ctx: ptr::null_mut(),
-            };
-            let mut params = [
-                Param {
-                    kind: 1,
-                    data: c"opengl".as_ptr() as *mut _,
-                },
-                Param {
-                    kind: 2,
-                    data: (&mut init as *mut GlInit).cast(),
-                },
-                Param {
-                    kind: 0,
-                    data: ptr::null_mut(),
-                },
-            ];
-            let mut render = ptr::null_mut();
-            let result = render_create(&mut render, handle, params.as_mut_ptr());
-            if result < 0 {
-                let _ = wglMakeCurrent(HDC::default(), HGLRC::default());
-                let _ = wglDeleteContext(gl);
-                ReleaseDC(Some(window), dc);
-                destroy(handle);
-                return Err(error(format!("视频渲染初始化失败（{result}）")));
-            }
-            let updated = Box::new(AtomicBool::new(true));
-            set_update(
-                render,
-                Some(update),
-                (&*updated as *const AtomicBool).cast_mut().cast(),
-            );
             Ok(Self {
                 command_ret: sym!(
                     "mpv_command_ret",
@@ -325,20 +207,6 @@ impl Engine {
                     unsafe extern "C" fn(*mut c_void, f64) -> *const Event
                 ),
                 free_node: sym!("mpv_free_node_contents", unsafe extern "C" fn(*mut Node)),
-                render_update: sym!(
-                    "mpv_render_context_update",
-                    unsafe extern "C" fn(*mut c_void) -> u64
-                ),
-                render_frame: sym!(
-                    "mpv_render_context_render",
-                    unsafe extern "C" fn(*mut c_void, *mut Param) -> i32
-                ),
-                report_swap: sym!(
-                    "mpv_render_context_report_swap",
-                    unsafe extern "C" fn(*mut c_void)
-                ),
-                render_free: sym!("mpv_render_context_free", unsafe extern "C" fn(*mut c_void)),
-                destroy,
                 hook_continue: sym!(
                     "mpv_hook_continue",
                     unsafe extern "C" fn(*mut c_void, u64) -> i32
@@ -349,11 +217,8 @@ impl Engine {
                 ),
                 _library: library,
                 handle,
-                render,
-                dc,
-                gl,
-                window,
-                updated,
+                destroy,
+                pending_display: Cell::new(None),
             })
         }
     }
@@ -639,6 +504,7 @@ impl Engine {
     }
     pub fn translation(&self, text: &str, width: i32, height: i32) -> Result<(), AppError> {
         if text.is_empty() {
+            self.pending_display.set(None);
             self.command(json!({"name":"osd-overlay","id":11,"format":"none","data":""}))?;
             return Ok(());
         }
@@ -684,72 +550,44 @@ impl Engine {
             if below { 8 } else { 2 },
             escaped
         );
-        // Only a new render update after setting this overlay can arm the clock.
-        self.updated.store(false, Ordering::Release);
-        unsafe {
-            (self.render_update)(self.render);
-        }
+        self.pending_display.set(None);
         self.command(json!({"name":"osd-overlay","id":11,"format":"ass-events","data":data,"res_x":width,"res_y":height}))?;
+        self.pending_display.set(Some(Instant::now()));
         Ok(())
     }
     #[cfg(debug_assertions)]
     pub fn capture(&self, path: &Path) -> Result<(), AppError> {
-        // GL_FRONT can be stale or unavailable for a composited/hidden HWND.
-        // Ask the active renderer for its composite, including both subtitles and OSD.
+        // Ask mpv's native VO for its composite, including both subtitles and OSD.
         // This is rendering evidence, not proof of the physical window's presentation.
         self.command(json!(["screenshot-to-file", path, "window"]))?;
         Ok(())
     }
-    /// Completing a command is insufficient: the controller arms only after this frame is presented.
-    pub fn draw(&self, width: i32, height: i32, force: bool) -> Result<bool, AppError> {
-        unsafe {
-            if width <= 0 || height <= 0 {
-                return Ok(false);
-            }
-            if !self.updated.swap(false, Ordering::AcqRel) && !force {
-                return Ok(false);
-            }
-            let flags = (self.render_update)(self.render);
-            let mut fbo = Fbo {
-                id: 0,
-                width,
-                height,
-                format: 0,
-            };
-            let mut flip = 1i32;
-            let mut params = [
-                Param {
-                    kind: 3,
-                    data: (&mut fbo as *mut Fbo).cast(),
-                },
-                Param {
-                    kind: 4,
-                    data: (&mut flip as *mut i32).cast(),
-                },
-                Param {
-                    kind: 0,
-                    data: ptr::null_mut(),
-                },
-            ];
-            let result = (self.render_frame)(self.render, params.as_mut_ptr());
-            if result < 0 {
-                return Err(error(format!("绘制失败（{result}）")));
-            }
-            SwapBuffers(self.dc).map_err(error)?;
-            (self.report_swap)(self.render);
-            DwmFlush().map_err(error)?;
-            Ok(flags & 1 != 0)
+    /// Normal playback is completely owned by mpv's native VO thread.
+    /// Only a paused translation needs a one-shot output/compositor fence before timing.
+    pub fn translation_presented(&self, width: i32, height: i32) -> Result<bool, AppError> {
+        let Some(since) = self.pending_display.get() else {
+            return Ok(false);
+        };
+        if width <= 0 || height <= 0 || since.elapsed() < Duration::from_millis(50) {
+            return Ok(false);
         }
+        if !self.flag("pause") {
+            self.pending_display.set(None);
+            return Ok(false);
+        }
+        // Native screenshot commands wait for the VO's pending frame and execute
+        // on its rendering thread. This is only once per paused overlay, never per frame.
+        let _frame = self.screenshot("window")?;
+        unsafe { DwmFlush().map_err(error)? };
+        self.pending_display.set(None);
+        Ok(true)
     }
 }
+
 impl Drop for Engine {
     fn drop(&mut self) {
         unsafe {
-            (self.render_free)(self.render);
             (self.destroy)(self.handle);
-            let _ = wglMakeCurrent(HDC::default(), HGLRC::default());
-            let _ = wglDeleteContext(self.gl);
-            ReleaseDC(Some(self.window), self.dc);
         }
     }
 }

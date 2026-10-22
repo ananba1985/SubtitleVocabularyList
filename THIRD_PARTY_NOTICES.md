@@ -27,7 +27,7 @@
 | OCR 静态依赖 | Leptonica 1.85.0、libpng 1.6.43、libtiff 4.6.0、libjpeg-turbo 3.0.1、zlib 1.3.1 | 固定源码与摘要见 build-offline-ocr.ps1；分别保留 BSD 类、libpng、TIFF、IJG/BSD/zlib 及 zlib 条款，不替换成项目许可 |
 | FFmpeg 与 ffprobe | 发行资源从 n9.0.2 固定源码构建，未开启 GPL、nonfree、网络或外部编解码库，使用静态 zlib；历史开发环境的 Gyan 构建不进入安装包 | [FFmpeg](https://github.com/FFmpeg/FFmpeg)、[许可说明](https://ffmpeg.org/legal.html)，本次构建 LGPL-2.1-or-later；原始源码、适配脚本与配置随源码资料交付 |
 | selectors 等传递依赖 | selectors 0.38.0 用于 HTML 解析；完整版本见生成的依赖清单 | [servo/stylo](https://github.com/servo/stylo)，MPL-2.0；保留源码许可声明，并附[正式条款](https://www.mozilla.org/media/MPL/2.0/index.txt) |
-| libmpv 播放引擎 | shinchiro 20261021 Windows x86_64，mpv git e471496c56；动态加载，OpenGL render API | [构建来源](https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261021)、[固定资源、摘要及材料边界](scripts/mpv-runtime-notice.md)。0.16.3 本机试用包准备 DLL 和 mpv Copyright／GPL／LGPL 原文，源码材料加入固定引擎源码和提供方确切构建配方。静态依赖的完整对应源码及条款尚未收齐，对外分发前须补齐，不能用头文件许可或单个引擎归档代替 |
+| libmpv 播放引擎 | shinchiro 20261021 Windows x86_64，mpv git e471496c56；动态加载；0.16.4 起使用 mpv 原生 D3D11 输出 | [构建来源](https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261021)、[固定资源、摘要及材料边界](scripts/mpv-runtime-notice.md)。0.16.3 本机试用包准备 DLL 和 mpv Copyright／GPL／LGPL 原文，源码材料加入固定引擎源码和提供方确切构建配方。静态依赖的完整对应源码及条款尚未收齐，对外分发前须补齐，不能用头文件许可或单个引擎归档代替 |
 | libloading | 固定 0.7.4，加载本机固定 DLL | [libloading](https://github.com/nagisa/rust_libloading)，ISC |
 | Windows 系统语音与 WebView2 | 使用系统能力及运行时 | Microsoft 系统组件按其许可使用，不纳入本项目代码许可 |
 | Google 高频词中文表 | 固定提交 a3bfa2903a2cbbbeb8cd3df5a3f6003578b08f8b 转换为 base.sqlite3；按用户要求准备本机安装资源 | [chenny/english-word-10000](https://github.com/chenny/english-word-10000)；随包保留 README 的词频、中文释义与发音来源声明，未见独立 LICENSE，不标为本项目 GPL 或 ECDICT 的 MIT。公开再分发授权需另行核对 |

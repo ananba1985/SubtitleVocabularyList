@@ -59,7 +59,6 @@ fn wait(actor: &mut Actor, messages: &Receiver<Message>, ready: impl Fn(&Actor) 
             actor.receive(message);
         }
         actor.tick();
-        actor.engine.draw(960, 600, false).unwrap();
         if ready(actor) {
             return;
         }

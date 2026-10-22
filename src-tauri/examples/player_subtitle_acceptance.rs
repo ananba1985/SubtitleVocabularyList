@@ -1,4 +1,4 @@
-//! One real OpenGL subtitle/capture path in an invisible window, without audio or user data.
+//! One real native mpv output path in an invisible window, without audio or user data.
 #[cfg(all(windows, debug_assertions))]
 pub use subtitle_vocabulary_list_core::error;
 #[cfg(all(windows, debug_assertions))]
@@ -19,7 +19,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Foundation::{HWND, LPARAM, LRESULT, WPARAM},
             System::LibraryLoader::GetModuleHandleW,
             UI::{
-                HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
+                HiDpi::{
+                    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext,
+                    SetThreadDpiAwarenessContext,
+                },
                 WindowsAndMessaging::*,
             },
         },
@@ -41,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .ok_or("new isolated output directory required")?,
     );
     let video = dunce::canonicalize(args.next().ok_or("silent bilingual video required")?)?;
+    let playback = args.next().is_some_and(|a| a == "--playback");
     if root.exists() {
         return Err(
             "Existing acceptance evidence must be preserved; choose a new directory".into(),
@@ -50,6 +54,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = dunce::canonicalize(root)?;
     let dll = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.tools/runtime/mpv/libmpv-2.dll");
     let window = unsafe {
+        // Match the real Tauri process, including new native mpv window threads.
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let instance = GetModuleHandleW(None)?;
         let class = WNDCLASSW {
@@ -81,6 +87,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         engine.command(json!(["set_property", "aid", "no"]))?;
         engine.command(json!(["set_property", "mute", true]))?;
         engine.command(json!(["loadfile", video]))?;
+        let messages = || unsafe {
+            let mut message = MSG::default();
+            while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
+                let _ = TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+        };
         let pump_until = |ready: &dyn Fn() -> bool| -> Result<(), Box<dyn std::error::Error>> {
             let deadline = Instant::now() + Duration::from_secs(8);
             while Instant::now() < deadline {
@@ -92,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return Err(format!("mpv load error {}", event.error).into());
                     }
                 }
-                engine.draw(960, 600, false)?;
+                messages();
                 if ready() {
                     return Ok(());
                 }
@@ -101,6 +114,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err("Timed out waiting for normal subtitle state".into())
         };
         pump_until(&|| engine.number("duration").is_some())?;
+        if playback {
+            pump_until(&|| engine.flag("vo-configured"))?;
+            engine.command(json!(["seek", 78, "absolute+exact"]))?;
+            pump_until(&|| engine.number("time-pos").is_some_and(|p| p >= 77.9))?;
+            let before = engine.number("time-pos").unwrap();
+            engine.command(json!(["set_property", "pause", false]))?;
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(10) {
+                messages();
+                while let Some(event) = engine.event() {
+                    if let Some(hook) = event.hook {
+                        engine.continue_load(hook)?;
+                    }
+                    if event.id == 7 && event.error < 0 {
+                        return Err("Native playback failed".into());
+                    }
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            engine.command(json!(["set_property", "pause", true]))?;
+            let after = engine.number("time-pos").unwrap();
+            assert!(after - before >= 8.0, "Playback did not advance normally");
+            let diagnostics = json!({
+                "windowVisible": false, "audioOutput": false,
+                "nativeVo": engine.property("current-vo"), "hardwareDecoder": engine.property("hwdec-current"),
+                "video": engine.property("video-params"), "output": engine.property("video-out-params"),
+                "before": before, "after": after, "elapsedSeconds": start.elapsed().as_secs_f64(),
+                "droppedFrames": engine.property("frame-drop-count"),
+                "decoderDroppedFrames": engine.property("decoder-frame-drop-count")
+            });
+            assert_ne!(diagnostics["nativeVo"], json!("libmpv"));
+            assert!(diagnostics["nativeVo"].as_str().is_some());
+            engine.translation("原生播放器暂停译文", 960, 600)?;
+            pump_until(&|| engine.translation_presented(960, 600).unwrap())?;
+            engine.capture(&root.join("paused.png"))?;
+            let captured = image::open(root.join("paused.png"))?;
+            assert_eq!((captured.width(), captured.height()), (960, 600));
+            engine.command(json!(["stop"]))?;
+            std::fs::write(
+                root.join("result.json"),
+                serde_json::to_vec_pretty(&diagnostics)?,
+            )?;
+            println!(
+                "PASS: native mpv playback, paused overlay and stop; hidden, silent, isolated. {}",
+                root.display()
+            );
+            return Ok(());
+        }
         engine.command(json!(["set_property", "sid", 1]))?;
         engine.command(json!(["seek", 20, "absolute+exact"]))?;
         pump_until(&|| {
@@ -135,14 +196,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(
             root.join("result.json"),
             serde_json::to_vec_pretty(&json!({
-                "windowVisible": false, "audioOutput": false, "renderer": "libmpv/OpenGL",
+                "windowVisible": false, "audioOutput": false, "renderer": "mpv/native-D3D11",
                 "primaryText": engine.property("sub-text"), "secondaryText": engine.property("secondary-sub-text"),
                 "paused": engine.flag("pause"), "position": engine.number("time-pos"),
                 "capturedWidth": width, "capturedHeight": height, "subtitlePixelsChanged": changed
             }))?,
         )?;
         println!(
-            "PASS: real Engine OpenGL dual subtitles and frame capture; hidden window, no audio, no personal Data. {}",
+            "PASS: real Engine native mpv dual subtitles and frame capture; hidden window, no audio, no personal Data. {}",
             root.display()
         );
         Ok(())
@@ -155,5 +216,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(not(all(windows, debug_assertions)))]
 fn main() {
-    panic!("This native OpenGL acceptance requires a Windows debug build");
+    panic!("This native mpv acceptance requires a Windows debug build");
 }

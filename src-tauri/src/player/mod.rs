@@ -624,7 +624,7 @@ impl NativePlayer {
                             SWP_HIDEWINDOW
                         },
                 );
-                // WebView2's compositor can cover a native OpenGL sibling despite
+                // WebView2's compositor can cover a native video sibling despite
                 // HWND z-order. Cut its video rectangle out of the WebView surface;
                 // restore the complete WebView for dialogs, hidden video and other pages.
                 if let Ok(view) = FindWindowExW(GetParent(hwnd).ok(), None, w!("WRY_WEBVIEW"), None)
@@ -683,7 +683,6 @@ struct Actor {
     window: isize,
     pending_context: Option<Instant>,
     pending_display: bool,
-    force_draw: bool,
     overlay: String,
     user_pause: bool,
     stopped: bool,
@@ -770,7 +769,7 @@ impl Actor {
             published,
             sender,
             state: PlayerSnapshot {
-                renderer: "libmpv/OpenGL".into(),
+                renderer: "mpv/native-D3D11".into(),
                 status: "idle".into(),
                 volume: 100.0,
                 playback,
@@ -782,7 +781,6 @@ impl Actor {
             window,
             pending_context: None,
             pending_display: false,
-            force_draw: false,
             overlay: String::new(),
             user_pause: false,
             stopped: false,
@@ -951,7 +949,6 @@ impl Actor {
                     self.invalidate();
                     self.save_progress();
                 } else {
-                    self.force_draw = true;
                     if !self.overlay.is_empty() {
                         let _ = self.engine.translation(&self.overlay, w, h);
                     }
@@ -2375,9 +2372,11 @@ impl Actor {
                 self.state.status = "failed".into();
             }
         }
-        if visible {
-            let force = std::mem::take(&mut self.force_draw);
-            match self.engine.draw(self.viewport.0, self.viewport.1, force) {
+        if visible && self.pending_display {
+            match self
+                .engine
+                .translation_presented(self.viewport.0, self.viewport.1)
+            {
                 Ok(true) if self.pending_display => {
                     self.pending_display = false;
                     if self.user_pause && self.engine.flag("pause") && !interacting {

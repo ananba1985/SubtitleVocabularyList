@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.68 |
+| 文档版本 | 0.69 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -298,6 +298,8 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 
 PlayerSnapshot 新增 `playback: {preferences:{speed,volume,muted,autoNext},playlist:[{path,title,sourceId}],currentPath}` 及可空 playlistIndex。无原生会话时 watch_state_get 后台读取保存列表和偏好，不启动播放；点击 restore 才加载并保持暂停。watch_control 增加 speed（value 0.1～4）、mute（value 0／1）、auto_next（value 0／1）；原 volume 保留。快照反映原生键／OSC 对实际倍速和声音的修改。watch_progress_get 旧返回保留，WatchProgress 新增默认空的 externalSubtitles 及可空 secondarySubtitleId，按文件保存由控制器处理。全部 DTO 由 Rust 生成。
 
+0.16.10 为 WatchProgress 增加可空 `subtitleSelectionManual`：true 恢复逐文件明确选轨／关闭，false 重新走默认英文选择；旧记录 null 时正轨号保留、0 按未设置处理。自动未选中不再等价于手动关闭，外置字幕／原生选轨同路记录。该字段存入原有本地进度 JSON，不改变个人词库或学习数据契约。
+
 ### CMD-65 常用播放控制扩展（0.15.0）
 
 仍使用 `watch_control(control) -> PlayerSnapshot`，不新增通用执行命令接口。新增动作：menu；playlist_previous／playlist_next；secondary_subtitle（value 为轨道 ID，空为关闭）；subtitle_visible／secondary_subtitle_visible（0／1）、subtitle_scale（0.5～3）、subtitle_position（0～100）；seek_prompt；seek_time（text 为时间）；seek_relative（秒）、subtitle_seek（-1／1 定位前后句，0 重播当前句）、chapter（从 0 起）；loop_mode（text 为 none／file／playlist）、loop_a／loop_b／loop_clear。原 audio、subtitle、subtitle_delay 保留。
@@ -488,3 +490,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.66 | 2026-10-21 | 登记 CMD-85／86 和文件队列信号，复用既有列表／字幕控制 |
 | 0.67 | 2026-10-22 | 明确查询语言 auto 默认、逐次方向解析及中译英模式，保持显式语言调用 |
 | 0.68 | 2026-10-22 | 登记 CMD-87 同目录同剧文件发现及确认后复用 import_start 的多路径契约 |
+| 0.69 | 2026-10-22 | 登记 WatchProgress.subtitleSelectionManual 及旧记录恢复语义，保持原命令入口 |

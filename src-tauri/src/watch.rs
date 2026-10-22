@@ -89,6 +89,8 @@ pub struct WatchProgress {
     pub path: String,
     pub position: f64,
     pub subtitle_id: Option<i64>,
+    #[serde(default)]
+    pub subtitle_selection_manual: Option<bool>,
     pub audio_id: Option<i64>,
     pub subtitle_delay: f64,
     #[serde(default)]

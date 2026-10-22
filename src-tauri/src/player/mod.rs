@@ -694,6 +694,8 @@ struct Actor {
     last_publish: String,
     restore: Option<WatchProgress>,
     bound_sid: Option<i64>,
+    subtitle_manual: bool,
+    last_subtitle_id: Option<i64>,
     enabled: bool,
     delay: u32,
     translation_retry_at: Instant,
@@ -793,6 +795,8 @@ impl Actor {
             last_publish: String::new(),
             restore: None,
             bound_sid: None,
+            subtitle_manual: false,
+            last_subtitle_id: None,
             enabled: settings.watch_auto_collect,
             delay: settings.watch_collect_delay_seconds,
             translation_retry_at: Instant::now(),
@@ -1293,6 +1297,7 @@ impl Actor {
         }
         self.engine
             .command(json!(["set_property", "sub-visibility", true]))?;
+        self.subtitle_manual = true;
         self.refresh_controls();
         self.sync_preferences()?;
         self.refresh_paused(paused);
@@ -1369,6 +1374,8 @@ impl Actor {
         self.media = None;
         self.progress = None;
         self.bound_sid = None;
+        self.subtitle_manual = false;
+        self.last_subtitle_id = None;
     }
     fn prepare_file(&mut self, hook: u64) {
         let path = self
@@ -1703,6 +1710,9 @@ impl Actor {
                         .map(|n| json!(n as i64))
                         .unwrap_or(json!("no"))
                 ]))?;
+                if control.action == "subtitle" {
+                    self.subtitle_manual = true;
+                }
                 self.refresh_paused(paused);
             }
             "subtitle_delay" => {
@@ -1720,6 +1730,7 @@ impl Actor {
                 self.invalidate();
                 let file = control.text.ok_or_else(|| failure("缺少字幕文件"))?;
                 self.engine.command(json!(["sub-add", file, "select"]))?;
+                self.subtitle_manual = true;
                 self.refresh_paused(paused);
             }
             "subtitle_asset" => {
@@ -1743,6 +1754,7 @@ impl Actor {
                 self.invalidate();
                 self.engine
                     .command(json!(["sub-add", path.to_string_lossy(), "select"]))?;
+                self.subtitle_manual = true;
             }
             "cancel_auto" => {
                 self.clock.cancel();
@@ -2028,6 +2040,42 @@ impl Actor {
             }
         }
         self.bound_sid = self.engine.number("sid").map(|n| n as i64);
+        self.subtitle_manual = self.restore.as_ref().is_some_and(|progress| {
+            progress.subtitle_selection_manual.unwrap_or_else(|| {
+                // Legacy records did not distinguish an automatic miss from user-off.
+                progress.subtitle_id.is_some_and(|id| id > 0)
+            })
+        });
+        if !self.subtitle_manual
+            && let Some(track) = tracks.as_array().and_then(|tracks| {
+                tracks
+                    .iter()
+                    .filter(|t| {
+                        let language = t["lang"].as_str().unwrap_or("").to_ascii_lowercase();
+                        let language = language.split(['-', '_']).next().unwrap_or("");
+                        let title = t["title"].as_str().unwrap_or("").to_ascii_lowercase();
+                        t["type"] == "sub"
+                            && (matches!(language, "en" | "eng" | "english")
+                                || title.contains("english")
+                                || title.contains("英文")
+                                || title.contains("英语"))
+                    })
+                    .max_by_key(|t| {
+                        (
+                            t["forced"] != true,
+                            self.media
+                                .as_ref()
+                                .and_then(|m| m.subtitle_stream)
+                                .is_some_and(|i| t["ff-index"].as_u64() == Some(i as u64)),
+                            t["default"] == true,
+                        )
+                    })
+            })
+        {
+            let _ = self
+                .engine
+                .command(json!(["set_property", "sid", track["id"]]));
+        }
         if let Some(progress) = self.restore.take() {
             let duration = self.engine.number("duration").unwrap_or(0.0);
             if progress.position > 0.0 && progress.position < (duration - 0.5).max(0.0) {
@@ -2042,7 +2090,9 @@ impl Actor {
                     if audio > 0 { json!(audio) } else { json!("no") }
                 ]));
             }
-            if let Some(sub) = progress.subtitle_id {
+            if self.subtitle_manual
+                && let Some(sub) = progress.subtitle_id
+            {
                 let _ = self.engine.command(json!([
                     "set_property",
                     "sid",
@@ -2078,6 +2128,7 @@ impl Actor {
             self.state.error = Some(error.message);
         }
         self.progress = self.current_progress();
+        self.last_subtitle_id = Some(self.engine.number("sid").unwrap_or(0.0) as i64);
         self.import_current();
     }
     fn selected_audio_stream(&self) -> Option<usize> {
@@ -2545,6 +2596,15 @@ impl Actor {
                 self.state.error = Some(error.message);
             }
             if self.state.loaded {
+                let sid = self.engine.number("sid").unwrap_or(0.0) as i64;
+                if self
+                    .last_subtitle_id
+                    .is_some_and(|previous| previous != sid)
+                {
+                    // Native OSC and mpv shortcuts change sid without WatchControl.
+                    self.subtitle_manual = true;
+                }
+                self.last_subtitle_id = Some(sid);
                 self.progress = self.current_progress();
             }
             if now.duration_since(self.progress_at) >= Duration::from_secs(5) {
@@ -2687,6 +2747,12 @@ impl Actor {
                     .unwrap_or(self.state.position)
             },
             subtitle_id: Some(self.engine.number("sid").unwrap_or(0.0) as i64),
+            subtitle_selection_manual: Some(
+                self.subtitle_manual
+                    || self.last_subtitle_id.is_some_and(|previous| {
+                        previous != self.engine.number("sid").unwrap_or(0.0) as i64
+                    }),
+            ),
             audio_id: Some(self.engine.number("aid").unwrap_or(0.0) as i64),
             subtitle_delay: self.engine.number("sub-delay").unwrap_or(0.0),
             secondary_subtitle_id: Some(self.engine.number("secondary-sid").unwrap_or(0.0) as i64),

@@ -171,6 +171,8 @@ impl Engine {
                     ("idle", "yes"),
                     ("keep-open", "yes"),
                     ("pause", "yes"),
+                    ("slang", "en,eng"),
+                    ("subs-with-matching-audio", "yes"),
                     ("hwdec", "auto-safe"),
                     ("osd-level", "0"),
                     ("sub-font-size", "30"),

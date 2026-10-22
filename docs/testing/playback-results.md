@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.16 |
+| 文档版本 | 0.17 |
 | 更新日期 | 2026-10-22 |
-| 状态 | 0.16.7 无界面浏览器全屏焦点／Space 与原生齿轮菜单请求验证通过；保留历史实装及窗口／声音边界，本次未重装或操作桌面 |
+| 状态 | 0.16.10 默认英文及手动选轨／关闭恢复的后台正常流程通过；历史实装与窗口／声音边界保留，当前修复未打包 |
 | 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
 
 ## 1 实现与实际检查
@@ -315,7 +315,27 @@ UI 流程通过，记录位于 `output/playwright/player-related-0169/` 的 disc
 
 随后用户明确请求用根目录脚本生成 0.16.9 安装包，脚本已退出 0，安装器、独立目录、源码材料及摘要均已生成，版本／关键资源／底库／源码身份核对通过，见[0.16.9 交付记录](../release/0.16.9-release-notes.md)。未运行安装器或追加实际播放测试，上述功能验收边界保留。
 
-## 15 修订记录
+## 15 0.16.10 默认英文字幕及手动选择恢复
+
+对应 FR-25／33／35、TC-71。代码原先未指定 slang，依赖 mpv 的容器／系统默认选择；每次进度又无条件记录 subtitleId=0，把自动未选状态在下一次加载中恢复为关闭。修复为初始化明确英文优先，并在无逐文件手动意图时选择英文；WatchProgress 区分自动和手动状态，原生 OSC／快捷键与应用选轨均保留明确意图。旧记录正轨号保留，未标记的 0 按未设置处理。全局字幕显示偏好按原规则执行。
+
+最小正常检查 `english_default_and_manual_resume` 复用真实 Actor／Engine 和隔离 Store。合成视频有 320×180、24 fps、60 秒画面、静音音轨、中文默认轨与英文非默认轨。只有不可见 HWND，无 WebView，播放器静音且关闭音轨，禁用自动收录，未操作系统鼠标键盘或正式 Data。
+
+1. 预置无手动意图的旧 subtitleId=0 进度，并提供指向中文轨的导入元数据提示。打开后实际选择英文轨 ID=2、sub-visibility=true，解码文字为 `We will arrive tomorrow.`；新进度 subtitleSelectionManual=false。
+2. 通过与 mpv 原生 OSC／快捷键相同的 sid 属性切到中文 ID=1；控制器识别为明确选择，关闭重开后仍为中文，手动标记 true。
+3. 通过已有 subtitle 控制明确关闭，保存 subtitleId=0／manual=true；再次打开仍关闭，没有被英文默认覆盖。
+
+```powershell
+$env:SVL_PLAYER_TEST_OUTPUT = 'D:/Projects/codex/SubtitleVocabularyList/output/player-english-default-01610-final'
+$env:SVL_PLAYER_TEST_VIDEO = 'D:/Projects/codex/SubtitleVocabularyList/output/player-english-fixture-01610/bilingual.mkv'
+cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --features ipc-types player::native_tests::english_default_and_manual_resume -- --ignored --exact --nocapture
+```
+
+最终 **1 项通过，121 项过滤，1.40 秒**，证据为上述命名目录的 result.json 和隔离 Data；首轮相同流程的 1.52 秒记录亦保留。固定 mpv 源归档的字幕语言选项已核对。既有测试程序图标资源提示不影响检查。
+
+本轮 `pnpm build` 的版本、Rust IPC／新增进度字段、TypeScript 与 Vite 检查通过，保留既有大分块提示。新版本源码为 0.16.10，尚未生成安装包；已交付的 0.16.9 包不会随源码变化更新。未执行真实桌面点击、视觉或声音验收，不把原生解码属性检查当作真人窗口操作。
+
+## 16 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -332,3 +352,4 @@ UI 流程通过，记录位于 `output/playwright/player-related-0169/` 的 disc
 | 0.14 | 2026-10-22 | 记录当前剧集同步、Windows 路径身份及自动后台导入后同源收录的真实正常结果，保留实际窗口／服务与安装边界 |
 | 0.15 | 2026-10-22 | 记录同目录剧集只读发现、文件预览、拒绝及确认后的多路径请求正常检查，保留真实导入与窗口边界 |
 | 0.16 | 2026-10-22 | 关联根目录脚本生成的 0.16.9 安装包及必要产物核对，不扩大功能实测范围 |
+| 0.17 | 2026-10-22 | 记录默认英文、旧自动未选恢复及逐文件明确选择／关闭的原生后台正常证据 |

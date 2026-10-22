@@ -320,7 +320,7 @@ export type WatchFrame = { path: string, width: number, height: number, position
 
 export type WatchImportStatus = { taskId: string | null, state: string, message: string, };
 
-export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, audioId: number | null, subtitleDelay: number, secondarySubtitleId: number | null, externalSubtitles: Array<string>, };
+export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, subtitleSelectionManual: boolean | null, audioId: number | null, subtitleDelay: number, secondarySubtitleId: number | null, externalSubtitles: Array<string>, };
 
 export type WatchTrack = { id: number, kind: string, title: string, selected: boolean, secondary: boolean, };
 

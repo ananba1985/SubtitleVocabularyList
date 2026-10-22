@@ -334,6 +334,85 @@ fn with_isolated_player(
 }
 
 #[test]
+#[ignore = "requires a fresh output directory and synthetic Chinese/English subtitle fixture"]
+fn english_default_and_manual_resume() {
+    with_isolated_player(|actor, receiver, store, root, path| {
+        // Old automatic 'no subtitles' records must not suppress the new default.
+        store
+            .save_watch_progress(&WatchProgress {
+                path: path.into(),
+                subtitle_id: Some(0),
+                ..Default::default()
+            })
+            .unwrap();
+        let mut media = store.watch_media(Some(path), None).unwrap();
+        media.subtitle_stream = Some(2); // Imported metadata points at the first, Chinese track.
+        actor.open(media).unwrap();
+        wait(actor, receiver, |a| {
+            a.state.loaded && a.engine.property("sub-text") == json!("We will arrive tomorrow.")
+        });
+        let tracks = actor.engine.property("track-list");
+        let tracks = tracks.as_array().unwrap();
+        let english = tracks
+            .iter()
+            .find(|t| t["type"] == "sub" && t["lang"] == "eng")
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        let chinese = tracks
+            .iter()
+            .find(|t| t["type"] == "sub" && t["lang"] == "chi")
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        assert_eq!(actor.engine.number("sid"), Some(english as f64));
+        assert!(actor.engine.flag("sub-visibility"));
+        assert_eq!(
+            actor.current_progress().unwrap().subtitle_selection_manual,
+            Some(false)
+        );
+        let first = actor.current_progress().unwrap();
+
+        // Native OSC and shortcuts use this same mpv property, outside WatchControl.
+        actor
+            .engine
+            .command(json!(["set_property", "sid", chinese]))
+            .unwrap();
+        wait(actor, receiver, |a| a.subtitle_manual);
+        control(actor, "close", None, None);
+        let chosen = store.watch_progress_for(path).unwrap().unwrap();
+        assert_eq!(chosen.subtitle_selection_manual, Some(true));
+        actor
+            .open(store.watch_media(Some(path), None).unwrap())
+            .unwrap();
+        wait(actor, receiver, |a| {
+            a.state.loaded && a.engine.number("sid") == Some(chinese as f64)
+        });
+        assert!(actor.subtitle_manual);
+
+        control(actor, "subtitle", None, None);
+        control(actor, "close", None, None);
+        let disabled = store.watch_progress_for(path).unwrap().unwrap();
+        assert_eq!(disabled.subtitle_id, Some(0));
+        assert_eq!(disabled.subtitle_selection_manual, Some(true));
+        actor
+            .open(store.watch_media(Some(path), None).unwrap())
+            .unwrap();
+        wait(actor, receiver, |a| a.state.loaded);
+        assert!(actor.engine.number("sid").is_none());
+        assert!(actor.subtitle_manual);
+        std::fs::write(root.join("result.json"), serde_json::to_vec_pretty(&json!({
+            "englishId":english,"chineseId":chinese,"automatic":first,"manualChinese":chosen,
+            "manualOff":disabled,"reopened":actor.current_progress(),"windowVisible":false,"audioOutput":false
+        })).unwrap()).unwrap();
+        println!(
+            "PASS: English default, legacy automatic-off recovery and explicit subtitle choices restored; {}",
+            root.display()
+        );
+    });
+}
+
+#[test]
 #[ignore = "requires a fresh output directory and synthetic video with a silent audio track"]
 fn episode_import_follows_playback() {
     with_isolated_player(|actor, receiver, store, root, path| {

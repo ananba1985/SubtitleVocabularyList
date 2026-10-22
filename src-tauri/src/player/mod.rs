@@ -1,6 +1,8 @@
 pub(crate) mod files;
 mod menu;
 mod mpv;
+#[cfg(all(test, feature = "ipc-types"))]
+mod native_tests;
 
 use crate::{
     application::Application,
@@ -1182,16 +1184,26 @@ impl Actor {
         let empty = self.state.path.is_empty();
         let first = files.items.first().map(|i| i.path.clone());
         let target = files.open_path.clone().or_else(|| {
-            if empty {
-                first
-            } else {
-                // path can still describe the previous file while START_FILE is pending.
-                self.engine
-                    .property("path")
-                    .as_str()
-                    .map(str::to_owned)
-                    .or_else(|| Some(self.state.path.clone()))
-            }
+            // START_FILE/on_load may still be pending when the next drop arrives.
+            self.engine
+                .property("path")
+                .as_str()
+                .filter(|path| !path.is_empty())
+                .map(str::to_owned)
+                .or_else(|| {
+                    self.engine
+                        .number("playlist-pos")
+                        .filter(|index| *index >= 0.0)
+                        .and_then(|index| self.state.playback.playlist.get(index as usize))
+                        .map(|item| item.path.clone())
+                })
+                .or_else(|| {
+                    if empty {
+                        first
+                    } else {
+                        Some(self.state.path.clone())
+                    }
+                })
         });
         if !files.subtitles.is_empty() && target.is_none() {
             return Err(failure("请先打开视频，再拖入字幕。"));
@@ -1232,7 +1244,16 @@ impl Actor {
             if files.open_path.is_none() && !empty && self.state.loaded && self.state.path == path {
                 self.load_subtitles(files.subtitles)?;
             } else {
-                self.pending_subtitles = Some((path, files.subtitles));
+                match &mut self.pending_subtitles {
+                    Some((target, paths)) if target == &path => {
+                        for subtitle in files.subtitles {
+                            if !paths.contains(&subtitle) {
+                                paths.push(subtitle);
+                            }
+                        }
+                    }
+                    _ => self.pending_subtitles = Some((path, files.subtitles)),
+                }
             }
         }
         self.sync_playlist()?;
@@ -1914,6 +1935,9 @@ impl Actor {
         if paused && !self.engine.flag("eof-reached") {
             self.user_pause = true;
             self.pending_context = Some(Instant::now() + Duration::from_millis(60));
+        } else if self.state.loaded && !self.engine.flag("pause") {
+            // Invalidating a subtitle/learning context does not pause playback.
+            self.state.status = "playing".into();
         }
     }
     fn show_menu(&mut self) -> Result<(), AppError> {
@@ -2635,8 +2659,11 @@ impl Actor {
                 .collect(),
         })
     }
-    fn save_progress(&self) {
+    fn save_progress(&mut self) {
         if let Some(progress) = self.current_progress().or_else(|| self.progress.clone()) {
+            // END_FILE/START_FILE can only use this cache after the old file unloads.
+            // Keep it in step with immediate track/delay/subtitle-file saves.
+            self.progress = Some(progress.clone());
             let _ = self.application.store.save_watch_progress(&progress);
         }
     }

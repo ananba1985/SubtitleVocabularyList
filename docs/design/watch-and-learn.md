@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-WATCH-001 |
-| 文档版本 | 0.14 |
+| 文档版本 | 0.15 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 本轮开发按用户接受结束；后台证据及未实测交互／真实服务边界保留，后续按缺陷修复 |
 | 需求依据 | [PRD §3.7、§5.7、FR-25 至 FR-29](../requirements/PRD.md) |
@@ -269,6 +269,8 @@ M-20 锁定 Windows 构建来源、版本、摘要、C API／渲染方式及所�
 
 每个文件的进度存入 `watch:progress:<pathDigest>`；同时保留原 `watch:progress` 供旧的继续观看入口读取。旧记录可作为对应文件后备，不迁移或覆盖学习数据。正常播放每 5 秒保存一次，并在换集／隐藏／关闭时保存；退出保存与视频进度独立。音轨和主／第二字幕 ID 按文件保存，0 表示关闭；外置字幕路径仍可访问时重载。字幕延迟按文件恢复，首次观看新文件复位为 0；已到结尾（距片尾不足半秒）不恢复至结尾。播放偏好与队列均留在当前 Data，mpv 保持 `config=no`，不写 AppData 配置。
 
+0.16.3 的 save_progress 同步更新内存中的最近进度，再持久化。文件卸载后 END_FILE／START_FILE 只能使用缓存，因此字幕、延迟及外置文件的即时保存必须同时刷新缓存，防止切集时把刚保存的设置覆盖成旧快照。
+
 CMD-84 与 PlayerSnapshot 扩展见[接口设计](interfaces.md)。最小实际证据见[播放功能结果](../testing/playback-results.md)；后台正常检查不替代未执行的窗口操作，后续反馈按缺陷修复，不以人工确认阻塞开发。
 
 ## 11 常用播放控制（0.15.0）
@@ -285,6 +287,8 @@ CMD-84 与 PlayerSnapshot 扩展见[接口设计](interfaces.md)。最小实际�
 
 显式循环模式互斥，列表循环启用 autoNext；关闭 autoNext 清除列表循环。显式模式切换清除 A–B，换集也清除 A–B，不持久化区间。菜单、console 输入和字幕文件选择时取消显示计时，关闭后不自行重启旧倒计时；主动暂停的显式定位在 SEEK 后读取新句，恢复历史进度的 SEEK 不被误判。换轨／样式更新使旧上下文失效并刷新暂停句，完整译文实际显示后仍遵守原计时规则。
 
+刷新字幕上下文只取消旧学习状态，不改变引擎播放意图；原来正在播放时，refresh_paused 按实际 pause 属性恢复 playing 状态，避免程序误显示已暂停。
+
 CMD-65 扩展和事件见[接口契约](interfaces.md)；最小正常证据见[播放验证第 3 节](../testing/playback-results.md#3-0150-常用播放控制)。不因未执行新窗口实测阻塞开发，不新增拖放、文件关联、片头片尾识别或画面增强功能。
 
 ## 12 拖放与文件入口（0.16.0）
@@ -294,6 +298,8 @@ FR-37／M-33 沿用 Store.playlist_items 自然排序、去重及既有原生列
 player/files.rs 内存队列统一接收 Windows 启动 argv、单实例回调 args/cwd 和拖放。file_arguments 跳过 --data-dir 及其值，按调用者 cwd 解析相对路径；不拼接 shell 命令。队列在页面加载前已建立，先登记事件、再检查 pending，避免冷启动丢文件。App 接到 watch_files_pending 仅切换页，WatchView 串行调用 CMD-85／86 消费请求。原生 Windows 子窗口使用 DragAcceptFiles／WM_DROPFILES，WebView 使用 Tauri DragDrop；两者进入同一个队列。
 
 播放器单线程执行追加／选择／字幕批次。加载中的字幕绑定目标路径，FILE_LOADED 在恢复旧字幕偏好后应用；切到不同文件或关闭时丢弃旧绑定。首份 select，第二份为 secondary-sid，其余仅加入可选轨。字幕变化取消旧查询、OCR 和自动收录计时，保存到该文件的外置字幕记录。按需收录和共享数据规则不改变。
+
+0.16.3 在 START_FILE 尚未更新界面路径时，优先从引擎当前路径或活动播放列表项确定字幕目标。同一加载目标下连续收到的字幕批次按接收顺序合并并去重，不用后一批覆盖前一批；明确打开另一视频仍使旧绑定失效。后台验证直接使用真实 FileInbox、Store 分类及 Actor，不发送系统拖放消息或桌面输入，不能代替实际跨应用拖放验收。
 
 安装配置通过 nsis-open-with.nsh 登记 Applications、SupportedTypes 及本程序专用 Video ProgID 的 OpenWithProgids。仅写本程序的选择项，不写 .ext 默认值或 UserChoice；升级刷新本程序路径，卸载移除本程序登记。未增加新的自动打包入口。NSIS 钩子与参数语义参照 [Tauri 官方配置](https://v2.tauri.app/reference/config/)及[官方安装模板](https://github.com/tauri-apps/tauri/blob/dev/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi)；实际安装关联验收留到用户明确打包／安装时。
 
@@ -321,3 +327,4 @@ player/files.rs 内存队列统一接收 Windows 启动 argv、单实例回调 a
 
 | 0.13 | 2026-10-21 | 接入统一文件队列、双表面拖放、冷／热启动参数与可选打开方式登记 |
 | 0.14 | 2026-10-22 | 修订调试取帧为当前渲染器合成图，区分后台原生双字幕输出与真实窗口呈现 |
+| 0.15 | 2026-10-22 | 修复最近进度缓存覆盖、字幕加载播放状态及连续字幕请求的目标和顺序，记录真实 Actor 后台验证边界 |

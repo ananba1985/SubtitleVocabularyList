@@ -8,7 +8,7 @@
     $svlProblems = [Collections.Generic.List[string]]::new()
     $svlCommands = @{}
     Write-Host '正在检查打包前置条件（不清理、不编译、不下载）……'
-    foreach ($svlTool in @('git', 'node', 'pnpm', 'cargo', 'python')) {
+    foreach ($svlTool in @('git', 'node', 'pnpm', 'cargo', 'python', '7z')) {
         $svlCommands[$svlTool] = Get-Command $svlTool -ErrorAction SilentlyContinue
         if (-not $svlCommands[$svlTool]) {
             $svlProblems.Add("未找到开发命令 $svlTool，请按 docs/development/windows-environment.md 准备开发环境。")
@@ -83,7 +83,7 @@
     }
 
     $svlResources = $null
-    $svlRequired = @('ffmpeg/ffmpeg.exe', 'ffmpeg/ffprobe.exe', 'tesseract/tesseract.exe', 'tesseract/tessdata/eng.traineddata', 'whisper/whisper-cli.exe', 'whisper/ggml-base.en.bin')
+    $svlRequired = @('ffmpeg/ffmpeg.exe', 'ffmpeg/ffprobe.exe', 'tesseract/tesseract.exe', 'tesseract/tessdata/eng.traineddata', 'whisper/whisper-cli.exe', 'whisper/ggml-base.en.bin', 'mpv/libmpv-2.dll', 'mpv/mpv-runtime.json', 'mpv/NOTICE.md', 'mpv/Copyright', 'mpv/LICENSE.GPL', 'mpv/LICENSE.LGPL')
     try {
         $svlResources = if ([IO.Path]::IsPathRooted($ResourcesDirectory)) {
             [IO.Path]::GetFullPath($ResourcesDirectory)
@@ -95,7 +95,7 @@
             throw "安装配置只映射 $svlExpectedResources，请使用默认资源目录。"
         }
         if ($SkipToolBuild) {
-            foreach ($svlFile in $svlRequired) {
+            foreach ($svlFile in $svlRequired | Where-Object { -not $_.StartsWith('mpv/') }) {
                 if (-not (Test-Path -LiteralPath (Join-Path $svlResources $svlFile) -PathType Leaf)) {
                     $svlProblems.Add("复用的离线资源缺失：$svlFile。请去掉 -SkipToolBuild，使用默认入口准备完整资源。")
                 }
@@ -104,6 +104,7 @@
         } else {
             Write-Host '打包模式：重建 OCR、Whisper 和 FFmpeg；资源和底库由正式流程准备，预检不会下载或生成。'
         }
+        Write-Host '播放器由正式流程按固定摘要准备、检查 x64 架构和 DLL 依赖；-SkipToolBuild 不跳过播放器与底库。'
     } catch {
         $svlProblems.Add('资源目录检查失败：' + $_.Exception.Message)
     }

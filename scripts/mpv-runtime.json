@@ -9,5 +9,18 @@
   "librarySha256": "04e4d27dc385dc18ddd93fbe69c75e635b864f3c6ec53a9122df54c2f7842f4a",
   "installedPath": "tools/mpv/libmpv-2.dll",
   "releaseSource": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261021",
-  "copyright": "https://github.com/mpv-player/mpv/blob/e471496c56/Copyright"
+  "copyright": "https://github.com/mpv-player/mpv/blob/e471496c56/Copyright",
+  "sourceArchives": [
+    {
+      "file": "mpv-e471496c56.zip",
+      "url": "https://codeload.github.com/mpv-player/mpv/zip/e471496c56",
+      "sha256": "a05f510b8142ae6a48e678098d7457316f761324384f90ee789f95602c790499"
+    },
+    {
+      "file": "mpv-winbuild-cmake-1f8d2e76255abc48f0456d9be99b4cab9c6566e6.zip",
+      "url": "https://codeload.github.com/shinchiro/mpv-winbuild-cmake/zip/1f8d2e76255abc48f0456d9be99b4cab9c6566e6",
+      "sha256": "5933a6e0bb035c6472d820d61344a60ab21d2ac6bc5355b00417f58df91b33dd"
+    }
+  ],
+  "dependencySourceStatus": "Not fully collected: the provider recipe tracks moving dependency branches. Engine source and exact build recipe alone are not complete corresponding source for the binary. This package is for the requested local installation trial; public redistribution requires completing that source collection."
 }

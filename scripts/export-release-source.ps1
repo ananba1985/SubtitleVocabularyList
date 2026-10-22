@@ -20,6 +20,15 @@ New-Item -ItemType Directory -Path $svlToolSources -Force | Out-Null
 $svlRequired=@('FFmpeg-n9.0.2.zip','leptonica-1.85.0.zip','libjpeg-turbo-3.0.1.zip','libpng-1.6.43.zip','tesseract-5.5.3.zip','tiff-4.6.0.zip','whisper.cpp-1.8.3.zip','zlib-1.3.1.zip')
 foreach($svlName in $svlRequired){Copy-Item -LiteralPath (Join-Path $svlWorkspace ('.tools/release-cache/sources/'+$svlName)) -Destination $svlToolSources}
 Copy-Item -LiteralPath (Join-Path $svlWorkspace '.tools/release-resources/ffmpeg/build-config.txt') -Destination $svlToolSources
+$svlMpv=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'mpv-runtime.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$svlPlayerSources=Join-Path $svlStage 'player-upstream'
+New-Item -ItemType Directory -Path $svlPlayerSources -Force | Out-Null
+foreach($svlSource in $svlMpv.sourceArchives){
+    $svlSourcePath=Join-Path $svlWorkspace ('.tools/release-cache/mpv/'+$svlSource.file)
+    if((Get-FileHash -LiteralPath $svlSourcePath).Hash.ToLowerInvariant() -ne $svlSource.sha256){throw ('Player source checksum mismatch: '+$svlSource.file)}
+    Copy-Item -LiteralPath $svlSourcePath -Destination $svlPlayerSources
+}
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'mpv-runtime.json'),(Join-Path $PSScriptRoot 'mpv-runtime-notice.md') -Destination $svlPlayerSources
 $svlMetadataText=& cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 --filter-platform x86_64-pc-windows-msvc
 if($LASTEXITCODE -ne 0){throw 'Cannot inspect Rust dependency source.'}
 $svlMetadata=$svlMetadataText | ConvertFrom-Json
@@ -72,6 +81,9 @@ SubtitleVocabularyList $svlVersion 源码与构建材料
 应用源码提交：$svlCommit
 应用 ZIP 包含固定依赖锁文件、数据库迁移和 scripts/build-offline-*.ps1。
 media-ocr-asr 包含构建时使用的八份上游原始源码包及实际 FFmpeg 配置。
+player-upstream 包含固定 mpv 引擎源码、该二进制提供方的确切构建配方（含补丁／配置）及摘要。
+播放器静态依赖的完整对应源码尚未收齐，不能把这两份归档当作完整对应源码。
+本次为用户请求的本机安装试用；对外分发前须完成该依赖源码收集，详见其中 mpv-runtime.json。
 构建脚本记录 Windows/MSVC 适配改动；从原始包重新应用这些改动后构建。
 cargo 包含锁定版本的原始 .crate 源码归档；摘要与 Cargo.lock 校验值核对。
 npm 包含前端运行依赖的已安装发行源码；各自版权与许可保留。

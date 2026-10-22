@@ -35,6 +35,8 @@ $svlDictionaries=Join-Path $svlWorkspace '.tools/release-dictionaries'
 if($LASTEXITCODE -ne 0){throw 'Reference dictionary preparation failed; installer compilation was not started.'}
 $svlDictionaryManifest=Get-Content -LiteralPath (Join-Path $svlDictionaries 'manifest.json') -Raw | ConvertFrom-Json
 $svlDictionaryFiles=@($svlDictionaryManifest.files)+@(@{path='manifest.json';sha256=(Get-FileHash -LiteralPath (Join-Path $svlDictionaries 'manifest.json')).Hash.ToLowerInvariant()})
+& python -X utf8 (Join-Path $svlScripts 'prepare-mpv-release.py') --resources-directory $svlResources
+if($LASTEXITCODE -ne 0){throw 'Player resource preparation failed; installer compilation was not started.'}
 Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
 & cargo clean --manifest-path (Join-Path $svlWorkspace 'src-tauri/Cargo.toml')
 if($LASTEXITCODE -ne 0){throw 'Cargo cleanup failed; installer compilation was not started.'}

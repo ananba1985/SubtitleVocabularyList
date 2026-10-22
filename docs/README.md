@@ -61,6 +61,7 @@
 | 受限制网络验收 | [testing/restricted-network-results.md](testing/restricted-network-results.md) | 实际出站规则、冷启动、播放听辨、截图、服务失败及规则恢复 | 区分指定程序限制与整机断网、实际执行与缓存 |
 | 0.1 候选发布与验收 | [release/0.1.0-release-notes.md](release/0.1.0-release-notes.md) | 匹配源码交付、技术验证、兼容边界与用户步骤 | 技术验收与用户实际验收分别记录 |
 | 0.6.1 安装测试包 | [release/0.6.1-release-notes.md](release/0.6.1-release-notes.md) | 同一脚本打包、产物与源码校验、本机安装步骤 | 已生成包，实际安装和使用由用户验证 |
+| 0.16.3 本机安装试用 | [release/0.16.3-release-notes.md](release/0.16.3-release-notes.md) | 根目录脚本、固定 libmpv 资源、产物摘要及真实剧集试用 | 构建与安装结果分开记录，播放器完整依赖源码材料边界另行说明 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 版本管理 | [development/version-management.md](development/version-management.md) | 三段版本规则、主版本人工控制、统一来源、工具与变更记录 | 递增不表示发布，不触发打包；文档/schema/策略号独立 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |

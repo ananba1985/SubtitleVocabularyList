@@ -75,6 +75,45 @@ export function WatchView({
   };
   useEffect(() => {
     let disposed = false;
+    const stop = listen<Pick<PlayerSnapshot, "revision">>(
+      "watch_subtitle_file_requested",
+      async (event) => {
+        try {
+          const path = await open({
+            filters: [
+              { name: "字幕", extensions: ["srt", "ass", "ssa", "vtt", "sup"] },
+            ],
+          });
+          if (!disposed && typeof path === "string")
+            await control(
+              "subtitle_file",
+              undefined,
+              path,
+              event.payload.revision,
+            );
+        } catch (e) {
+          if (!disposed) setError(message(e));
+        } finally {
+          await call("watch_control", {
+            control: {
+              action: "subtitle_dialog_closed",
+              value: null,
+              text: null,
+              expectedRevision: null,
+            },
+          }).catch((e) => {
+            if (!disposed) setError(message(e));
+          });
+        }
+      },
+    );
+    return () => {
+      disposed = true;
+      void stop.then((fn) => fn());
+    };
+  }, []);
+  useEffect(() => {
+    let disposed = false;
     call("sources_list")
       .then((value) => {
         if (!disposed) {
@@ -451,6 +490,9 @@ export function WatchView({
             自动连播
           </label>
         </div>
+        <button disabled={!state?.loaded} onClick={() => void control("menu")}>
+          播放设置
+        </button>
         <button
           className="text-button"
           aria-expanded={options}
@@ -467,6 +509,20 @@ export function WatchView({
           {fullscreen ? "退出全屏" : "全屏"}
         </button>
       </div>
+      {state?.loaded &&
+        (state.playback.preferences.loopMode !== "none" ||
+          state.loopA !== null) && (
+          <small className="watch-loop-status" role="status">
+            {state.playback.preferences.loopMode === "file"
+              ? "单集循环"
+              : state.playback.preferences.loopMode === "playlist"
+                ? "列表循环"
+                : ""}
+            {state.loopA !== null
+              ? ` · A–B：${time(state.loopA * 1000)}—${state.loopB === null ? "等待设置 B" : time(state.loopB * 1000)}`
+              : ""}
+          </small>
+        )}
       {state && (
         <WatchPlaylist
           state={state}
@@ -538,18 +594,8 @@ export function WatchView({
             />
           </label>
           <button
-            onClick={async () => {
-              const path = await open({
-                filters: [
-                  {
-                    name: "字幕",
-                    extensions: ["srt", "ass", "ssa", "vtt", "sup"],
-                  },
-                ],
-              });
-              if (typeof path === "string")
-                await control("subtitle_file", undefined, path);
-            }}
+            disabled={!state?.loaded}
+            onClick={() => void control("subtitle_dialog")}
           >
             加载外置字幕
           </button>

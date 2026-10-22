@@ -30,11 +30,17 @@ struct Hook {
     name: *const c_char,
     id: u64,
 }
+#[repr(C)]
+struct ClientMessage {
+    count: i32,
+    args: *const *const c_char,
+}
 pub struct PlayerEvent {
     pub id: i32,
     pub hook: Option<u64>,
     pub error: i32,
     pub end_reason: Option<i32>,
+    pub messages: Vec<String>,
 }
 #[repr(C)]
 struct Param {
@@ -138,6 +144,7 @@ pub struct Engine {
     render_free: unsafe extern "C" fn(*mut c_void),
     destroy: unsafe extern "C" fn(*mut c_void),
     hook_continue: unsafe extern "C" fn(*mut c_void, u64) -> i32,
+    client_name: unsafe extern "C" fn(*mut c_void) -> *const c_char,
 }
 
 unsafe extern "C" fn update(ctx: *mut c_void) {
@@ -335,6 +342,10 @@ impl Engine {
                 hook_continue: sym!(
                     "mpv_hook_continue",
                     unsafe extern "C" fn(*mut c_void, u64) -> i32
+                ),
+                client_name: sym!(
+                    "mpv_client_name",
+                    unsafe extern "C" fn(*mut c_void) -> *const c_char
                 ),
                 _library: library,
                 handle,
@@ -592,6 +603,18 @@ impl Engine {
                 },
                 end_reason: ((*e).id == 7 && !(*e).data.is_null())
                     .then(|| *((*e).data.cast::<i32>())),
+                messages: if (*e).id == 16 && !(*e).data.is_null() {
+                    let message = &*((*e).data as *const ClientMessage);
+                    (0..message.count.max(0) as usize)
+                        .map(|i| {
+                            CStr::from_ptr(*message.args.add(i))
+                                .to_string_lossy()
+                                .into_owned()
+                        })
+                        .collect()
+                } else {
+                    vec![]
+                },
             })
         }
     }
@@ -602,6 +625,17 @@ impl Engine {
         } else {
             Ok(())
         }
+    }
+    pub fn time_prompt(&self, session: &str, position: f64) -> Result<(), AppError> {
+        let name = unsafe { CStr::from_ptr((self.client_name)(self.handle)) }.to_string_lossy();
+        let args = json!({"client_name":name,"handler_id":format!("svl-time:{session}"),"prompt":"跳转时间（秒 / 分:秒 / 时:分:秒）", "default_text":format!("{position:.1}"), "id":"svl-time"});
+        self.command(json!([
+            "script-message-to",
+            "console",
+            "get-input",
+            args.to_string()
+        ]))?;
+        Ok(())
     }
     pub fn translation(&self, text: &str, width: i32, height: i32) -> Result<(), AppError> {
         if text.is_empty() {

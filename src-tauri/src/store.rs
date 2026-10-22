@@ -174,6 +174,7 @@ mod tests {
         connection.pragma_update(None, "user_version", 9).unwrap();
         let legacy = Store {
             assessment_packet: Mutex::new(None),
+            subtitle_guard: Mutex::new(()),
             root: directory.path().into(),
             connection: Mutex::new(connection),
             dictionary: crate::base_dictionary::BaseDictionary::load(directory.path()),

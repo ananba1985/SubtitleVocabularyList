@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.64 |
+| 文档版本 | 0.65 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -296,6 +296,14 @@ targetEntryId 为空表示新建；合并时必须提供匹配词条标识和 ex
 
 PlayerSnapshot 新增 `playback: {preferences:{speed,volume,muted,autoNext},playlist:[{path,title,sourceId}],currentPath}` 及可空 playlistIndex。无原生会话时 watch_state_get 后台读取保存列表和偏好，不启动播放；点击 restore 才加载并保持暂停。watch_control 增加 speed（value 0.1～4）、mute（value 0／1）、auto_next（value 0／1）；原 volume 保留。快照反映原生键／OSC 对实际倍速和声音的修改。watch_progress_get 旧返回保留，WatchProgress 新增默认空的 externalSubtitles 及可空 secondarySubtitleId，按文件保存由控制器处理。全部 DTO 由 Rust 生成。
 
+### CMD-65 常用播放控制扩展（0.15.0）
+
+仍使用 `watch_control(control) -> PlayerSnapshot`，不新增通用执行命令接口。新增动作：menu；playlist_previous／playlist_next；secondary_subtitle（value 为轨道 ID，空为关闭）；subtitle_visible／secondary_subtitle_visible（0／1）、subtitle_scale（0.5～3）、subtitle_position（0～100）；seek_prompt；seek_time（text 为时间）；seek_relative（秒）、subtitle_seek（-1／1 定位前后句，0 重播当前句）、chapter（从 0 起）；loop_mode（text 为 none／file／playlist）、loop_a／loop_b／loop_clear。原 audio、subtitle、subtitle_delay 保留。
+
+PlayerSnapshot 新增 chapters（index／title／position 秒）、chapterIndex、loopA／loopB 可空秒数；WatchTrack 增加 secondary，与 selected 分别表示第二和主选轨。PlaybackPreferences 新增 subtitleScale／subtitlePosition、两路 subtitleVisible、loopMode；按旧 JSON 默认读取。A–B 不保存。
+
+subtitle_dialog 发送 `watch_subtitle_file_requested` 到主窗口，payload 为当前 revision；前端打开文件对话框后通过 subtitle_file／expectedRevision 提交，finally 发 subtitle_dialog_closed，选择期抑制计时。原学习设置的加载按钮走同一路径。原生菜单选中项另外核对视频会话，时间输入 handler 带当前会话，均不接受旧视频回填。内部 CLIENT_MESSAGE 仅处理已知时间输入 submit，不是公开 IPC 任意命令入口。
+
 ## 4 任务与事件
 
 任务查询是当前执行状态和结果的权威入口。业务后台与失败诊断读取 SQLite，正常临时操作读取有限内存回执；事件建议采用以下最小结构：
@@ -461,3 +469,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 
 | 0.63 | 2026-10-21 | CMD-69 增加可空 clipRange，复用预览与收录接口；已暂停 audio_focus 保留上下文 |
 | 0.64 | 2026-10-21 | 登记 CMD-84 播放队列、PlaybackState 快照及速度／静音／连播控制 |
+| 0.65 | 2026-10-21 | 扩展 CMD-65 菜单、双字幕、定位和循环动作，登记文件选择事件及生成快照 |

@@ -29,6 +29,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             volume: 32.0,
             muted: true,
             auto_next: true,
+            subtitle_scale: 1.25,
+            subtitle_position: 90.0,
+            loop_mode: "file".into(),
+            ..Default::default()
         },
         current_path: Some(queue[1].path.clone()),
         playlist: queue,
@@ -49,6 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     drop(store);
     let store = Store::open(&data)?;
     assert_eq!(store.playback_state()?, state);
+    assert_eq!(
+        subtitle_vocabulary_list_core::playback::parse_time("00:01:30.5")?,
+        90.5
+    );
     for (index, item) in state.playlist.iter().enumerate() {
         let progress = store
             .watch_progress_for(&item.path)?

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-WATCH-001 |
-| 文档版本 | 0.11 |
+| 文档版本 | 0.12 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 本轮开发按用户接受结束；后台证据及未实测交互／真实服务边界保留，后续按缺陷修复 |
 | 需求依据 | [PRD §3.7、§5.7、FR-25 至 FR-29](../requirements/PRD.md) |
@@ -271,7 +271,21 @@ M-20 锁定 Windows 构建来源、版本、摘要、C API／渲染方式及所�
 
 CMD-84 与 PlayerSnapshot 扩展见[接口设计](interfaces.md)。最小实际证据见[播放功能结果](../testing/playback-results.md)；后台正常检查不替代未执行的窗口操作，后续反馈按缺陷修复，不以人工确认阻塞开发。
 
-## 11 修订记录
+## 11 常用播放控制（0.15.0）
+
+依据 FR-34 至 FR-36、M-30 至 M-32。`player/menu.rs` 用 Windows 原生弹出菜单承载分组和当前勾选，所有选择回到已有 WatchControl／libmpv 命令；不重做播放条或视频渲染。菜单在主窗口线程创建、弹出和释放，视频线程继续处理 mpv；菜单请求及选中动作记录会话，视频变更后丢弃旧选择。主界面新增“播放设置”单入口，循环／A–B 非默认时才显示一行状态；全屏仍为纯视频，使用右键或菜单键。
+
+宿主补齐垂直／水平滚轮、中键与侧键转发。滚轮屏幕坐标转宿主坐标，再映射为物理渲染坐标，步进按 Windows delta/120 传入 mpv `keypress` scale；修饰键保留，原生双击检测仍由 mpv 处理。右键改为应用菜单，Menu／Shift+F10 同路进入；其余键保留原生行为。原生输入能力依据[固定版本命令接口](https://github.com/mpv-player/mpv/blob/e471496c56/DOCS/man/input.rst)。
+
+音轨与两路字幕使用 aid／sid／secondary-sid。快照分别反映主选和第二字幕选中；外置字幕选择统一通过主窗口文件对话框，提交核对 revision。sub-visibility、secondary-sub-visibility、sub-scale、sub-pos 和循环模式追加至 PlaybackPreferences，旧 JSON 用默认值读取；轨道和延迟仍沿用逐文件 WatchProgress。ASS 定位与图片字幕按 mpv 自身支持处理，不强制覆盖原样式。
+
+指定时间直接调用 mpv 内置 console 的 `get-input`，由 client_name／带会话的 handler_id 接收 CLIENT_MESSAGE submit，解析为秒数后发绝对定位，不执行输入文本为命令。该协议依据[固定版本 console](https://github.com/mpv-player/mpv/blob/e471496c56/player/lua/console.lua)，无外部脚本或新运行时依赖。相对定位、sub-seek、chapter、loop-file、loop-playlist、ab-loop-a/b 均为 mpv 原生命令／属性。章节从 chapter-list 读取；菜单提示文字字幕的定位能力受 mpv 已读字幕范围限制。
+
+显式循环模式互斥，列表循环启用 autoNext；关闭 autoNext 清除列表循环。显式模式切换清除 A–B，换集也清除 A–B，不持久化区间。菜单、console 输入和字幕文件选择时取消显示计时，关闭后不自行重启旧倒计时；主动暂停的显式定位在 SEEK 后读取新句，恢复历史进度的 SEEK 不被误判。换轨／样式更新使旧上下文失效并刷新暂停句，完整译文实际显示后仍遵守原计时规则。
+
+CMD-65 扩展和事件见[接口契约](interfaces.md)；最小正常证据见[播放验证第 3 节](../testing/playback-results.md#3-0150-常用播放控制)。不因未执行新窗口实测阻塞开发，不新增拖放、文件关联、片头片尾识别或画面增强功能。
+
+## 12 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -291,3 +305,4 @@ CMD-84 与 PlayerSnapshot 扩展见[接口设计](interfaces.md)。最小实际�
 
 | 0.10 | 2026-10-21 | 登记本轮用户接受结案，未实测交互及真实服务不阻塞后续开发 |
 | 0.11 | 2026-10-21 | 接入原生播放队列和换集钩子、倍速与独立播放偏好／逐文件进度 |
+| 0.12 | 2026-10-21 | 接入原生菜单与鼠标转发、双字幕、时间输入、章节和循环，保持 mpv 播放核心 |

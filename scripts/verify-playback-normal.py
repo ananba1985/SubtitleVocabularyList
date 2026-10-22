@@ -14,9 +14,14 @@ class Hook(c.Structure):
     _fields_ = [("name", c.c_char_p), ("id", c.c_uint64)]
 
 
+class ClientMessage(c.Structure):
+    _fields_ = [("count", c.c_int), ("args", c.POINTER(c.c_char_p))]
+
+
 def main():
     dll, root = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     saved = json.loads((root / "persistence.json").read_text(encoding="utf-8"))
+    controls = "--controls" in sys.argv
     mpv = c.CDLL(str(dll))
 
     def api(name, result, *args):
@@ -34,6 +39,7 @@ def main():
     hook_add = api("mpv_hook_add", c.c_int, c.c_void_p, c.c_uint64, c.c_char_p, c.c_int)
     proceed = api("mpv_hook_continue", c.c_int, c.c_void_p, c.c_uint64)
     destroy = api("mpv_terminate_destroy", None, c.c_void_p)
+    client_name = api("mpv_client_name", c.c_char_p, c.c_void_p)
     handle = create()
     assert handle
 
@@ -51,7 +57,7 @@ def main():
         finally:
             free(value)
 
-    loaded, hooks, events = [], [], []
+    loaded, hooks, events, messages = [], [], [], []
 
     def until(predicate):
         deadline = time.monotonic() + 15
@@ -67,20 +73,24 @@ def main():
                 loaded.append(prop("path"))
             elif event.id == 7:
                 events.append("end-file")
+            elif event.id == 16:
+                msg = c.cast(event.data, c.POINTER(ClientMessage)).contents
+                messages.append([msg.args[i].decode("utf-8") for i in range(msg.count)])
             if predicate():
                 return
         raise AssertionError("Timed out waiting for normal playback state")
 
     try:
-        for key, value in {"vo": "null", "ao": "null", "audio": "no", "terminal": "no", "config": "no", "load-scripts": "no", "idle": "yes", "keep-open": "yes", "pause": "yes"}.items():
+        for key, value in {"vo": "null", "ao": "null", "audio": "no", "terminal": "no", "config": "no", "load-scripts": "no", "input-default-bindings": "yes", "idle": "yes", "keep-open": "yes", "pause": "yes"}.items():
             assert option(handle, key.encode(), value.encode()) >= 0
         assert initialize(handle) >= 0
         assert hook_add(handle, 0, b"on_load", 0) >= 0
         for item in saved["playlist"]:
             run("loadfile", item["path"], "append")
         # The same insertion-point adjustment used by the queue's up/down controls.
-        run("playlist-move", 0, 2)
-        run("playlist-move", 1, 0)
+        if not controls:
+            run("playlist-move", 0, 2)
+            run("playlist-move", 1, 0)
         assert int(prop("playlist-count")) == 2
         run("set", "speed", saved["preferences"]["speed"])
         run("set", "volume", saved["preferences"]["volume"])
@@ -89,6 +99,57 @@ def main():
         until(lambda: len(loaded) == 1)
         assert prop("pause") == "yes"
         assert abs(float(prop("speed")) - 1.25) < .001
+        if controls:
+            until(lambda: bool(prop("duration")))
+            volume = float(prop("volume"))
+            run("keypress", "WHEEL_UP", 1)
+            until(lambda: float(prop("volume")) > volume)
+            run("set", "aid", 1)
+            run("set", "sid", 1)
+            run("set", "secondary-sid", 2)
+            run("set", "sub-scale", saved["preferences"]["subtitleScale"])
+            run("set", "sub-pos", saved["preferences"]["subtitlePosition"])
+            run("set", "sub-visibility", "no")
+            run("set", "secondary-sub-visibility", "yes")
+            run("set", "sub-delay", .2)
+            assert prop("sid") == "1" and prop("secondary-sid") == "2"
+            assert float(prop("sub-scale")) == 1.25 and float(prop("sub-pos")) == 90
+            assert prop("sub-visibility") == "no" and float(prop("sub-delay")) == .2
+            assert int(prop("chapter-list/count")) == 2
+            run("set", "chapter", 1)
+            until(lambda: float(prop("time-pos") or 0) >= 4)
+            run("set", "loop-file", "inf")
+            assert prop("loop-file") == "inf"
+            run("set", "loop-file", "no")
+            run("set", "loop-playlist", "inf")
+            assert prop("loop-playlist") == "inf"
+            run("set", "loop-playlist", "no")
+            run("set", "ab-loop-a", .5)
+            run("set", "ab-loop-b", 1.5)
+            run("seek", 1.45, "absolute+exact")
+            until(lambda: 1.4 <= float(prop("time-pos") or 0) <= 1.5)
+            run("set", "pause", "no")
+            until(lambda: float(prop("time-pos") or 0) < 1.0)
+            run("set", "pause", "yes")
+            run("set", "ab-loop-a", "no")
+            run("set", "ab-loop-b", "no")
+            args = {"client_name": client_name(handle).decode(), "handler_id": "svl-time:normal", "prompt": "跳转时间", "default_text": ""}
+            run("script-message-to", "console", "get-input", json.dumps(args, ensure_ascii=False))
+            until(lambda: any(m[:2] == ["svl-time:normal", "opened"] for m in messages))
+            for key in "00:00:02":
+                run("keypress", key)
+            run("keypress", "ENTER")
+            until(lambda: any(m[:2] == ["svl-time:normal", "submit"] for m in messages))
+            submitted = next(m for m in messages if m[:2] == ["svl-time:normal", "submit"])
+            assert json.loads(submitted[2])[0] == "00:00:02", submitted
+            run("seek", 2, "absolute+exact")
+            until(lambda: float(prop("time-pos") or 0) >= 2)
+            run("keypress", "MBTN_FORWARD")
+            until(lambda: len(loaded) == 2)
+            result = {"headless": True, "soundOutput": False, "wheelVolume": True, "primaryAndSecondaryTracks": True, "subtitleStyle": True, "chapterJump": True, "fileAndPlaylistLoop": True, "abLoopWrapped": True, "timePromptSubmit": submitted, "sideButtonNext": True}
+            (root / "controls.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+            print("PASS: real libmpv mouse wheel/side button, dual subtitles/style, chapter seek, file/list/A-B loops and native time input submission; no window or sound.")
+            return
         run("set", "keep-open", "always")
         assert prop("keep-open") == "always"
         run("set", "keep-open", "yes")

@@ -1,3 +1,4 @@
+mod menu;
 mod mpv;
 
 use crate::{
@@ -19,8 +20,10 @@ use std::{
 use tauri::{Emitter, Manager};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-        Graphics::Gdi::{CombineRgn, CreateRectRgn, DeleteObject, RGN_DIFF, SetWindowRgn},
+        Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
+        Graphics::Gdi::{
+            CombineRgn, CreateRectRgn, DeleteObject, RGN_DIFF, ScreenToClient, SetWindowRgn,
+        },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Input::KeyboardAndMouse::{
@@ -40,6 +43,16 @@ pub struct WatchTrack {
     pub kind: String,
     pub title: String,
     pub selected: bool,
+    pub secondary: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct WatchChapter {
+    pub index: usize,
+    pub title: String,
+    pub position: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -82,6 +95,10 @@ pub struct PlayerSnapshot {
     pub frame: Option<WatchFrame>,
     pub playback: PlaybackState,
     pub playlist_index: Option<usize>,
+    pub chapters: Vec<WatchChapter>,
+    pub chapter_index: Option<usize>,
+    pub loop_a: Option<f64>,
+    pub loop_b: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -108,7 +125,11 @@ pub struct WatchViewport {
 type Reply = Sender<Result<PlayerSnapshot, AppError>>;
 enum Message {
     Key(Option<String>),
-    Mouse(f64, f64, Option<bool>),
+    Mouse(f64, f64, Option<(String, bool)>),
+    Wheel(f64, f64, String, f64),
+    ContextMenu,
+    MenuAction(String, WatchControl),
+    MenuClosed(Option<String>),
     Open(WatchMedia, Reply),
     Playlist(PlaylistChange, Vec<PlaylistItem>, Reply),
     Prepared(u64, u64, Result<WatchMedia, AppError>),
@@ -138,11 +159,38 @@ unsafe extern "system" fn host_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     unsafe {
-        if matches!(message, WM_MOUSEMOVE | WM_LBUTTONDOWN | WM_LBUTTONUP) {
-            if message == WM_LBUTTONDOWN {
+        if matches!(message, WM_RBUTTONDOWN | WM_RBUTTONUP) {
+            if message == WM_RBUTTONDOWN {
+                let _ = SetFocus(Some(hwnd));
+            }
+            if message == WM_RBUTTONUP
+                && let Some(sender) = KEYBOARD
+                    .get()
+                    .and_then(|k| k.lock().ok())
+                    .and_then(|s| s.clone())
+            {
+                let _ = sender.send(Message::ContextMenu);
+            }
+            return LRESULT(0);
+        }
+        if matches!(
+            message,
+            WM_MOUSEMOVE
+                | WM_LBUTTONDOWN
+                | WM_LBUTTONUP
+                | WM_MBUTTONDOWN
+                | WM_MBUTTONUP
+                | WM_XBUTTONDOWN
+                | WM_XBUTTONUP
+                | WM_MOUSEWHEEL
+                | WM_MOUSEHWHEEL
+        ) {
+            if matches!(message, WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN) {
                 let _ = SetFocus(Some(hwnd));
                 SetCapture(hwnd);
-            } else if message == WM_LBUTTONUP && GetCapture() == hwnd {
+            } else if matches!(message, WM_LBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP)
+                && GetCapture() == hwnd
+            {
                 let _ = ReleaseCapture();
             }
             if let Some(lock) = KEYBOARD.get()
@@ -155,19 +203,59 @@ unsafe extern "system" fn host_proc(
                 if GetClientRect(hwnd, &mut client).is_err() {
                     return LRESULT(0);
                 }
-                let x = lparam.0 as i16 as f64 / (client.right - client.left).max(1) as f64;
-                let y = (lparam.0 >> 16) as i16 as f64 / (client.bottom - client.top).max(1) as f64;
+                let mut point = POINT {
+                    x: lparam.0 as i16 as i32,
+                    y: (lparam.0 >> 16) as i16 as i32,
+                };
+                let wheel = matches!(message, WM_MOUSEWHEEL | WM_MOUSEHWHEEL);
+                if wheel {
+                    let _ = ScreenToClient(hwnd, &mut point);
+                }
+                let x = point.x as f64 / (client.right - client.left).max(1) as f64;
+                let y = point.y as f64 / (client.bottom - client.top).max(1) as f64;
+                if wheel {
+                    let delta = ((wparam.0 >> 16) as i16) as f64 / 120.0;
+                    let key = if message == WM_MOUSEWHEEL {
+                        if delta > 0.0 {
+                            "WHEEL_UP"
+                        } else {
+                            "WHEEL_DOWN"
+                        }
+                    } else if delta > 0.0 {
+                        "WHEEL_RIGHT"
+                    } else {
+                        "WHEEL_LEFT"
+                    };
+                    let _ = sender.send(Message::Wheel(x, y, mouse_key(key), delta.abs()));
+                    return LRESULT(0);
+                }
                 let _ = sender.send(Message::Mouse(
                     x,
                     y,
                     match message {
-                        WM_LBUTTONDOWN => Some(true),
-                        WM_LBUTTONUP => Some(false),
+                        WM_LBUTTONDOWN | WM_LBUTTONUP => {
+                            Some((mouse_key("MBTN_LEFT"), message == WM_LBUTTONDOWN))
+                        }
+                        WM_MBUTTONDOWN | WM_MBUTTONUP => {
+                            Some((mouse_key("MBTN_MID"), message == WM_MBUTTONDOWN))
+                        }
+                        WM_XBUTTONDOWN | WM_XBUTTONUP => Some((
+                            mouse_key(if (wparam.0 >> 16) as u16 == 1 {
+                                "MBTN_BACK"
+                            } else {
+                                "MBTN_FORWARD"
+                            }),
+                            message == WM_XBUTTONDOWN,
+                        )),
                         _ => None,
                     },
                 ));
             }
-            return LRESULT(0);
+            return LRESULT(if matches!(message, WM_XBUTTONDOWN | WM_XBUTTONUP) {
+                1
+            } else {
+                0
+            });
         }
         if matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) {
             let up = matches!(message, WM_KEYUP | WM_SYSKEYUP);
@@ -188,6 +276,20 @@ unsafe extern "system" fn host_proc(
             return LRESULT(1);
         }
         DefWindowProcW(hwnd, message, wparam, lparam)
+    }
+}
+
+unsafe fn mouse_key(key: &str) -> String {
+    unsafe {
+        let mut keys = [0u8; 256];
+        let _ = GetKeyboardState(&mut keys);
+        format!(
+            "{}{}{}{}",
+            if keys[0x11] & 0x80 != 0 { "Ctrl+" } else { "" },
+            if keys[0x12] & 0x80 != 0 { "Alt+" } else { "" },
+            if keys[0x10] & 0x80 != 0 { "Shift+" } else { "" },
+            key
+        )
     }
 }
 
@@ -216,6 +318,7 @@ unsafe fn native_key(vk: usize, scan: LPARAM) -> Option<String> {
             0x2e => Some("DEL"),
             0x0d => Some("ENTER"),
             0x09 => Some("TAB"),
+            0x5d => Some("MENU"),
             _ => None,
         };
         let key = if let Some(key) = special {
@@ -561,6 +664,9 @@ struct Actor {
     load_generation: u64,
     progress: Option<WatchProgress>,
     progress_at: Instant,
+    menu_open: bool,
+    subtitle_dialog_open: bool,
+    refresh_after_seek: bool,
 }
 fn failure(detail: impl Into<String>) -> AppError {
     AppError::new("player_unavailable", detail)
@@ -580,6 +686,32 @@ impl Actor {
             ("speed", json!(playback.preferences.speed)),
             ("volume", json!(playback.preferences.volume)),
             ("mute", json!(playback.preferences.muted)),
+            ("sub-scale", json!(playback.preferences.subtitle_scale)),
+            ("sub-pos", json!(playback.preferences.subtitle_position)),
+            (
+                "sub-visibility",
+                json!(playback.preferences.subtitle_visible),
+            ),
+            (
+                "secondary-sub-visibility",
+                json!(playback.preferences.secondary_subtitle_visible),
+            ),
+            (
+                "loop-file",
+                json!(if playback.preferences.loop_mode == "file" {
+                    "inf"
+                } else {
+                    "no"
+                }),
+            ),
+            (
+                "loop-playlist",
+                json!(if playback.preferences.loop_mode == "playlist" {
+                    "inf"
+                } else {
+                    "no"
+                }),
+            ),
             (
                 "keep-open",
                 json!(if playback.preferences.auto_next {
@@ -630,13 +762,22 @@ impl Actor {
             load_generation: 0,
             progress: None,
             progress_at: Instant::now(),
+            menu_open: false,
+            subtitle_dialog_open: false,
+            refresh_after_seek: false,
         }
     }
     fn receive(&mut self, message: Message) {
         match message {
             Message::Key(key) => {
                 if let Some(key) = key {
-                    if matches!(key.as_str(), "q" | "Q") {
+                    if matches!(key.as_str(), "MENU" | "Shift+F10") {
+                        if let Err(error) = self.show_menu() {
+                            self.state.error = Some(error.message);
+                        }
+                    } else if matches!(key.as_str(), "q" | "Q")
+                        && !self.engine.flag("user-data/mpv/console/open")
+                    {
                         let _ = self.control(WatchControl {
                             action: "close".into(),
                             value: None,
@@ -651,6 +792,14 @@ impl Actor {
                             expected_revision: None,
                         });
                     } else {
+                        if !self.engine.flag("user-data/mpv/console/open")
+                            && ["LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN", "HOME"]
+                                .iter()
+                                .any(|k| key.ends_with(k))
+                        {
+                            self.refresh_after_seek =
+                                self.state.loaded && self.engine.flag("pause");
+                        }
                         if let Err(error) = self.engine.command(json!(["keydown", key])) {
                             self.state.error = Some(error.message);
                         }
@@ -669,13 +818,50 @@ impl Actor {
                 if let Err(error) = self.engine.command(json!(["mouse", x, y])) {
                     self.state.error = Some(error.message);
                 }
-                if let Some(down) = button {
+                if let Some((key, down)) = button {
+                    if down && self.state.loaded && self.engine.flag("pause") {
+                        self.refresh_after_seek = true;
+                    }
                     if let Err(error) = self
                         .engine
-                        .command(json!([if down { "keydown" } else { "keyup" }, "MBTN_LEFT"]))
+                        .command(json!([if down { "keydown" } else { "keyup" }, key]))
                     {
                         self.state.error = Some(error.message);
                     }
+                }
+            }
+            Message::Wheel(x, y, key, scale) => {
+                if key.ends_with("WHEEL_LEFT") || key.ends_with("WHEEL_RIGHT") {
+                    self.refresh_after_seek = self.state.loaded && self.engine.flag("pause");
+                }
+                let _ = self.engine.command(json!([
+                    "mouse",
+                    (x * self.viewport.0 as f64).round() as i32,
+                    (y * self.viewport.1 as f64).round() as i32
+                ]));
+                if let Err(error) = self.engine.command(json!(["keypress", key, scale])) {
+                    self.state.error = Some(error.message);
+                }
+            }
+            Message::ContextMenu => {
+                if let Err(error) = self.show_menu() {
+                    self.state.error = Some(error.message);
+                }
+            }
+            Message::MenuAction(session, control) => {
+                if session == self.state.session_id
+                    && let Err(error) = self.control(control)
+                {
+                    let _ = self
+                        .engine
+                        .command(json!(["show-text", error.message, 3000]));
+                    self.state.error = Some(error.message);
+                }
+            }
+            Message::MenuClosed(error) => {
+                self.menu_open = false;
+                if let Some(error) = error {
+                    self.state.error = Some(error);
                 }
             }
             Message::Open(media, reply) => {
@@ -991,6 +1177,13 @@ impl Actor {
         self.save_progress();
         self.invalidate();
         self.load_generation += 1;
+        self.refresh_after_seek = false;
+        let _ = self
+            .engine
+            .command(json!(["set_property", "ab-loop-a", "no"]));
+        let _ = self
+            .engine
+            .command(json!(["set_property", "ab-loop-b", "no"]));
         self.state.session_id = uuid::Uuid::new_v4().to_string();
         self.state.loaded = false;
         self.state.playing = false;
@@ -1069,6 +1262,164 @@ impl Actor {
         }
         self.state.error = None;
         match control.action.as_str() {
+            "subtitle_dialog" => {
+                self.clock.cancel();
+                self.pending_display = false;
+                self.state.remaining_seconds = None;
+                self.state.status = "cancelled".into();
+                self.subtitle_dialog_open = true;
+                self.handle
+                    .emit_to(
+                        "main",
+                        "watch_subtitle_file_requested",
+                        json!({"revision":self.state.revision}),
+                    )
+                    .map_err(|e| failure(e.to_string()))?;
+            }
+            "subtitle_dialog_closed" => self.subtitle_dialog_open = false,
+            "menu" => self.show_menu()?,
+            "playlist_previous" | "playlist_next" => self.playlist(
+                PlaylistChange {
+                    action: if control.action == "playlist_next" {
+                        "next"
+                    } else {
+                        "previous"
+                    }
+                    .into(),
+                    paths: vec![],
+                    index: None,
+                    destination: None,
+                },
+                vec![],
+            )?,
+            "seek_prompt" => {
+                self.clock.cancel();
+                self.pending_display = false;
+                self.state.remaining_seconds = None;
+                self.state.status = "cancelled".into();
+                self.engine.time_prompt(
+                    &self.state.session_id,
+                    self.engine.number("time-pos").unwrap_or(0.0),
+                )?;
+            }
+            "seek_time" => {
+                let position = crate::playback::parse_time(control.text.as_deref().unwrap_or(""))?;
+                if position > self.engine.number("duration").unwrap_or(0.0) {
+                    return Err(failure("跳转位置超过视频时长。"));
+                }
+                self.refresh_after_seek = self.engine.flag("pause");
+                self.invalidate();
+                self.engine
+                    .command(json!(["seek", position, "absolute+exact"]))?;
+            }
+            "seek_relative" | "subtitle_seek" | "chapter" => {
+                let value = control
+                    .value
+                    .filter(|v| v.is_finite())
+                    .ok_or_else(|| failure("缺少有效的定位位置"))?;
+                self.refresh_after_seek = self.engine.flag("pause");
+                self.invalidate();
+                let command = match control.action.as_str() {
+                    "seek_relative" => json!(["seek", value, "relative+exact"]),
+                    "subtitle_seek" => {
+                        let target = if self.engine.number("sid").is_some() {
+                            "primary"
+                        } else if self.engine.number("secondary-sid").is_some() {
+                            "secondary"
+                        } else {
+                            return Err(failure("当前没有可定位的字幕。"));
+                        };
+                        json!(["sub-seek", value as i64, target])
+                    }
+                    _ => json!(["set_property", "chapter", value as i64]),
+                };
+                self.engine.command(command)?;
+                if control.action == "subtitle_seek" && control.value == Some(0.0) {
+                    self.refresh_after_seek = false;
+                    self.engine
+                        .command(json!(["set_property", "pause", false]))?;
+                    self.state.playing = true;
+                    self.state.status = "playing".into();
+                }
+            }
+            "loop_mode" => {
+                let mode = control.text.as_deref().unwrap_or("none");
+                if !matches!(mode, "none" | "file" | "playlist") {
+                    return Err(failure("未知循环模式"));
+                }
+                self.engine.command(json!([
+                    "set_property",
+                    "loop-file",
+                    if mode == "file" { "inf" } else { "no" }
+                ]))?;
+                self.engine.command(json!([
+                    "set_property",
+                    "loop-playlist",
+                    if mode == "playlist" { "inf" } else { "no" }
+                ]))?;
+                self.engine
+                    .command(json!(["set_property", "ab-loop-a", "no"]))?;
+                self.engine
+                    .command(json!(["set_property", "ab-loop-b", "no"]))?;
+                if mode == "playlist" {
+                    self.state.playback.preferences.auto_next = true;
+                    self.engine
+                        .command(json!(["set_property", "keep-open", "yes"]))?;
+                }
+            }
+            "loop_a" | "loop_b" | "loop_clear" => {
+                if control.action == "loop_clear" {
+                    self.engine
+                        .command(json!(["set_property", "ab-loop-a", "no"]))?;
+                    self.engine
+                        .command(json!(["set_property", "ab-loop-b", "no"]))?;
+                } else {
+                    let position = self
+                        .engine
+                        .number("time-pos")
+                        .ok_or_else(|| failure("请先打开视频"))?;
+                    if control.action == "loop_b"
+                        && self
+                            .engine
+                            .number("ab-loop-a")
+                            .is_none_or(|a| a >= position)
+                    {
+                        return Err(failure("请先设置 A，B 必须在 A 之后。"));
+                    }
+                    if control.action == "loop_a" {
+                        self.engine
+                            .command(json!(["set_property", "ab-loop-b", "no"]))?;
+                    }
+                    self.engine.command(json!([
+                        "set_property",
+                        if control.action == "loop_a" {
+                            "ab-loop-a"
+                        } else {
+                            "ab-loop-b"
+                        },
+                        position
+                    ]))?;
+                }
+            }
+            "subtitle_scale"
+            | "subtitle_position"
+            | "subtitle_visible"
+            | "secondary_subtitle_visible" => {
+                let paused = self.state.loaded && self.engine.flag("pause");
+                let value = control
+                    .value
+                    .filter(|v| v.is_finite())
+                    .ok_or_else(|| failure("缺少字幕设置值"))?;
+                let (key, value) = match control.action.as_str() {
+                    "subtitle_scale" => ("sub-scale", json!(value.clamp(0.5, 3.0))),
+                    "subtitle_position" => ("sub-pos", json!(value.clamp(0.0, 100.0))),
+                    "subtitle_visible" => ("sub-visibility", json!(value != 0.0)),
+                    _ => ("secondary-sub-visibility", json!(value != 0.0)),
+                };
+                self.invalidate();
+                self.engine.command(json!(["set_property", key, value]))?;
+                self.refresh_paused(paused);
+            }
             "speed" => {
                 let speed = control
                     .value
@@ -1086,6 +1437,10 @@ impl Actor {
             }
             "auto_next" => {
                 self.state.playback.preferences.auto_next = control.value.unwrap_or(1.0) != 0.0;
+                if !self.state.playback.preferences.auto_next {
+                    self.engine
+                        .command(json!(["set_property", "loop-playlist", "no"]))?;
+                }
                 self.engine.command(json!([
                     "set_property",
                     "keep-open",
@@ -1121,6 +1476,7 @@ impl Actor {
                 }
             }
             "seek" => {
+                self.refresh_after_seek = self.state.loaded && self.engine.flag("pause");
                 self.invalidate();
                 let position = control
                     .value
@@ -1145,12 +1501,15 @@ impl Actor {
                         .map_err(|e| failure(e.to_string()))?;
                 }
             }
-            "audio" | "subtitle" => {
+            "audio" | "subtitle" | "secondary_subtitle" => {
+                let paused = self.state.loaded && self.engine.flag("pause");
                 self.invalidate();
                 let key = if control.action == "audio" {
                     "aid"
-                } else {
+                } else if control.action == "subtitle" {
                     "sid"
+                } else {
+                    "secondary-sid"
                 };
                 self.engine.command(json!([
                     "set_property",
@@ -1160,19 +1519,24 @@ impl Actor {
                         .map(|n| json!(n as i64))
                         .unwrap_or(json!("no"))
                 ]))?;
+                self.refresh_paused(paused);
             }
             "subtitle_delay" => {
+                let paused = self.state.loaded && self.engine.flag("pause");
                 self.invalidate();
                 self.engine.command(json!([
                     "set_property",
                     "sub-delay",
                     control.value.unwrap_or(0.0)
                 ]))?;
+                self.refresh_paused(paused);
             }
             "subtitle_file" => {
+                let paused = self.state.loaded && self.engine.flag("pause");
                 self.invalidate();
                 let file = control.text.ok_or_else(|| failure("缺少字幕文件"))?;
                 self.engine.command(json!(["sub-add", file, "select"]))?;
+                self.refresh_paused(paused);
             }
             "subtitle_asset" => {
                 let id = control.text.ok_or_else(|| failure("缺少字幕资产"))?;
@@ -1380,6 +1744,58 @@ impl Actor {
             _ => return Err(failure("未知播放操作")),
         }
         self.sync_preferences()?;
+        self.refresh_controls();
+        if matches!(
+            control.action.as_str(),
+            "audio"
+                | "subtitle"
+                | "secondary_subtitle"
+                | "subtitle_delay"
+                | "subtitle_file"
+                | "subtitle_scale"
+                | "subtitle_position"
+                | "subtitle_visible"
+                | "secondary_subtitle_visible"
+        ) {
+            self.save_progress();
+        }
+        Ok(())
+    }
+    fn refresh_paused(&mut self, paused: bool) {
+        if paused && !self.engine.flag("eof-reached") {
+            self.user_pause = true;
+            self.pending_context = Some(Instant::now() + Duration::from_millis(60));
+        }
+    }
+    fn show_menu(&mut self) -> Result<(), AppError> {
+        if self.menu_open || !self.state.loaded {
+            return Ok(());
+        }
+        self.clock.cancel();
+        self.pending_display = false;
+        self.state.remaining_seconds = None;
+        self.state.status = "cancelled".into();
+        self.refresh_controls();
+        let state = self.state.clone();
+        let sender = self.sender.clone();
+        let host = self.window;
+        let fullscreen = self.fullscreen;
+        self.menu_open = true;
+        if let Err(error) = self.handle.run_on_main_thread(move || {
+            let result = menu::popup(host, &state, fullscreen);
+            let error = match result {
+                Ok(Some(control)) => {
+                    let _ = sender.send(Message::MenuAction(state.session_id, control));
+                    None
+                }
+                Ok(None) => None,
+                Err(error) => Some(error.message),
+            };
+            let _ = sender.send(Message::MenuClosed(error));
+        }) {
+            self.menu_open = false;
+            return Err(failure(error.to_string()));
+        }
         Ok(())
     }
     fn loaded(&mut self) {
@@ -1671,8 +2087,37 @@ impl Actor {
                 }) => self.prepare_file(hook),
                 Some(mpv::PlayerEvent { id: 8, .. }) => self.loaded(),
                 Some(mpv::PlayerEvent { id: 20, .. }) => {
+                    let refresh = std::mem::take(&mut self.refresh_after_seek);
                     self.invalidate();
                     self.state.playing = self.state.loaded && !self.engine.flag("pause");
+                    self.refresh_paused(refresh && self.state.loaded && self.engine.flag("pause"));
+                }
+                Some(mpv::PlayerEvent {
+                    id: 16, messages, ..
+                }) => {
+                    if messages
+                        .first()
+                        .is_some_and(|name| name == &format!("svl-time:{}", self.state.session_id))
+                        && messages.get(1).is_some_and(|event| event == "submit")
+                    {
+                        let text = messages
+                            .get(2)
+                            .and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
+                            .and_then(|v| v.get(0).and_then(|v| v.as_str()).map(String::from));
+                        if let Some(text) = text
+                            && let Err(error) = self.control(WatchControl {
+                                action: "seek_time".into(),
+                                text: Some(text),
+                                value: None,
+                                expected_revision: None,
+                            })
+                        {
+                            let _ = self
+                                .engine
+                                .command(json!(["show-text", error.message, 3000]));
+                            self.state.error = Some(error.message);
+                        }
+                    }
                 }
                 Some(mpv::PlayerEvent {
                     id: 7,
@@ -1724,7 +2169,10 @@ impl Actor {
                 IsWindowVisible(HWND(self.window as *mut _)).as_bool()
                     && !IsIconic(GetAncestor(HWND(self.window as *mut _), GA_ROOT)).as_bool()
             };
-        if !visible {
+        let interacting = self.menu_open
+            || self.subtitle_dialog_open
+            || self.engine.flag("user-data/mpv/console/open");
+        if !visible || interacting {
             self.clock.cancel();
             self.pending_display = false;
         }
@@ -1753,11 +2201,13 @@ impl Actor {
             match self.engine.draw(self.viewport.0, self.viewport.1, force) {
                 Ok(true) if self.pending_display => {
                     self.pending_display = false;
-                    if self.user_pause && self.engine.flag("pause") {
+                    if self.user_pause && self.engine.flag("pause") && !interacting {
                         self.clock.arm(self.state.revision, Instant::now());
                         self.state.translation_visible_at =
                             Some(chrono::Utc::now().timestamp_millis());
                         self.state.status = "counting".into();
+                    } else if interacting {
+                        self.state.status = "cancelled".into();
                     }
                 }
                 Err(error) => {
@@ -1881,6 +2331,9 @@ impl Actor {
                 self.progress_at = now;
             }
             self.state.subtitle_delay = self.engine.number("sub-delay").unwrap_or(0.0);
+            self.refresh_controls();
+            let primary_sub = self.engine.number("sid").map(|v| v as i64);
+            let secondary_sub = self.engine.number("secondary-sid").map(|v| v as i64);
             self.state.tracks = self
                 .engine
                 .property("track-list")
@@ -1899,7 +2352,12 @@ impl Actor {
                                 )
                                 .trim()
                                 .to_owned(),
-                                selected: t["selected"].as_bool().unwrap_or(false),
+                                selected: if t["type"] == "sub" {
+                                    t["id"].as_i64() == primary_sub
+                                } else {
+                                    t["selected"].as_bool().unwrap_or(false)
+                                },
+                                secondary: t["type"] == "sub" && t["id"].as_i64() == secondary_sub,
                             })
                         })
                         .collect()
@@ -1934,6 +2392,21 @@ impl Actor {
         p.speed = self.engine.number("speed").unwrap_or(p.speed);
         p.volume = self.engine.number("volume").unwrap_or(p.volume);
         p.muted = self.engine.flag("mute");
+        p.subtitle_scale = self.engine.number("sub-scale").unwrap_or(p.subtitle_scale);
+        p.subtitle_position = self.engine.number("sub-pos").unwrap_or(p.subtitle_position);
+        p.subtitle_visible = self.engine.flag("sub-visibility");
+        p.secondary_subtitle_visible = self.engine.flag("secondary-sub-visibility");
+        let active = |v: serde_json::Value| {
+            !v.is_null() && v != json!("no") && v != json!(0) && v != json!(false)
+        };
+        p.loop_mode = if active(self.engine.property("loop-file")) {
+            "file"
+        } else if active(self.engine.property("loop-playlist")) {
+            "playlist"
+        } else {
+            "none"
+        }
+        .into();
         if old != *p {
             if old.speed != p.speed {
                 let _ = self.engine.command(json!([
@@ -1947,6 +2420,32 @@ impl Actor {
                 .save_playback_state(&self.state.playback)?;
         }
         Ok(())
+    }
+    fn refresh_controls(&mut self) {
+        self.state.loop_a = self.engine.number("ab-loop-a");
+        self.state.loop_b = self.engine.number("ab-loop-b");
+        self.state.chapter_index = self
+            .engine
+            .number("chapter")
+            .filter(|n| *n >= 0.0)
+            .map(|n| n as usize);
+        self.state.chapters = self
+            .engine
+            .property("chapter-list")
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+            .map(|(index, c)| WatchChapter {
+                index,
+                title: c["title"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .unwrap_or_else(|| format!("第 {} 章", index + 1)),
+                position: c["time"].as_f64().unwrap_or(0.0),
+            })
+            .collect();
     }
     fn current_progress(&self) -> Option<WatchProgress> {
         if !self.state.loaded

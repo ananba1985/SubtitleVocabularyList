@@ -12,6 +12,11 @@ pub struct PlaybackPreferences {
     pub volume: f64,
     pub muted: bool,
     pub auto_next: bool,
+    pub subtitle_scale: f64,
+    pub subtitle_position: f64,
+    pub subtitle_visible: bool,
+    pub secondary_subtitle_visible: bool,
+    pub loop_mode: String,
 }
 impl Default for PlaybackPreferences {
     fn default() -> Self {
@@ -20,7 +25,43 @@ impl Default for PlaybackPreferences {
             volume: 100.0,
             muted: false,
             auto_next: true,
+            subtitle_scale: 1.0,
+            subtitle_position: 100.0,
+            subtitle_visible: true,
+            secondary_subtitle_visible: true,
+            loop_mode: "none".into(),
         }
+    }
+}
+
+/// A timestamp from the native mpv input prompt; bare numbers mean seconds.
+pub fn parse_time(text: &str) -> Result<f64, AppError> {
+    let parts = text.trim().split(':').collect::<Vec<_>>();
+    let invalid = || {
+        AppError::new(
+            "invalid_input",
+            "请输入秒数或 时:分:秒，例如 90、01:30、00:01:30。",
+        )
+    };
+    if parts.is_empty() || parts.len() > 3 {
+        return Err(invalid());
+    }
+    let mut seconds = 0.0;
+    for (index, part) in parts.iter().enumerate() {
+        let number: f64 = part.parse().map_err(|_| invalid())?;
+        if !number.is_finite()
+            || number < 0.0
+            || (index > 0 && number >= 60.0)
+            || (index + 1 < parts.len() && number.fract() != 0.0)
+        {
+            return Err(invalid());
+        }
+        seconds = seconds * 60.0 + number;
+    }
+    if seconds.is_finite() {
+        Ok(seconds)
+    } else {
+        Err(invalid())
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

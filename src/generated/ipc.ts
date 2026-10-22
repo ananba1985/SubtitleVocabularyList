@@ -160,11 +160,11 @@ export type Page<T> = { items: Array<T>, total: number, };
 
 export type PixelRect = { x: number, y: number, width: number, height: number, };
 
-export type PlaybackPreferences = { speed: number, volume: number, muted: boolean, autoNext: boolean, };
+export type PlaybackPreferences = { speed: number, volume: number, muted: boolean, autoNext: boolean, subtitleScale: number, subtitlePosition: number, subtitleVisible: boolean, secondarySubtitleVisible: boolean, loopMode: string, };
 
 export type PlaybackState = { preferences: PlaybackPreferences, playlist: Array<PlaylistItem>, currentPath: string | null, };
 
-export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, frame: WatchFrame | null, playback: PlaybackState, playlistIndex: number | null, };
+export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, frame: WatchFrame | null, playback: PlaybackState, playlistIndex: number | null, chapters: Array<WatchChapter>, chapterIndex: number | null, loopA: number | null, loopB: number | null, };
 
 export type PlaylistChange = { action: string, paths: Array<string>, index: number | null, destination: number | null, };
 
@@ -306,6 +306,8 @@ export type TransitionAssessment = { sessionId: string, expectedRevision: number
 
 export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "watch" | "practice" | "reviews" | "leech" | "sync" | "tasks" | "settings";
 
+export type WatchChapter = { index: number, title: string, position: number, };
+
 export type WatchClipRange = { startMs: number, endMs: number, };
 
 export type WatchContext = { revision: number, sourceId: string, exampleId: string, text: string, translation: string, translationRevision: string, startMs: number, endMs: number, textSource: string, previous: boolean, locationKey: string, mediaSha256: string, audioStream: number | null, preciseTiming: boolean, subtitleStartMs: number, subtitleEndMs: number, };
@@ -316,7 +318,7 @@ export type WatchFrame = { path: string, width: number, height: number, position
 
 export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, audioId: number | null, subtitleDelay: number, secondarySubtitleId: number | null, externalSubtitles: Array<string>, };
 
-export type WatchTrack = { id: number, kind: string, title: string, selected: boolean, };
+export type WatchTrack = { id: number, kind: string, title: string, selected: boolean, secondary: boolean, };
 
 export type WatchViewport = { x: number, y: number, width: number, height: number, visible: boolean, };
 

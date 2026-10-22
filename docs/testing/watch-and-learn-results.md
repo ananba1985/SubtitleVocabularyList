@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-WATCH-001 |
-| 文档版本 | 0.5 |
+| 文档版本 | 0.6 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 0.9.0 原生核心与 0.11／0.13 后台正常数据检查通过；新增窗口及真实在线服务由用户后续人工验收 |
 | 依据 | [FR-25 至 FR-29](../requirements/PRD.md)、[设计](../design/watch-and-learn.md)、[开发计划](../planning/watch-and-learn-plan.md) |
@@ -119,6 +119,22 @@ cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --locked --
 
 TC-62 的该数据子流程通过；用户有空时仍需按 §5.2 在真实窗口操作区间、试听和确认收录，并确认播放音频时 OCR 原句不消失。合成素材是静音，不能用它确认真实对白听感；需要声音时由用户选自己的对白片段操作。本轮没有 Computer Use、启动客户端或打包，其他人工／服务边界保持。
 
+### 5.5 0.13.2 旧选轨剧集直接观看
+
+完成核对时发现：旧版显式选音轨／字幕的来源 `fingerprint` 是视频摘要与导入选项的组合摘要；没有新字幕清单时，`watch_media` 把它当作纯文件摘要比较，会误报视频内容不一致。当前新导入有字幕清单，先前正常样本没有覆盖这个旧资料入口。
+
+修正后读取已保存 ImportedMedia，复用本地补字幕已有的 `legacy_fingerprint_matches`，用真实文件摘要及记录的选择核对旧身份。核对通过后继续使用原来源及对白，不重导、不创建字幕清单，也不改写原 `fingerprint`。不能核对的身份仍报冲突；本次不执行额外异常或兼容矩阵。
+
+唯一必要正常检查是 `src-tauri/examples/watch_imported_source_acceptance.rs`：既有 8 秒合成静音视频，构造真实 `video-options-v1` 格式的音轨 1／字幕 2／embedded 导入记录，不带 SubtitleBundle；按来源 ID 打开，读取 1.5 秒的原英文及已保存中文。
+
+```powershell
+cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --locked --example watch_imported_source_acceptance -- output/watch-imported-source-acceptance/Data output/subtitle-import-acceptance/bilingual.mkv
+```
+
+实际通过，结果保留于 `output/watch-imported-source-acceptance/result.json`。原来源 `f35b8a81-b61a-418c-acba-b251b9de0ad9`、来源摘要 `a4016cbba7c82a6a12246a664957a73fcfb8117018077641cbe7fa51c37cd873` 保持，媒体摘要仍为已知 `61ca3097...443d457`；英文 `I will arrive tomorrow.` 对应原中文“我明天会到。”，音／字幕索引为 1／2。核对原来源摘要／SourceSummary 和个人 keep 完整词条 JSON 均保持，未创建字幕清单、未请求模型、未播放声音。该入口拒绝重置已有命名测试库。
+
+本轮前端／IPC／版本构建检查通过；这是旧资料进入播放适配层的核心正常证据，不替代实际视频／音频窗口验收，不代表已验证所有旧外置字幕路径及格式。没有启动客户端、使用 Computer Use、改动日常 Data 或打包。
+
 ## 6 修订记录
 
 | 版本 | 日期 | 内容 |
@@ -130,3 +146,5 @@ TC-62 的该数据子流程通过；用户有空时仍需按 §5.2 在真实窗�
 | 0.4 | 2026-10-21 | 关联在线字幕数据及偏移增量，保留人工窗口、实际服务和发布材料待确认 |
 
 | 0.5 | 2026-10-21 | 记录 0.13.1 手动 OCR 两秒原声保存、旧释义保持及自动快照不变，真实听感待确认 |
+
+| 0.6 | 2026-10-21 | 记录旧选轨资料无需重导的正常核心结果、原来源与个人条目保持，人工验收仍未结束 |

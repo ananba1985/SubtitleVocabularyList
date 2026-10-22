@@ -713,7 +713,7 @@ impl Store {
 
 // Old explicit-track imports hashed their options together with the video. Verify
 // those recorded choices instead of treating an options digest as a media digest.
-fn legacy_fingerprint_matches(
+pub(crate) fn legacy_fingerprint_matches(
     expected: &str,
     hash: &str,
     input: &Path,

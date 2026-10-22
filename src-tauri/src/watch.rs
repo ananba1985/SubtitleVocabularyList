@@ -147,19 +147,28 @@ impl Store {
         let media_sha256 = crate::corpus::file_hash(&file)?;
         if let Some((id, _, title, fingerprint, corpus, text_source)) = record {
             let subtitles = self.subtitle_bundle(&id)?;
-            let expected = subtitles
-                .as_ref()
-                .map(|s| s.media_sha256.as_str())
-                .unwrap_or(&fingerprint);
-            if media_sha256 != expected {
+            let imported = corpus
+                .and_then(|p| std::fs::File::open(p).ok())
+                .and_then(|f| serde_json::from_reader::<_, ImportedMedia>(f).ok());
+            let matches = if let Some(bundle) = &subtitles {
+                bundle.media_sha256 == media_sha256
+            } else {
+                fingerprint == media_sha256
+                    || imported.as_ref().is_some_and(|data| {
+                        crate::subtitles::legacy_fingerprint_matches(
+                            &fingerprint,
+                            &media_sha256,
+                            &file,
+                            data,
+                        )
+                    })
+            };
+            if !matches {
                 return Err(AppError::new(
                     "conflict",
                     "视频内容与导入资料不一致，请重新导入后再使用原句译文。",
                 ));
             }
-            let imported = corpus
-                .and_then(|p| std::fs::File::open(p).ok())
-                .and_then(|f| serde_json::from_reader::<_, ImportedMedia>(f).ok());
             let examples = {
                 let db = self.connection()?;
                 let mut q = db.prepare("SELECT id,text,start_ms,end_ms,revision FROM examples WHERE source_id=? AND archived=0 AND start_ms IS NOT NULL AND end_ms IS NOT NULL ORDER BY start_ms,end_ms,id")?;

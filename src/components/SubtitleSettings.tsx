@@ -1,19 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { call, message, uid, waitTask } from "../api";
 import type { SubtitleInfo } from "../generated/ipc";
+import { OnlineSubtitlePanel } from "./OnlineSubtitlePanel";
 
 export function SubtitleSettings({
   sourceId,
   onChanged,
+  playback = true,
 }: {
   sourceId: string;
   onChanged: () => Promise<void>;
+  playback?: boolean;
 }) {
   const [info, setInfo] = useState<SubtitleInfo | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [progress, setProgress] = useState("");
+  const currentSource = useRef(sourceId),
+    alive = useRef(true);
+  currentSource.current = sourceId;
+  const apply = async (value: SubtitleInfo) => {
+    if (!alive.current || currentSource.current !== sourceId) return;
+    setInfo(value);
+    await onChanged();
+  };
   useEffect(() => {
+    alive.current = true;
     let disposed = false;
     setInfo(null);
     setError("");
@@ -27,6 +39,7 @@ export function SubtitleSettings({
         });
     return () => {
       disposed = true;
+      alive.current = false;
     };
   }, [sourceId]);
   async function prepare() {
@@ -38,8 +51,7 @@ export function SubtitleSettings({
         sourceId,
         operationId: uid(),
       });
-      setInfo(await waitTask(task, (t) => setProgress(t.message)));
-      await onChanged();
+      await apply(await waitTask(task, (t) => setProgress(t.message)));
     } catch (e) {
       setError(message(e));
     } finally {
@@ -62,13 +74,12 @@ export function SubtitleSettings({
               setBusy(true);
               setError("");
               try {
-                setInfo(
+                await apply(
                   await call("subtitle_chinese_select", {
                     sourceId,
                     assetId: e.target.value || null,
                   }),
                 );
-                await onChanged();
               } catch (error) {
                 setError(message(error));
               } finally {
@@ -86,10 +97,56 @@ export function SubtitleSettings({
               .map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.title || a.language} ·{" "}
-                  {a.origin === "embedded" ? "内置" : "外置"} · {a.cueCount} 条
+                  {a.origin === "embedded"
+                    ? "内置"
+                    : a.origin === "online"
+                      ? "在线"
+                      : "外置"}{" "}
+                  · {a.cueCount} 条
                 </option>
               ))}
           </select>
+        </label>
+      )}
+      {info?.selectedChineseId && (
+        <label>
+          中文字幕偏移（秒）
+          <input
+            key={`${sourceId}:${info.selectedChineseId}:${info.assets.find((a) => a.id === info.selectedChineseId)?.timeOffsetMs ?? 0}`}
+            type="number"
+            step={0.1}
+            defaultValue={
+              (info.assets.find((a) => a.id === info.selectedChineseId)
+                ?.timeOffsetMs ?? 0) / 1000
+            }
+            disabled={busy}
+            onBlur={async (e) => {
+              const offsetMs = Math.round(Number(e.target.value) * 1000);
+              if (!Number.isFinite(offsetMs)) return;
+              if (
+                offsetMs ===
+                (info.assets.find((a) => a.id === info.selectedChineseId)
+                  ?.timeOffsetMs ?? 0)
+              )
+                return;
+              setBusy(true);
+              setError("");
+              try {
+                await apply(
+                  await call("subtitle_alignment_set", {
+                    sourceId,
+                    assetId: info.selectedChineseId!,
+                    offsetMs,
+                  }),
+                );
+              } catch (error) {
+                setError(message(error));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+          <small>正数延后中文字幕，不改变原始字幕文件。</small>
         </label>
       )}
       {progress && <small role="status">{progress}</small>}
@@ -106,6 +163,41 @@ export function SubtitleSettings({
               <li key={a.id}>
                 {a.title || "未标注语言"} · {a.language} · {a.format} ·{" "}
                 {a.cueCount} 条
+                {a.provenance && (
+                  <small>
+                    {" "}
+                    · {a.provenance.provider} · {a.provenance.releaseName} ·
+                    已核对版本
+                  </small>
+                )}
+                {playback &&
+                  a.cueCount > 0 &&
+                  (a.language === "en" || a.language === "en-zh") && (
+                    <button
+                      className="text-button"
+                      onClick={async () => {
+                        setBusy(true);
+                        setError("");
+                        try {
+                          await call("watch_control", {
+                            control: {
+                              action: "subtitle_asset",
+                              text: a.id,
+                              value: null,
+                              expectedRevision: null,
+                            },
+                          });
+                        } catch (error) {
+                          setError(message(error));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      disabled={busy}
+                    >
+                      用于播放器
+                    </button>
+                  )}
               </li>
             ))}
           </ul>
@@ -121,6 +213,11 @@ export function SubtitleSettings({
           ))}
         </details>
       )}
+      <OnlineSubtitlePanel
+        key={sourceId}
+        sourceId={sourceId}
+        onImported={apply}
+      />
     </div>
   );
 }

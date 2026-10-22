@@ -12,6 +12,7 @@ pub struct Store {
     connection: Mutex<Connection>,
     pub(crate) dictionary: crate::base_dictionary::BaseDictionary,
     pub(crate) assessment_packet: Mutex<Option<Arc<crate::assessment_sync::PreparedPacket>>>,
+    pub(crate) subtitle_guard: Mutex<()>,
 }
 
 pub struct ConnectionGuard<'a> {
@@ -108,6 +109,7 @@ impl Store {
         }
         Ok(Self {
             assessment_packet: Mutex::new(None),
+            subtitle_guard: Mutex::new(()),
             dictionary: crate::base_dictionary::BaseDictionary::load(&root),
             root,
             connection: Mutex::new(connection),

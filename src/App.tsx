@@ -22,6 +22,7 @@ import { collectionQueue } from "./collectionQueue";
 import { ReplacementSettings } from "./components/ReplacementSettings";
 import { StartupSettings } from "./components/StartupSettings";
 import { WatchView } from "./components/WatchView";
+import { SubtitleServiceSettings } from "./components/OnlineSubtitlePanel";
 import { applyTaskUpdate, type TaskUpdate } from "./taskUpdates";
 
 type Tab =
@@ -701,6 +702,7 @@ export default function App() {
             >
               保存设置
             </button>
+            <SubtitleServiceSettings />
             <h3>数据位置</h3>
             <p className="directory">{info?.dataDirectory}</p>
             <p className="muted">

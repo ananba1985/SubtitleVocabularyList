@@ -344,6 +344,7 @@ export function WatchView({
       {options && (
         <div className="watch-options">
           <SubtitleSettings
+            key={state?.loaded ? (state.sourceId ?? "") : selected}
             sourceId={state?.loaded ? (state.sourceId ?? "") : selected}
             onChanged={async () => {
               await control("refresh_subtitles");

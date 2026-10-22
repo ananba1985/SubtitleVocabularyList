@@ -422,7 +422,9 @@ impl Application {
         if paths.is_empty() {
             return Err(AppError::new("invalid_input", "请先选择视频或目录。"));
         }
-        let tools = self.settings()?.tools;
+        let settings = self.settings()?;
+        let tools = settings.tools;
+        let network_allowed = !settings.offline_mode;
         let store = Arc::clone(&self.store);
         let import_guard = Arc::clone(&self.import_guard);
         let preparation_requested = Arc::clone(&self.preparation_requested);
@@ -443,7 +445,13 @@ impl Application {
                 context.check_cancelled()?;
                 context.progress("file",index,total,&format!("正在准备 {}",path.file_name().unwrap_or_default().to_string_lossy()));
                 match import_one(&store,&tools,path,&options,&context){
-                    Ok(source)=>{completed.push(source);preparation_requested.store(true,Ordering::Relaxed);},
+                    Ok(source)=>{
+                        if let Err(error)=crate::online_subtitles::maybe_search_on_import(&store,&source.id,network_allowed,&context.cancelled,&|current,total,message|context.progress("subtitle_search",current,total,message)) {
+                            if error.code=="cancelled" {return Err(error);}
+                            context.progress("subtitle_search",0,0,&format!("本地导入已完成，在线字幕待补充：{}",error.message));
+                        }
+                        completed.push(source);preparation_requested.store(true,Ordering::Relaxed);
+                    },
                     Err(error) if error.code=="cancelled"=>return Err(error),
                     Err(error)=>failures.push(json!({"file":path.file_name().unwrap_or_default().to_string_lossy(),"message":error.message})),
                 }

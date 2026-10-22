@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.61 |
+| 文档版本 | 0.62 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -243,7 +243,23 @@ FR-25 至 FR-29 的 CMD-63 至 CMD-71 唯一维护于[边看边学设计 §7.2](
 | CMD-73 | subtitle_prepare_start | sourceId、operationId | TaskHandle&lt;SubtitleInfo&gt;；单个 subtitle_import 聚合任务，沿用取消与进度 |
 | CMD-74 | subtitle_chinese_select | sourceId、可空 assetId | SubtitleInfo；持久保存中文选择，空值使用既有缓存 |
 
-前端成功后通过 watch_control 的 refresh_subtitles 刷新正在播放的资产，使旧暂停上下文和计时失效。资产及初始时间对应规则见[字幕设计](subtitle-import.md)，在线命令尚未提供。
+前端成功后通过 watch_control 的 refresh_subtitles 刷新正在播放的资产，使旧暂停上下文和计时失效。SubtitleInfo 资产新增可兼容旧资料的 timeOffsetMs 和可空 provenance。资产与时间对应规则见[字幕设计](subtitle-import.md)。
+
+0.13.0 新增以下命令，全部沿用后台执行及生成 DTO。网络命令遵守 offlineMode 和独立字幕服务开关；配置及已下载字幕的核对导入可离线完成。候选 ID 绑定源媒体摘要，不由前端提供任意下载 URL。
+
+| 编号 | 命令 | 输入 | 结果／语义 |
+| --- | --- | --- | --- |
+| CMD-75 | subtitle_service_get | 无 | SubtitleService：开关、导入后检索、服务语言代码、hasApiKey；不含密钥明文 |
+| CMD-76 | subtitle_service_set | config、可空 apiKey | SubtitleService；null 保持旧密钥，空串清除；启用须有凭据 |
+| CMD-77 | subtitle_search_context | sourceId | SubtitleQuery：本地文件名识别的可编辑剧名／年份／季集，以及缺失语言；不发网络请求 |
+| CMD-78 | subtitle_search_get | sourceId | 可空 SubtitleSearch：上次候选／标题、时间、错误摘要和媒体摘要 |
+| CMD-79 | subtitle_search_start | sourceId、query、operationId | TaskHandle&lt;SubtitleSearch&gt;，聚合 subtitle_search |
+| CMD-80 | subtitle_download_start | sourceId、candidateId、operationId | TaskHandle&lt;SubtitleDownload&gt;，聚合 subtitle_download；返回下载标识及文件清单 |
+| CMD-81 | subtitle_download_preview | downloadId、fileId、offsetMs | SubtitleDownloadPreview：实际 cue 数、起止／视频时长、对应句样例及警告 |
+| CMD-82 | subtitle_download_commit_start | downloadId、fileId、offsetMs、confirmed、selectChinese、operationId | TaskHandle&lt;SubtitleInfo&gt;；复核已确认版本／时间后持久导入，不重建个人词条 |
+| CMD-83 | subtitle_alignment_set | sourceId、assetId、offsetMs | SubtitleInfo；保存 ±1 小时偏移，原字幕和旧缓存不改写 |
+
+watch_control 新增 `subtitle_asset`（text 为已保存资产 ID）：从当前来源取原字幕路径并执行 mpv sub-add；不接收来自其他来源的资产。导入、改中文来源及改偏移后调用 refresh_subtitles，继续沿用当前版本核对和译文呈现后计时。
 
 ## 3 收录请求与提交结果
 
@@ -435,3 +451,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.59 | 2026-10-21 | 登记 CMD-72 至 CMD-74 本地字幕资产、聚合取得和中文选择接口 |
 | 0.60 | 2026-10-21 | 登记 CMD-69 来源绑定、独立 watch 流式事件、原生查询／OCR 动作和新上下文字段 |
 | 0.61 | 2026-10-21 | 登记 audio_focus 控制动作与跨窗口媒体互斥通知 |
+| 0.62 | 2026-10-21 | 登记 CMD-75 至 CMD-83 在线字幕配置、检索下载、核对导入和偏移契约及当前来源资产加载 |

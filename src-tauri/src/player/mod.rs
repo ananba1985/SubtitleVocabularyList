@@ -832,6 +832,28 @@ impl Actor {
                 let file = control.text.ok_or_else(|| failure("缺少字幕文件"))?;
                 self.engine.command(json!(["sub-add", file, "select"]))?;
             }
+            "subtitle_asset" => {
+                let id = control.text.ok_or_else(|| failure("缺少字幕资产"))?;
+                let media = self.media.as_ref().ok_or_else(|| failure("请先打开剧集"))?;
+                let source = media
+                    .source_id
+                    .as_deref()
+                    .ok_or_else(|| failure("请先选择已导入剧集"))?;
+                let bundle = self
+                    .application
+                    .store
+                    .subtitle_bundle(source)?
+                    .ok_or_else(|| failure("字幕资产不存在"))?;
+                let asset = bundle
+                    .assets
+                    .iter()
+                    .find(|a| a.id == id)
+                    .ok_or_else(|| failure("字幕资产不存在"))?;
+                let path = self.application.store.root().join(&asset.relative_path);
+                self.invalidate();
+                self.engine
+                    .command(json!(["sub-add", path.to_string_lossy(), "select"]))?;
+            }
             "cancel_auto" => {
                 self.clock.cancel();
                 self.pending_display = false;

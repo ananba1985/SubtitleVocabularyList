@@ -246,9 +246,29 @@ export type StartAssessment = { config: AssessmentConfig, expectedInventoryRevis
 
 export type Stream = { index: number, codec_type: string, codec_name: string, tags: { [key in string]: string }, };
 
+export type SubtitleCandidate = { id: string, title: string, titleId: number, language: string, releaseName: string, name: string, url: string, season: number | null, episode: number | null, fps: string, };
+
+export type SubtitleDownload = { id: string, sourceId: string, mediaSha256: string, candidate: SubtitleCandidate, files: Array<SubtitleDownloadFile>, downloadedAt: number, };
+
+export type SubtitleDownloadFile = { id: string, name: string, relativePath: string, sha256: string, };
+
+export type SubtitleDownloadPreview = { file: SubtitleDownloadFile, language: string, cueCount: number, firstMs: number, lastMs: number, videoDurationMs: number, matchedSentences: number, sentenceCount: number, pairs: Array<SubtitlePair>, warnings: Array<string>, };
+
 export type SubtitleInfo = { mediaSha256: string, selectedChineseId: string | null, assets: Array<SubtitleTrackInfo>, warnings: Array<string>, };
 
-export type SubtitleTrackInfo = { id: string, language: string, title: string, origin: string, streamIndex: number | null, format: string, relativePath: string, sha256: string, cueCount: number, };
+export type SubtitlePair = { startMs: number, endMs: number, english: string, chinese: string, };
+
+export type SubtitleProvenance = { provider: string, sourceUrl: string, fileId: string, releaseName: string, title: string, season: number | null, episode: number | null, fps: string, downloadedAt: number, versionConfirmed: boolean, };
+
+export type SubtitleQuery = { fileName: string, title: string, year: number | null, season: number | null, episode: number | null, sdId: number | null, languages: Array<string>, notice: string, };
+
+export type SubtitleSearch = { query: SubtitleQuery, mediaSha256: string, titles: Array<SubtitleTitle>, candidates: Array<SubtitleCandidate>, searchedAt: number, error: string | null, };
+
+export type SubtitleService = { enabled: boolean, searchOnImport: boolean, englishCode: string, chineseCode: string, hasApiKey: boolean, };
+
+export type SubtitleTitle = { id: number, name: string, year: number | null, };
+
+export type SubtitleTrackInfo = { id: string, language: string, title: string, origin: string, streamIndex: number | null, format: string, relativePath: string, sha256: string, cueCount: number, timeOffsetMs: number, provenance: SubtitleProvenance | null, };
 
 export type SyncBundleView = { schemaVersion: number, deleted: boolean, entry: SyncEntryView, tables: { [key in string]: Array<{ [key in string]: JsonValue }> }, };
 
@@ -382,9 +402,18 @@ export interface CommandMap {
   sources_list: { args: undefined; result: Array<SourceSummary> };
   speech_start: { args: { text: string; operationId: string; voiceId?: string | null }; result: TaskHandle<SpeechAudio> };
   speech_voices: { args: undefined; result: Array<SystemVoice> };
+  subtitle_alignment_set: { args: { sourceId: string; assetId: string; offsetMs: number }; result: SubtitleInfo };
   subtitle_chinese_select: { args: { sourceId: string; assetId?: string | null }; result: SubtitleInfo };
+  subtitle_download_commit_start: { args: { downloadId: string; fileId: string; offsetMs: number; confirmed: boolean; selectChinese: boolean; operationId: string }; result: TaskHandle<SubtitleInfo> };
+  subtitle_download_preview: { args: { downloadId: string; fileId: string; offsetMs: number }; result: SubtitleDownloadPreview };
+  subtitle_download_start: { args: { sourceId: string; candidateId: string; operationId: string }; result: TaskHandle<SubtitleDownload> };
   subtitle_info_get: { args: { sourceId: string }; result: SubtitleInfo | null };
   subtitle_prepare_start: { args: { sourceId: string; operationId: string }; result: TaskHandle<SubtitleInfo> };
+  subtitle_search_context: { args: { sourceId: string }; result: SubtitleQuery };
+  subtitle_search_get: { args: { sourceId: string }; result: SubtitleSearch | null };
+  subtitle_search_start: { args: { sourceId: string; query: SubtitleQuery; operationId: string }; result: TaskHandle<SubtitleSearch> };
+  subtitle_service_get: { args: undefined; result: SubtitleService };
+  subtitle_service_set: { args: { config: SubtitleService; apiKey?: string | null }; result: SubtitleService };
   sync_conflicts: { args: undefined; result: Array<SyncConflictView> };
   sync_resolve: { args: { input: ResolutionInput; operationId: string }; result: TaskHandle<SyncResolution> };
   sync_start: { args: { operationId: string }; result: TaskHandle<SyncTaskResult> };

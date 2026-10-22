@@ -24,6 +24,7 @@ mod local_profile;
 pub mod media;
 mod model_gate;
 pub mod ocr;
+pub mod online_subtitles;
 pub mod practice;
 pub mod preparation;
 pub mod providers;

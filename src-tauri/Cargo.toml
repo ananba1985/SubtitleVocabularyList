@@ -1,6 +1,6 @@
 [package]
 name = "subtitle-vocabulary-list"
-version = "0.12.0"
+version = "0.13.0"
 description = "Offline Windows vocabulary notebook with original dialogue audio"
 edition = "2024"
 rust-version = "1.90"
@@ -39,6 +39,7 @@ sha2 = "0.10"
 unicode-normalization = "0.1"
 regex = "1"
 libbitsub-core = "=1.12.1"
+zip = { version = "=9.0.5", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 walkdir = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

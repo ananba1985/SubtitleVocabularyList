@@ -353,7 +353,7 @@ pub fn load_secrets(root: &Path, id: &str) -> Result<HashMap<String, String>, Ap
         ))
     }
 }
-fn save_secrets(root: &Path, id: &str, secrets: &HashMap<String, String>) -> Result<(), AppError> {
+pub(crate) fn save_secrets(root: &Path, id: &str, secrets: &HashMap<String, String>) -> Result<(), AppError> {
     if secrets.is_empty() {
         let path = secret_path(root, id);
         if path.exists() {

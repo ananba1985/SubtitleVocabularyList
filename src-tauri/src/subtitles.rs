@@ -25,6 +25,25 @@ pub struct SubtitleAsset {
     pub relative_path: String,
     pub sha256: String,
     pub cues: Vec<Segment>,
+    #[serde(default)]
+    pub time_offset_ms: i64,
+    #[serde(default)]
+    pub provenance: Option<SubtitleProvenance>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleProvenance {
+    pub provider: String,
+    pub source_url: String,
+    pub file_id: String,
+    pub release_name: String,
+    pub title: String,
+    pub season: Option<u32>,
+    pub episode: Option<u32>,
+    pub fps: String,
+    pub downloaded_at: i64,
+    pub version_confirmed: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +66,8 @@ pub struct SubtitleTrackInfo {
     pub relative_path: String,
     pub sha256: String,
     pub cue_count: usize,
+    pub time_offset_ms: i64,
+    pub provenance: Option<SubtitleProvenance>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
@@ -76,6 +97,8 @@ impl SubtitleBundle {
                     relative_path: a.relative_path.clone(),
                     sha256: a.sha256.clone(),
                     cue_count: a.cues.len(),
+                    time_offset_ms: a.time_offset_ms,
+                    provenance: a.provenance.clone(),
                 })
                 .collect(),
         }
@@ -93,8 +116,8 @@ impl SubtitleBundle {
         let mut last = start;
         let mut lines = Vec::new();
         for cue in &asset.cues {
-            let left = cue.start_ms.max(start);
-            let right = cue.end_ms.min(end);
+            let left = (cue.start_ms + asset.time_offset_ms).max(start);
+            let right = (cue.end_ms + asset.time_offset_ms).min(end);
             if right <= left {
                 continue;
             }
@@ -264,6 +287,8 @@ pub fn prepare_local(
                                 .replace('\\', "/"),
                             sha256,
                             cues: vec![],
+                            time_offset_ms: 0,
+                            provenance: None,
                         });
                         bundle.warnings.push(format!(
                             "图片字幕轨 {} 已保留原资产；未取得文字，播放暂停时可 OCR 核对。",
@@ -420,7 +445,7 @@ pub fn prepare_local(
     progress("subtitles", tracks.len(), tracks.len());
     Ok(bundle)
 }
-fn asset(
+pub(crate) fn asset(
     tools: &MediaTools,
     root: &Path,
     path: &Path,
@@ -472,6 +497,8 @@ fn asset(
             .replace('\\', "/"),
         sha256: hash,
         cues,
+        time_offset_ms: 0,
+        provenance: None,
     })
 }
 
@@ -505,8 +532,22 @@ impl Store {
         source_id: &str,
         bundle: &SubtitleBundle,
     ) -> Result<SubtitleInfo, AppError> {
+        let _guard = self
+            .subtitle_guard
+            .lock()
+            .map_err(|_| AppError::new("internal_error", "字幕保存状态不可用。"))?;
         let mut bundle = bundle.clone();
         if let Some(old) = self.subtitle_bundle(source_id)? {
+            for asset in old.assets.iter().filter(|a| a.origin == "online") {
+                if !bundle.assets.iter().any(|a| a.id == asset.id) {
+                    bundle.assets.push(asset.clone());
+                }
+            }
+            for asset in &mut bundle.assets {
+                if let Some(saved) = old.assets.iter().find(|a| a.id == asset.id) {
+                    asset.time_offset_ms = saved.time_offset_ms;
+                }
+            }
             if old.selected_chinese_id.is_none()
                 || bundle
                     .assets
@@ -522,6 +563,7 @@ impl Store {
             vocabulary::digest(source_id.as_bytes())
         );
         let path = self.root().join(&relative);
+        std::fs::create_dir_all(path.parent().unwrap())?;
         let temporary = path.with_extension("json.tmp");
         std::fs::write(&temporary, serde_json::to_vec(&bundle)?)?;
         std::fs::rename(temporary, path)?;
@@ -563,6 +605,10 @@ impl Store {
         source_id: &str,
         asset_id: Option<String>,
     ) -> Result<SubtitleInfo, AppError> {
+        let _guard = self
+            .subtitle_guard
+            .lock()
+            .map_err(|_| AppError::new("internal_error", "字幕保存状态不可用。"))?;
         let mut bundle = self
             .subtitle_bundle(source_id)?
             .ok_or_else(|| AppError::new("not_found", "请先取得本地字幕。"))?;
@@ -580,6 +626,38 @@ impl Store {
             vocabulary::digest(source_id.as_bytes())
         );
         let path = self.root().join(relative);
+        let temporary = path.with_extension("json.tmp");
+        std::fs::write(&temporary, serde_json::to_vec(&bundle)?)?;
+        std::fs::rename(temporary, path)?;
+        Ok(bundle.info())
+    }
+    pub fn set_subtitle_offset(
+        &self,
+        source_id: &str,
+        asset_id: &str,
+        offset_ms: i64,
+    ) -> Result<SubtitleInfo, AppError> {
+        if offset_ms.unsigned_abs() > 3_600_000 {
+            return Err(AppError::new("invalid_input", "字幕偏移不能超过一小时。"));
+        }
+        let _guard = self
+            .subtitle_guard
+            .lock()
+            .map_err(|_| AppError::new("internal_error", "字幕保存状态不可用。"))?;
+        let mut bundle = self
+            .subtitle_bundle(source_id)?
+            .ok_or_else(|| AppError::new("not_found", "字幕资源不存在。"))?;
+        let asset = bundle
+            .assets
+            .iter_mut()
+            .find(|a| a.id == asset_id)
+            .ok_or_else(|| AppError::new("not_found", "字幕资产不存在。"))?;
+        asset.time_offset_ms = offset_ms;
+        let path = self.root().join(format!(
+            "subtitles/{}/bundle-{}.json",
+            bundle.media_sha256,
+            vocabulary::digest(source_id.as_bytes())
+        ));
         let temporary = path.with_extension("json.tmp");
         std::fs::write(&temporary, serde_json::to_vec(&bundle)?)?;
         std::fs::rename(temporary, path)?;

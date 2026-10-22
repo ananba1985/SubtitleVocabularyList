@@ -1,5 +1,7 @@
 # libmpv 播放资源
 
+固定版本、归档与 DLL 摘要由同目录 `mpv-runtime.json` 维护，开发准备脚本同时核对归档和实际 DLL。发行资源及预检设计见 `docs/design/watch-and-learn.md`；此清单不是完整的依赖源码材料包。
+
 - Windows x86_64 构建：shinchiro/mpv-winbuild-cmake，20261021，mpv git e471496c56。
 - 固定资源：https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-dev-x86_64-20261021-git-e471496c56.7z
 - 资源包 SHA256：efc719eff3dc5954b4a5efc800632808bcec01cc9034940dd14e5eb7fe9ea633。

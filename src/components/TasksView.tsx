@@ -7,6 +7,8 @@ const PAGE_SIZE = 10;
 const kinds: Record<string, string> = {
   import: "剧集导入",
   subtitle_import: "中英字幕取得",
+  subtitle_search: "在线字幕检索",
+  subtitle_download: "字幕候选下载",
   collection: "词条收录",
   preview: "原声准备",
   explanation: "本地解释",

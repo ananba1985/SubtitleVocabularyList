@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.65 |
+| 文档版本 | 0.66 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -304,6 +304,12 @@ PlayerSnapshot 新增 chapters（index／title／position 秒）、chapterIndex�
 
 subtitle_dialog 发送 `watch_subtitle_file_requested` 到主窗口，payload 为当前 revision；前端打开文件对话框后通过 subtitle_file／expectedRevision 提交，finally 发 subtitle_dialog_closed，选择期抑制计时。原学习设置的加载按钮走同一路径。原生菜单选中项另外核对视频会话，时间输入 handler 带当前会话，均不接受旧视频回填。内部 CLIENT_MESSAGE 仅处理已知时间输入 submit，不是公开 IPC 任意命令入口。
 
+### CMD-85／86 文件打开队列（0.16.0）
+
+`watch_files_pending() -> bool` 仅读取是否有待接收文件，供主页面注册事件后首次检查。`watch_files_open_next() -> PlayerSnapshot | null` 异步消费一批，分类并送给现有播放器；空队列返回 null，失败返回 AppError。WatchView 在 mount 及事件后串行消费至空，不在事件中传送大文件或依赖 WebView 的 File 对象。生成类型和命令表仍由 Rust 唯一维护。
+
+`watch_files_pending` 事件只发主窗口，无 payload；用于导航和唤醒消费。路径及 append／activate 意图保存在进程内存中。启动和单实例 argv 为 activate，窗口及原生视频拖放为 append。文件打开不产生后台任务历史，不改变词库同步接口。
+
 ## 4 任务与事件
 
 任务查询是当前执行状态和结果的权威入口。业务后台与失败诊断读取 SQLite，正常临时操作读取有限内存回执；事件建议采用以下最小结构：
@@ -470,3 +476,5 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.63 | 2026-10-21 | CMD-69 增加可空 clipRange，复用预览与收录接口；已暂停 audio_focus 保留上下文 |
 | 0.64 | 2026-10-21 | 登记 CMD-84 播放队列、PlaybackState 快照及速度／静音／连播控制 |
 | 0.65 | 2026-10-21 | 扩展 CMD-65 菜单、双字幕、定位和循环动作，登记文件选择事件及生成快照 |
+
+| 0.66 | 2026-10-21 | 登记 CMD-85／86 和文件队列信号，复用既有列表／字幕控制 |

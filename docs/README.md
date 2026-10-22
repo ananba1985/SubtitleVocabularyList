@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.80 |
+| 文档版本 | 0.81 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -19,6 +19,7 @@
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 播放能力补齐验证 | [testing/playback-results.md](testing/playback-results.md) | FR-32／33、M-28／29、TC-68／69 的原生列表、连播、倍速和偏好保存证据 | 最小后台正常路径通过，未执行新窗口及听感，后续反馈按缺陷修复 |
+| 文件拖放与打开 | [边看边学设计第 12 节](design/watch-and-learn.md#12-拖放与文件入口0160)、[播放验证](testing/playback-results.md#4-0160-拖放与文件打开) | FR-37／M-33／TC-73、74：视频目录字幕拖放和冷／热启动，保持紧凑界面 | 安装关联配置与本机实际安装验收分别记录 |
 | 常用播放控制 | [design/watch-and-learn.md](design/watch-and-learn.md)、[testing/playback-results.md](testing/playback-results.md#3-0150-常用播放控制) | FR-34 至 FR-36、M-30 至 M-32、TC-70 至 TC-72：原生菜单、双字幕、定位与循环 | 菜单构建和引擎／存储正常路径通过，新增宿主操作未人工验收，不阻塞交付 |
 | 边看边学增量验证 | [testing/watch-and-learn-results.md](testing/watch-and-learn-results.md) | 历史原生输入、Qwen／OCR／手动区间及旧选轨资料播放正常结果和人工步骤 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 双语字幕导入设计 | [design/subtitle-import.md](design/subtitle-import.md) | FR-30／31，本地中英轨优先、在线补缺、时间对齐、既有中文优先及历史保持 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
@@ -241,3 +242,5 @@
 | 0.78 | 2026-10-21 | 记录用户接受未实测项结束本轮的处置，不再阻塞开发，实际证据与功能边界保留 |
 | 0.79 | 2026-10-21 | 索引原生播放列表、自动连播、倍速和播放偏好保存结果 |
 | 0.80 | 2026-10-21 | 索引鼠标菜单、音轨字幕和定位循环设计与后台正常证据 |
+
+| 0.81 | 2026-10-21 | 登记文件拖放与打开增量及实际 Computer Use 检查边界 |

@@ -63,6 +63,28 @@ export default function App() {
   const [episodePanel, setEpisodePanel] = useState<EpisodePanel>(null);
   const [practicePanel, setPracticePanel] = useState<PracticePanel>(null);
   const taskBuffer = useRef<Map<string, TaskUpdate> | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    const receive = () => {
+      if (!disposed) setTab("watch");
+    };
+    const stop = listen("watch_files_pending", receive)
+      .then(async (unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        if (await call("watch_files_pending")) receive();
+        return unlisten;
+      })
+      .catch((e) => {
+        if (!disposed) setError(message(e));
+      });
+    return () => {
+      disposed = true;
+      void stop.then((unlisten) => unlisten?.());
+    };
+  }, []);
   const refresh = useCallback(async () => {
     const updates = new Map<string, TaskUpdate>();
     taskBuffer.current = updates;

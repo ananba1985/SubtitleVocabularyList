@@ -1,10 +1,11 @@
+pub(crate) mod files;
 mod menu;
 mod mpv;
 
 use crate::{
     application::Application,
     error::AppError,
-    playback::{PlaybackState, PlaylistChange, PlaylistItem},
+    playback::{PlaybackFiles, PlaybackState, PlaylistChange, PlaylistItem},
     watch::{DisplayClock, WatchContext, WatchMedia, WatchProgress},
 };
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,7 @@ use windows::{
             Input::KeyboardAndMouse::{
                 GetCapture, GetKeyboardState, ReleaseCapture, SetCapture, SetFocus, ToUnicode,
             },
+            Shell::{DragAcceptFiles, DragFinish, DragQueryFileW, HDROP},
             WindowsAndMessaging::*,
         },
     },
@@ -132,6 +134,8 @@ enum Message {
     MenuClosed(Option<String>),
     Open(WatchMedia, Reply),
     Playlist(PlaylistChange, Vec<PlaylistItem>, Reply),
+    Files(PlaybackFiles, Reply),
+    Dropped(Vec<String>),
     Prepared(u64, u64, Result<WatchMedia, AppError>),
     Control(WatchControl, Option<Reply>),
     Viewport(i32, i32, bool),
@@ -159,6 +163,25 @@ unsafe extern "system" fn host_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     unsafe {
+        if message == WM_DROPFILES {
+            let drop = HDROP(wparam.0 as *mut _);
+            let mut paths = vec![];
+            for i in 0..DragQueryFileW(drop, u32::MAX, None) {
+                let length = DragQueryFileW(drop, i, None) as usize;
+                let mut path = vec![0u16; length + 1];
+                DragQueryFileW(drop, i, Some(&mut path));
+                paths.push(String::from_utf16_lossy(&path[..length]));
+            }
+            DragFinish(drop);
+            if let Some(sender) = KEYBOARD
+                .get()
+                .and_then(|k| k.lock().ok())
+                .and_then(|s| s.clone())
+            {
+                let _ = sender.send(Message::Dropped(paths));
+            }
+            return LRESULT(0);
+        }
         if matches!(message, WM_RBUTTONDOWN | WM_RBUTTONUP) {
             if message == WM_RBUTTONDOWN {
                 let _ = SetFocus(Some(hwnd));
@@ -412,6 +435,7 @@ impl NativePlayer {
                             None,
                         )
                         .map_err(|e| failure(e.to_string()))?;
+                        DragAcceptFiles(host, true);
                         Ok(host.0 as isize)
                     })();
                     let _ = send.send(result);
@@ -517,6 +541,19 @@ impl NativePlayer {
             .map_err(|_| failure("播放会话已结束"))?;
         rx.recv_timeout(Duration::from_secs(15))
             .map_err(|_| failure("等待播放列表操作超时"))?
+    }
+    pub fn files(
+        &self,
+        handle: &tauri::AppHandle,
+        files: PlaybackFiles,
+    ) -> Result<PlayerSnapshot, AppError> {
+        let sender = self.ensure_worker(handle)?;
+        let (tx, rx) = mpsc::channel();
+        sender
+            .send(Message::Files(files, tx))
+            .map_err(|_| failure("播放会话已结束"))?;
+        rx.recv_timeout(Duration::from_secs(15))
+            .map_err(|_| failure("等待文件打开超时"))?
     }
     pub fn control_ready(
         &self,
@@ -666,6 +703,7 @@ struct Actor {
     progress_at: Instant,
     menu_open: bool,
     subtitle_dialog_open: bool,
+    pending_subtitles: Option<(String, Vec<String>)>,
     refresh_after_seek: bool,
 }
 fn failure(detail: impl Into<String>) -> AppError {
@@ -764,6 +802,7 @@ impl Actor {
             progress_at: Instant::now(),
             menu_open: false,
             subtitle_dialog_open: false,
+            pending_subtitles: None,
             refresh_after_seek: false,
         }
     }
@@ -872,6 +911,11 @@ impl Actor {
                 let result = self.playlist(change, items).map(|_| self.state.clone());
                 let _ = reply.send(result);
             }
+            Message::Files(files, reply) => {
+                let result = self.files(files).map(|_| self.state.clone());
+                let _ = reply.send(result);
+            }
+            Message::Dropped(paths) => files::receive(&self.handle, paths, false),
             Message::Prepared(generation, hook, result) => {
                 let mut failed = false;
                 if generation == self.load_generation {
@@ -1030,7 +1074,7 @@ impl Actor {
         let index = change.index.unwrap_or(0);
         let count = self.state.playback.playlist.len();
         match change.action.as_str() {
-            "append" => {
+            "append" | "enqueue" => {
                 let first = items.first().map(|item| item.path.clone());
                 for item in items {
                     if !self
@@ -1045,7 +1089,10 @@ impl Actor {
                         self.state.playback.playlist.push(item);
                     }
                 }
-                if self.state.path.is_empty() && !self.state.playback.playlist.is_empty() {
+                if change.action == "append"
+                    && self.state.path.is_empty()
+                    && !self.state.playback.playlist.is_empty()
+                {
                     let index = first
                         .and_then(|path| {
                             self.state
@@ -1131,6 +1178,103 @@ impl Actor {
         self.sync_playlist()?;
         Ok(())
     }
+    fn files(&mut self, files: PlaybackFiles) -> Result<(), AppError> {
+        let empty = self.state.path.is_empty();
+        let first = files.items.first().map(|i| i.path.clone());
+        let target = files.open_path.clone().or_else(|| {
+            if empty {
+                first
+            } else {
+                // path can still describe the previous file while START_FILE is pending.
+                self.engine
+                    .property("path")
+                    .as_str()
+                    .map(str::to_owned)
+                    .or_else(|| Some(self.state.path.clone()))
+            }
+        });
+        if !files.subtitles.is_empty() && target.is_none() {
+            return Err(failure("请先打开视频，再拖入字幕。"));
+        }
+        if !files.items.is_empty() {
+            self.playlist(
+                PlaylistChange {
+                    action: if files.open_path.is_some() {
+                        "enqueue"
+                    } else {
+                        "append"
+                    }
+                    .into(),
+                    paths: vec![],
+                    index: None,
+                    destination: None,
+                },
+                files.items,
+            )?;
+        }
+        if let Some(path) = &files.open_path {
+            let index = self
+                .state
+                .playback
+                .playlist
+                .iter()
+                .position(|p| &p.path == path)
+                .ok_or_else(|| failure("视频不在播放列表中"))?;
+            self.pending_subtitles = None;
+            self.invalidate();
+            self.engine
+                .command(json!(["set_property", "pause", true]))?;
+            self.engine.command(json!(["playlist-play-index", index]))?;
+        }
+        if !files.subtitles.is_empty()
+            && let Some(path) = target
+        {
+            if files.open_path.is_none() && !empty && self.state.loaded && self.state.path == path {
+                self.load_subtitles(files.subtitles)?;
+            } else {
+                self.pending_subtitles = Some((path, files.subtitles));
+            }
+        }
+        self.sync_playlist()?;
+        Ok(())
+    }
+    fn load_subtitles(&mut self, paths: Vec<String>) -> Result<(), AppError> {
+        let paused = self.engine.flag("pause");
+        self.invalidate();
+        for (index, path) in paths.iter().enumerate() {
+            self.engine.command(json!([
+                "sub-add",
+                path,
+                if index == 0 { "select" } else { "auto" }
+            ]))?;
+            if index == 1 {
+                let tracks = self.engine.property("track-list");
+                if let Some(id) = tracks
+                    .as_array()
+                    .and_then(|t| {
+                        t.iter()
+                            .find(|t| t["external-filename"].as_str() == Some(path))
+                    })
+                    .and_then(|t| t["id"].as_i64())
+                {
+                    self.engine
+                        .command(json!(["set_property", "secondary-sid", id]))?;
+                }
+            }
+        }
+        self.engine
+            .command(json!(["set_property", "sub-visibility", true]))?;
+        self.refresh_controls();
+        self.sync_preferences()?;
+        self.refresh_paused(paused);
+        self.save_progress();
+        let _ = self.engine.command(json!([
+            "show-text",
+            format!("已加载 {} 份字幕", paths.len()),
+            2000
+        ]));
+        Ok(())
+    }
     fn sync_playlist(&mut self) -> Result<(), AppError> {
         let before = self.state.playback.clone();
         let entries = self.engine.property("playlist");
@@ -1204,6 +1348,13 @@ impl Actor {
             .unwrap_or("")
             .to_owned();
         self.state.path = path.clone();
+        if self
+            .pending_subtitles
+            .as_ref()
+            .is_some_and(|(target, _)| target != &path)
+        {
+            self.pending_subtitles = None;
+        }
         self.state.playback.current_path = Some(path.clone());
         let item = self.state.playback.playlist.iter().find(|i| i.path == path);
         self.state.source_id = item.and_then(|i| i.source_id.clone());
@@ -1722,6 +1873,7 @@ impl Actor {
                 self.save_progress();
             }
             "close" => {
+                self.pending_subtitles = None;
                 self.save_progress();
                 self.invalidate();
                 self.engine.command(json!(["stop"]))?;
@@ -1878,6 +2030,12 @@ impl Actor {
             "paused"
         }
         .into();
+        if let Some((path, subtitles)) = self.pending_subtitles.take()
+            && path == self.state.path
+            && let Err(error) = self.load_subtitles(subtitles)
+        {
+            self.state.error = Some(error.message);
+        }
         self.progress = self.current_progress();
     }
     fn selected_audio_stream(&self) -> Option<usize> {

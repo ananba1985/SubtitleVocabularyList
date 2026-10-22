@@ -25,6 +25,14 @@ fn tray_navigate(app: &tauri::AppHandle, action: &str) {
 
 pub fn run() {
     let _startup = std::time::Instant::now();
+    let files = crate::player::files::FileInbox::default();
+    files.push(
+        crate::playback::file_arguments(
+            std::env::args().skip(1),
+            &std::env::current_dir().unwrap_or_default(),
+        ),
+        true,
+    );
     let root = crate::app_paths::data_directory().expect("Cannot resolve the data directory");
     crate::app_paths::prepare_process(&root)
         .expect("Cannot prepare the data and cache directories");
@@ -32,6 +40,7 @@ pub fn run() {
     let main_config = context.config_mut().app.windows.remove(0);
     let first_page = Arc::new(std::sync::atomic::AtomicBool::new(true));
     tauri::Builder::default()
+        .manage(files)
         .on_page_load(move |webview, event| {
             if webview.label()=="translator" && event.event()==tauri::webview::PageLoadEvent::Finished {let _=webview.window().show();}
             if webview.label() == "main" {
@@ -50,7 +59,8 @@ pub fn run() {
                 }
             }
         })
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            crate::player::files::receive_arguments(app, args, &cwd);
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -301,6 +311,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label()=="main" && let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                crate::player::files::receive(window.app_handle(), paths.iter().map(|p| p.to_string_lossy().into_owned()).collect(), false);
+            }
             if window.label()=="main" && (matches!(event,tauri::WindowEvent::Resized(_)) || matches!(event,tauri::WindowEvent::Focused(true))) {
                 if let Some(player)=window.app_handle().try_state::<crate::player::NativePlayer>() {player.raise(window.app_handle());}
             }

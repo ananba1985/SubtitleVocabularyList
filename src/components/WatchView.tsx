@@ -52,6 +52,51 @@ export function WatchView({
     const next = await call("watch_state_get");
     if (id === request.current) setState(next);
   }, []);
+  useEffect(() => {
+    let disposed = false,
+      running = false,
+      wake = false;
+    const receive = async () => {
+      wake = true;
+      if (running) return;
+      running = true;
+      try {
+        do {
+          wake = false;
+          while (!disposed) {
+            try {
+              const next = await call("watch_files_open_next");
+              if (!next) break;
+              if (!disposed) {
+                setError("");
+                setState(next);
+              }
+            } catch (e) {
+              if (!disposed) setError(message(e));
+              break;
+            }
+          }
+        } while (wake && !disposed);
+      } finally {
+        running = false;
+      }
+    };
+    const stop = listen("watch_files_pending", () => {
+      void receive();
+    })
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else void receive();
+        return unlisten;
+      })
+      .catch((e) => {
+        if (!disposed) setError(message(e));
+      });
+    return () => {
+      disposed = true;
+      void stop.then((unlisten) => unlisten?.());
+    };
+  }, []);
   const control = async (
     action: string,
     value?: number,
@@ -621,7 +666,7 @@ export function WatchView({
             <p>
               {status === "loading"
                 ? state?.title
-                : "打开本地视频，或选择已导入剧集。"}
+                : "打开或拖入视频、目录；字幕可直接拖到当前画面。"}
             </p>
           </div>
         )}

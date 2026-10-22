@@ -9,6 +9,29 @@ use crate::{
 use tauri::{Manager, State};
 
 #[svl_ipc_macros::command]
+pub(crate) fn watch_files_pending(inbox: State<'_, crate::player::files::FileInbox>) -> bool {
+    inbox.pending()
+}
+#[svl_ipc_macros::command]
+pub(crate) async fn watch_files_open_next(
+    app: AppState<'_>,
+    handle: tauri::AppHandle,
+) -> Result<Option<PlayerSnapshot>, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        let Some(request) = handle.state::<crate::player::files::FileInbox>().take()? else {
+            return Ok(None);
+        };
+        let files = app.store.playback_files(&request.paths, request.activate)?;
+        handle
+            .state::<NativePlayer>()
+            .files(&handle, files)
+            .map(Some)
+    })
+    .await
+}
+
+#[svl_ipc_macros::command]
 pub(crate) async fn watch_open(
     app: AppState<'_>,
     handle: tauri::AppHandle,

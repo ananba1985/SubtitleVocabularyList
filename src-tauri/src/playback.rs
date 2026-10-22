@@ -145,7 +145,86 @@ pub fn video_file(path: &Path) -> bool {
             )
         })
 }
+
+pub struct PlaybackFiles {
+    pub items: Vec<PlaylistItem>,
+    pub subtitles: Vec<String>,
+    pub open_path: Option<String>,
+}
+
+/// Windows passes already-separated arguments, including paths with spaces.
+pub fn file_arguments(args: impl IntoIterator<Item = String>, cwd: &Path) -> Vec<String> {
+    let mut args = args.into_iter();
+    let mut paths = vec![];
+    let mut positional = false;
+    while let Some(arg) = args.next() {
+        if !positional && arg == "--data-dir" {
+            args.next();
+        } else if !positional && arg == "--" {
+            positional = true;
+        } else if positional || !arg.starts_with('-') {
+            let path = Path::new(&arg);
+            paths.push(
+                if path.is_absolute() {
+                    path.to_owned()
+                } else {
+                    cwd.join(path)
+                }
+                .to_string_lossy()
+                .into_owned(),
+            );
+        }
+    }
+    paths
+}
+
 impl Store {
+    pub fn playback_files(
+        &self,
+        paths: &[String],
+        activate: bool,
+    ) -> Result<PlaybackFiles, AppError> {
+        let mut videos = vec![];
+        let mut subtitles = vec![];
+        let mut first_video = None;
+        for path in paths {
+            let path = dunce::canonicalize(path)
+                .map_err(|e| AppError::new("resource_missing", e.to_string()))?;
+            let text = path.to_string_lossy().into_owned();
+            if path.is_dir() || video_file(&path) {
+                if first_video.is_none() && video_file(&path) {
+                    first_video = Some(text.clone());
+                }
+                videos.push(text);
+            } else if path.is_file()
+                && path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    matches!(
+                        e.to_ascii_lowercase().as_str(),
+                        "srt" | "ass" | "ssa" | "vtt" | "sup"
+                    )
+                })
+            {
+                if !subtitles.contains(&text) {
+                    subtitles.push(text);
+                }
+            }
+        }
+        let items = self.playlist_items(&videos)?;
+        if items.is_empty() && subtitles.is_empty() {
+            return Err(AppError::new(
+                "invalid_input",
+                "没有可打开的视频或字幕。支持拖入视频、视频目录及 SRT／ASS／SSA／VTT／SUP 字幕。",
+            ));
+        }
+        let open_path = activate
+            .then(|| first_video.or_else(|| items.first().map(|i| i.path.clone())))
+            .flatten();
+        Ok(PlaybackFiles {
+            items,
+            subtitles,
+            open_path,
+        })
+    }
     pub fn playback_state(&self) -> Result<PlaybackState, AppError> {
         let value: Option<String> = self
             .connection()?

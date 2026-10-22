@@ -445,6 +445,8 @@ export interface CommandMap {
   tray_action_get: { args: undefined; result: TrayNavigation | null };
   watch_collection_prepare: { args: { sessionId: string; expectedRevision: number; clipRange?: WatchClipRange | null }; result: WatchContext };
   watch_control: { args: { control: WatchControl }; result: PlayerSnapshot };
+  watch_files_open_next: { args: undefined; result: PlayerSnapshot | null };
+  watch_files_pending: { args: undefined; result: boolean };
   watch_open: { args: { path?: string | null; sourceId?: string | null }; result: PlayerSnapshot };
   watch_playlist_update: { args: { change: PlaylistChange }; result: PlayerSnapshot };
   watch_progress_get: { args: undefined; result: WatchProgress | null };

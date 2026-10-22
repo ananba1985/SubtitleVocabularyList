@@ -3,10 +3,10 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.2 |
+| 文档版本 | 0.3 |
 | 更新日期 | 2026-10-21 |
-| 状态 | 0.14.0／0.15.0 最小后台正常路径通过；人工窗口／听感未执行，不阻塞开发 |
-| 依据 | FR-32 至 FR-36、M-28 至 M-32、TC-68 至 TC-72 |
+| 状态 | 0.16.0 文件入口正常路径及 Computer Use 窗口核对通过；跨应用拖放受工具限制未实测，未生成安装包 |
+| 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
 
 ## 1 实现与实际检查
 
@@ -38,3 +38,19 @@
 最初无窗口样本未像产品一样显式启用 input-default-bindings，滚轮断言等待超时；补齐相同选项后同一正常样本通过，产品启动选项原本已开启，无需改默认绑定。fixture 从既有 8 秒静音双语样本复制流并加入两章，不生成噪音；原视频、测试 Data 和 JSON 输出均保留在命名的 output 目录，未读取日常资料库，不提交媒体／个人资料。
 
 当前结果证明菜单构建、引擎正常控制及存储，不声称已实际点击 Windows 弹出菜单、全屏输入或文件选择；新窗口排版、逐句缓存可定位范围和学习计时的完整宿主操作未人工验收，后续按用户反馈修复，不作为开发阻塞。此次没有额外回归矩阵、故障注入、压力或安装检查。
+
+## 4 0.16.0 拖放与文件打开
+
+对应 FR-37、M-33、TC-73／74。本轮按用户后续授权使用 Computer Use，运行隔离开发客户端，未停止或操作安装版的个人资料。开发 identifier 为 com.subtitlevocabularylist.fileentry0160，Data 位于 `output/file-open-acceptance-0160/Data`，静音偏好在启动前已保存。置顶只用于隔离窗口的拖放检查布局，不改变产品配置。
+
+| 最小正常检查 | 实际结果 |
+| --- | --- |
+| 核心文件分类及参数 | `cargo run --quiet --locked --manifest-path src-tauri/Cargo.toml --no-default-features --example file_open_acceptance -- output/file-open-acceptance-0160 output/subtitle-import-acceptance/bilingual.mkv` 通过。--data-dir 及其值被排除，相对路径按调用 cwd 解析；目录自然排序、字幕分类和指定首视频正常。记录 files.json |
+| IPC／前端 | `pnpm commands:generate`、`pnpm build` 通过；包括真实 Rust 导出、TS 与 Vite。既有 no-default dead-code／unused 提示及 Vite 大 chunk 提示仍在，无新增失败 |
+| 已运行时打开 | 再次调用隔离 debug exe，传 --data-dir 和含空格的 Start sample.mkv，第二进程正常返回；Computer Use 的真实窗口显示进入“边看边学”、列表 1 项及当前 Start sample |
+| 目录与字幕同批 | 再次传 Series 目录和 Chinese.srt，实际窗口显示列表 3 项及当前 Episode2。只读核对隔离 SQLite：原 Start sample 保留，Episode2 在 Episode10 前；Episode2 的字幕 ID 为 3，externalSubtitles 保存 Chinese.srt，position=0，muted=true。记录 native-open.json；没有把这些结果称为实际鼠标拖放通过 |
+| 冷启动带文件 | 结束隔离客户端后，用同一 debug exe、同一隔离 --data-dir 与 Start sample.mkv 冷启动；Computer Use 显示“边看边学”、当前 Start sample、原 3 项列表及暂停提示。启动日志保存在 cold-stderr.log |
+| 安装钩子 | NSIS `/PPO` 对最小引入文件正常展开安装／卸载宏，hooks-expanded.nsi 仅包含本程序 Applications／SupportedTypes／OpenWithProgids。没有编译安装器、执行安装宏或修改注册表；安装后的 Explorer 菜单展示留待明确打包安装时验收 |
+| 真实拖放边界 | Computer Use 可以读取窗口，但跨窗口 drag 首先报告终点越界，调整布局后又拒绝落点进入另一应用（“not target window explorer.exe”）；没有成功投递拖放。视频／字幕进入同一队列后的真实处理已核对，WebView DragDrop 与原生 WM_DROPFILES 的实际鼠标投递仍未确认 |
+
+本轮没有实际声音听感或原生视频画面显示通过证据：窗口捕获中的原生视频区域为空白，不能据此声称画面已验收。未扩展复测此前功能，未生成发布 exe／安装包、未改变系统默认播放器。源码补齐两种拖放入口及启动链路，后续实际使用反馈按缺陷修复，不以工具不能跨应用拖动阻塞开发。命名的隔离 Data、视频和记录保留，未提交到公共仓库。

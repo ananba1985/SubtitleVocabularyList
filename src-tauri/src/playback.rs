@@ -91,7 +91,7 @@ pub struct PlaylistChange {
 }
 
 // Numeric filename ordering keeps E2 before E10, including unpadded episode names.
-fn natural_cmp(a: &str, b: &str) -> Ordering {
+pub(crate) fn natural_cmp(a: &str, b: &str) -> Ordering {
     let (a, b) = (a.to_lowercase(), b.to_lowercase());
     let (a, b) = (a.as_bytes(), b.as_bytes());
     let (mut i, mut j) = (0, 0);

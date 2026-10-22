@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.14 |
+| 文档版本 | 0.15 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 0.16.7 无界面浏览器全屏焦点／Space 与原生齿轮菜单请求验证通过；保留历史实装及窗口／声音边界，本次未重装或操作桌面 |
 | 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
@@ -293,7 +293,27 @@ Playwright CLI 独立 headless 会话使用真实 WatchView 和样式，仅替�
 
 最终 `pnpm build` 通过统一版本、Rust IPC／嵌套 DTO、TypeScript 与 Vite 检查，保留既有大分块提示。当前源码版本为 0.16.8；未生成安装包、未重启或更新正式安装版。真实窗口、真实剧集下导入与播放并行的资源表现、在线字幕服务和听感没有追加验证。
 
-## 14 修订记录
+## 14 0.16.9 同目录剧集确认导入
+
+对应 FR-25／37、TC-59／74。当前视频加载后，CMD-87 只读扫描同目录并按文件名中的剧名／季集号识别；窗口展示同剧文件总数、待导入数量与可展开文件名。当前视频和已有完整资料不在批量列表，用户确认后才调用原 import_start；拒绝后同页面同目录同剧不反复提示。全屏暂不展示确认区，退出后可选择。
+
+最小核心检查 `related_videos::tests::discovers_sibling_episodes_without_importing` 在临时隔离 Store 中创建 3 个 S01E01／02／10 命名的视频文件（只有合成字节，不作解码），实际发现同剧总数 3，返回另外两集且 2 排在 10 前；sources 和 tasks 均保持为空。结果 **1 项通过，120 项过滤，0.08 秒**。
+
+```powershell
+cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --features ipc-types related_videos::tests::discovers_sibling_episodes_without_importing -- --exact --nocapture
+```
+
+Playwright CLI 使用独立 headless 会话，直接加载实际 WatchView／RelatedEpisodes／样式，仅替代 Tauri 服务。正常流程如下：
+
+1. 展开待导入文件，显示第 2／10 集；导入请求数为 0，playing=true。
+2. 点击“仅导入当前集”，再模拟打开同目录同剧下一集；不再提示、批量请求仍为 0，继续播放。
+3. 打开另一剧集触发新提示，点击“导入其余 2 集”；实际请求恰好一次，paths 只有该剧第 2／10 集，不含当前第 1 集。确认区域关闭，当前路径仍为第 1 集，playing=true。
+
+UI 流程通过，记录位于 `output/playwright/player-related-0169/` 的 discovery-preview.txt、current-only.txt、confirmed-import.txt 和隔离夹具；CLI 快照位于 `.playwright-cli/`。页面仅有夹具 favicon 404。浏览器会话与本机 1437 服务均已结束，未操作系统鼠标键盘。
+
+`pnpm build` 通过统一版本、Rust IPC／生成 DTO、TypeScript 与 Vite，保留既有大分块提示。此次只验证新增扫描与确认链路，不把服务夹具中的任务回执称为真实视频多文件解析完成；未重跑既有 FFmpeg 批量导入、真实播放器窗口或在线字幕服务。源码版本 0.16.9，未生成或安装发行包，正式 Data 未改动。
+
+## 15 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -308,3 +328,4 @@ Playwright CLI 独立 headless 会话使用真实 WatchView 和样式，仅替�
 | 0.12 | 2026-10-22 | 关联根目录脚本实际生成的 0.16.6 验证包及必要交付核对，不扩大实际窗口验收范围 |
 | 0.13 | 2026-10-22 | 记录软件按钮全屏后的焦点修复、真实 WatchView 的 headless Space 正常操作及原生齿轮菜单请求，保留真实桌面边界 |
 | 0.14 | 2026-10-22 | 记录当前剧集同步、Windows 路径身份及自动后台导入后同源收录的真实正常结果，保留实际窗口／服务与安装边界 |
+| 0.15 | 2026-10-22 | 记录同目录剧集只读发现、文件预览、拒绝及确认后的多路径请求正常检查，保留真实导入与窗口边界 |

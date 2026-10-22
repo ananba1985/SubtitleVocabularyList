@@ -222,6 +222,8 @@ export type QuestionDraft = { target: string, meaning: string, sentence: string,
 
 export type QuestionSnapshot = { entryId: string, target: string, dimension: string, expected: Array<string>, context: string, assetId: string | null, audioKind: string, };
 
+export type RelatedVideos = { key: string, series: string, directory: string, total: number, paths: Array<string>, };
+
 export type ReplacementStatus = { operationId: string, state: string, originalText: string, translation: string, providerId: string, error: string | null, clipboardPending: boolean, };
 
 export type ReportGroup = { key: string, label: string, counts: Counts, insufficientSample: boolean, };
@@ -452,6 +454,7 @@ export interface CommandMap {
   watch_open: { args: { path?: string | null; sourceId?: string | null }; result: PlayerSnapshot };
   watch_playlist_update: { args: { change: PlaylistChange }; result: PlayerSnapshot };
   watch_progress_get: { args: undefined; result: WatchProgress | null };
+  watch_related_videos: { args: { path: string }; result: RelatedVideos | null };
   watch_state_get: { args: undefined; result: PlayerSnapshot };
   watch_viewport_set: { args: { viewport: WatchViewport }; result: void };
 }

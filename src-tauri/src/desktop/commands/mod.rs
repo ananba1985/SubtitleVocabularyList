@@ -35,6 +35,7 @@ where
 // Keep all desktop IPC registrations at this single entry point.
 svl_ipc_macros::catalog! {
         watch::watch_open,
+        watch::watch_related_videos,
         watch::watch_files_pending,
         watch::watch_files_open_next,
         watch::watch_state_get,

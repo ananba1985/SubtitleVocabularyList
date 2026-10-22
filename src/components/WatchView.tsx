@@ -8,6 +8,7 @@ import { WatchQuery, type WatchRequest } from "./WatchQuery";
 import { WatchOcr } from "./WatchOcr";
 import { WatchClip } from "./WatchClip";
 import { WatchPlaylist } from "./WatchPlaylist";
+import { RelatedEpisodes } from "./RelatedEpisodes";
 import type { CollectionSeed, Settings, SourceSummary } from "../types";
 import type {
   PlayerSnapshot,
@@ -601,6 +602,7 @@ export function WatchView({
           {fullscreen ? "退出全屏" : "全屏"}
         </button>
       </div>
+      <RelatedEpisodes path={state?.path ?? ""} loaded={state?.loaded ?? false} />
       {state?.path && state.importStatus?.message && (
         <p role="status" className="muted">
           {state.importStatus.message}

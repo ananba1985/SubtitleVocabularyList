@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.67 |
+| 文档版本 | 0.68 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -312,6 +312,12 @@ subtitle_dialog 发送 `watch_subtitle_file_requested` 到主窗口，payload �
 
 `watch_files_pending` 事件只发主窗口，无 payload；用于导航和唤醒消费。路径及 append／activate 意图保存在进程内存中。启动和单实例 argv 为 activate，窗口及原生视频拖放为 append。文件打开不产生后台任务历史，不改变词库同步接口。
 
+### CMD-87 同目录剧集发现（0.16.9）
+
+`watch_related_videos(path: string) -> RelatedVideos | null`。后台只读扫描视频父目录的同剧文件，返回 `{key,series,directory,total,paths}`；total 为识别到的同剧视频文件数，paths 为按自然顺序排列且排除当前文件和已有完整资料的待导入文件。无可识别剧名或无其余待导入项返回 null。key 仅供本次页面会话避免重复提示，不是导入操作标识。
+
+确认由既有 `import_start({paths,operationId})` 创建多文件任务；当前集继续由原自动导入处理，未确认不提交其他视频。该只读命令不控制播放器，不写来源或任务。
+
 ## 4 任务与事件
 
 任务查询是当前执行状态和结果的权威入口。业务后台与失败诊断读取 SQLite，正常临时操作读取有限内存回执；事件建议采用以下最小结构：
@@ -481,3 +487,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 
 | 0.66 | 2026-10-21 | 登记 CMD-85／86 和文件队列信号，复用既有列表／字幕控制 |
 | 0.67 | 2026-10-22 | 明确查询语言 auto 默认、逐次方向解析及中译英模式，保持显式语言调用 |
+| 0.68 | 2026-10-22 | 登记 CMD-87 同目录同剧文件发现及确认后复用 import_start 的多路径契约 |

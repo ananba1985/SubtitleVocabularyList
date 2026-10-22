@@ -9,6 +9,15 @@ use crate::{
 use tauri::{Manager, State};
 
 #[svl_ipc_macros::command]
+pub(crate) async fn watch_related_videos(
+    app: AppState<'_>,
+    path: String,
+) -> Result<Option<crate::related_videos::RelatedVideos>, AppError> {
+    let app = app.inner().clone();
+    background(move || app.store.related_videos(&path)).await
+}
+
+#[svl_ipc_macros::command]
 pub(crate) fn watch_files_pending(inbox: State<'_, crate::player::files::FileInbox>) -> bool {
     inbox.pending()
 }

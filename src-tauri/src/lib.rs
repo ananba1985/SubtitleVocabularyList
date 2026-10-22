@@ -47,6 +47,7 @@ pub mod tasks;
 pub mod vocabulary;
 pub mod watch;
 pub mod playback;
+pub mod related_videos;
 pub mod subtitles;
 
 #[cfg(all(windows, feature = "desktop"))]

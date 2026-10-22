@@ -45,6 +45,12 @@
 .watch-sentence { font-size:18px; user-select:text; white-space:pre-wrap; margin-top:4px; }
 .watch-translation { margin:4px 0; font-size:16px; }
 .watch-options { padding:12px; background:#eef3e9; border-radius:8px; }
+.watch-related { flex:none; padding:10px 14px; border:1px solid #d8e0d8; border-radius:8px; background:#eef3e9; }
+.watch-related p { margin:6px 0; }
+.watch-related summary { cursor:pointer; }
+.watch-related ul { max-height:150px; overflow:auto; margin:6px 0; overflow-wrap:anywhere; }
+.watch-related small { overflow-wrap:anywhere; }
+.watch-fullscreen .watch-related { display:none; }
 .watch-options label { display:flex; align-items:center; gap:6px; margin:0; }
 .watch-options input[type="number"] { width:85px; }
 .watch-options .check-label { display:flex; }

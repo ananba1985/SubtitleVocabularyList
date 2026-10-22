@@ -9,7 +9,7 @@ use crate::{
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -116,17 +116,32 @@ pub(crate) struct WatchClip {
 }
 
 impl Store {
+    pub(crate) fn watch_import_ready(&self, source_id: Option<&str>) -> Result<bool, AppError> {
+        let Some(id) = source_id else { return Ok(false) };
+        let fingerprint: String = self.connection()?.query_row(
+            "SELECT fingerprint FROM sources WHERE id=? AND kind='video'",
+            [id],
+            |r| r.get(0),
+        )?;
+        Ok(self.cached_source(&fingerprint)?.is_some() && self.subtitle_bundle(id)?.is_some())
+    }
+
     pub fn watch_media(
         &self,
         path: Option<&str>,
         source_id: Option<&str>,
     ) -> Result<WatchMedia, AppError> {
+        let source_id = if let Some(id) = source_id {
+            Some(id.to_owned())
+        } else if let Some(path) = path {
+            self.video_source_at(Path::new(path))?.map(|s| s.0)
+        } else {
+            None
+        };
         let record: Option<(String, String, String, String, Option<String>, String)> = {
             let db = self.connection()?;
-            if let Some(id) = source_id {
+            if let Some(id) = &source_id {
                 db.query_row("SELECT id,path_hint,title,fingerprint,corpus_path,COALESCE(text_source,'') FROM sources WHERE id=? AND kind='video'", [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional()?
-            } else if let Some(path) = path {
-                db.query_row("SELECT id,path_hint,title,fingerprint,corpus_path,COALESCE(text_source,'') FROM sources WHERE kind='video' AND path_hint=? ORDER BY imported_at DESC LIMIT 1", [path], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional()?
             } else {
                 None
             }
@@ -134,10 +149,9 @@ impl Store {
         if source_id.is_some() && record.is_none() {
             return Err(AppError::new("not_found", "未找到该剧集，请重新选择。"));
         }
-        let file = record
-            .as_ref()
-            .map(|r| r.1.as_str())
-            .or(path)
+        // The decoder's current path takes precedence over a saved source hint.
+        let file = path
+            .or_else(|| record.as_ref().map(|r| r.1.as_str()))
             .ok_or_else(|| AppError::new("invalid_input", "请先选择本地视频。"))?;
         let file = dunce::canonicalize(file).map_err(|_| {
             AppError::new(

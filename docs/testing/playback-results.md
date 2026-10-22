@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.13 |
+| 文档版本 | 0.14 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 0.16.7 无界面浏览器全屏焦点／Space 与原生齿轮菜单请求验证通过；保留历史实装及窗口／声音边界，本次未重装或操作桌面 |
 | 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
@@ -262,7 +262,38 @@ cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --feature
 
 本次未运行正式安装版、未执行新的真实桌面／声音测试，也未生成 0.16.7 安装器；已有 0.16.6 包不因源码修复自动更新。
 
-## 13 修订记录
+## 13 0.16.8 当前剧集信息与自动后台导入
+
+对应 FR-25／26／37、TC-59／63／74。截图中的已导入剧集选择器原先只在 sources_list 第一次返回时选第一项，换片后未同步；修复为跟随实际路径、会话及来源，未导入的视频显示自己的标题。用户另行选择待打开项时，普通播放进度更新不覆盖选择。按用户明确确认，新视频实际加载后自动复用现有后台导入，准备字幕、原声和剧集候选；完成仅更新对应文件的学习资料与来源，不调用播放器重新加载。个人词库仍按需收录。
+
+同一正常流程另外定位到已有路径差异：corpus.video_inputs 使用 Windows 原生 canonicalize，既有 path_hint 可能带 `\\?\`；播放路径使用 dunce 简化形式，原先字符串等值查询会遗漏资料。来源查找现在共用简化／原生两种路径，新导入保存简化路径；watch_media 同时有实际路径和来源提示时，用实际文件核对摘要。
+
+### 13.1 真实后台导入与收录正常流程
+
+`episode_import_follows_playback` 使用真实 Store、TaskManager、Application 导入器和 mpv Actor／Engine，隔离 Data。合成 320×180、24 fps、60 秒绿底视频带静音音轨，播放器关闭音轨且静音；不可见 HWND、无 WebView，无系统鼠标键盘输入。
+
+1. 为 Episode1／Episode2 分别准备内容不同的英文与中文字幕。先完整导入 Episode1，并保留带扩展前缀的既有路径形式，再打开该集正常播放。
+2. 通过资源打开链路切到尚未导入的 Episode2；立即载入新会话并播放。自动导入完成后，当前 path／session 不变、playing=true，标题和列表 sourceId 指向 Episode2。
+3. 隔离 tasks 表实际有且只有 2 个 import：预先准备第一集和自动准备第二集；没有为已有完整的第一集追加任务。这里读取完整任务表，不把任务页默认最近一条的返回当作完整历史。
+4. 暂停后实际上下文为 `Please wait for me.`／`请等我。`，sourceId 等于第二集且不同于第一集。调用既有 watch_collect 成功保存整句；新条目、例句来源保持第二集。
+
+```powershell
+$env:SVL_PLAYER_TEST_OUTPUT = 'D:/Projects/codex/SubtitleVocabularyList/output/player-episode-import-0168-run3'
+$env:SVL_PLAYER_TEST_VIDEO = 'D:/Projects/codex/SubtitleVocabularyList/output/player-episode-fixture-0168/silent.mkv'
+cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --features ipc-types player::native_tests::episode_import_follows_playback -- --ignored --exact --nocapture
+```
+
+最终 **1 项通过，119 项过滤，4.02 秒**。命名输出目录保留独立 Data、双语字幕和 result.json；原两次定位输出也保留，不冒充通过证据。测试程序缺少默认图标资源的既有提示不影响流程。没有访问正式 Data 或调用真实 Qwen／在线字幕服务。
+
+### 13.2 实际 WatchView 的无界面浏览器流程
+
+Playwright CLI 独立 headless 会话使用真实 WatchView 和样式，仅替代 Tauri IPC／窗口服务。初始选择 A，模拟播放器切换到已导入的 B 后选择器正确显示 B；手动选择待打开 A，再发同视频更新，待选 A 保持。模拟打开未导入的 C 后显示 C 的名称及简短后台状态；导入完成通知刷新来源，选择器转为 C 的真实 sourceId，状态提示消失，playing 仍为 true。
+
+正常流程通过，证据位于 `output/playwright/player-episode-0168/` 的 imported-switch.txt、pending-choice.txt、new-video.txt、completed-import.txt 及夹具，快照保留于 `.playwright-cli/`。初次立即断言早于 React effect 提交，改为在下一条 CLI 操作读取，不把该时序误判为产品失败；页面只有夹具 favicon 404。会话及本机 1437 服务已停止。
+
+最终 `pnpm build` 通过统一版本、Rust IPC／嵌套 DTO、TypeScript 与 Vite 检查，保留既有大分块提示。当前源码版本为 0.16.8；未生成安装包、未重启或更新正式安装版。真实窗口、真实剧集下导入与播放并行的资源表现、在线字幕服务和听感没有追加验证。
+
+## 14 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -276,3 +307,4 @@ cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --feature
 | 0.11 | 2026-10-22 | 补齐工具栏、原生 OSC 和右键菜单鼠标停止，记录单次内部鼠标命中、停止及进度／列表保持的后台正常证据 |
 | 0.12 | 2026-10-22 | 关联根目录脚本实际生成的 0.16.6 验证包及必要交付核对，不扩大实际窗口验收范围 |
 | 0.13 | 2026-10-22 | 记录软件按钮全屏后的焦点修复、真实 WatchView 的 headless Space 正常操作及原生齿轮菜单请求，保留真实桌面边界 |
+| 0.14 | 2026-10-22 | 记录当前剧集同步、Windows 路径身份及自动后台导入后同源收录的真实正常结果，保留实际窗口／服务与安装边界 |

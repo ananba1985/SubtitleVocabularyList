@@ -263,10 +263,9 @@ impl Store {
         }
         files.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
         files.dedup();
-        let db = self.connection()?;
         files.into_iter().map(|path| {
+            let source = self.video_source_at(&path)?;
             let path = path.to_string_lossy().into_owned();
-            let source: Option<(String,String)> = db.query_row("SELECT id,title FROM sources WHERE kind='video' AND path_hint=? ORDER BY imported_at DESC LIMIT 1", [&path], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
             let title = source.as_ref().map(|s| s.1.clone()).unwrap_or_else(|| Path::new(&path).file_stem().unwrap_or_default().to_string_lossy().into_owned());
             Ok(PlaylistItem { path, title, source_id: source.map(|s| s.0) })
         }).collect()

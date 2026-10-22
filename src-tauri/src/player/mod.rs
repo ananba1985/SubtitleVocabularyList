@@ -1,3 +1,4 @@
+mod episode_import;
 pub(crate) mod files;
 mod menu;
 mod mpv;
@@ -81,6 +82,7 @@ pub struct PlayerSnapshot {
     pub title: String,
     pub path: String,
     pub source_id: Option<String>,
+    pub import_status: Option<episode_import::WatchImportStatus>,
     pub playing: bool,
     pub loaded: bool,
     pub position: f64,
@@ -139,6 +141,8 @@ enum Message {
     Files(PlaybackFiles, Reply),
     Dropped(Vec<String>),
     Prepared(u64, u64, Result<WatchMedia, AppError>),
+    ImportStatus(String, episode_import::WatchImportStatus),
+    Imported(String, Result<Option<WatchMedia>, AppError>),
     Control(WatchControl, Option<Reply>),
     Viewport(i32, i32, bool),
     Saved(
@@ -706,6 +710,7 @@ struct Actor {
     subtitle_dialog_open: bool,
     pending_subtitles: Option<(String, Vec<String>)>,
     refresh_after_seek: bool,
+    imports: std::collections::HashMap<String, episode_import::WatchImportStatus>,
 }
 fn failure(detail: impl Into<String>) -> AppError {
     AppError::new("player_unavailable", detail)
@@ -804,6 +809,7 @@ impl Actor {
             subtitle_dialog_open: false,
             pending_subtitles: None,
             refresh_after_seek: false,
+            imports: Default::default(),
         }
     }
     fn receive(&mut self, message: Message) {
@@ -933,6 +939,13 @@ impl Actor {
                     let _ = self.engine.command(json!(["stop"]));
                 }
             }
+            Message::ImportStatus(path, status) => {
+                if self.state.path == path {
+                    self.state.import_status = Some(status.clone());
+                }
+                self.imports.insert(path, status);
+            }
+            Message::Imported(path, result) => self.import_finished(&path, result),
             Message::Control(control, reply) => {
                 let result = self.control(control).map(|_| self.state.clone());
                 if let Some(reply) = reply {
@@ -1349,6 +1362,7 @@ impl Actor {
         self.state.playing = false;
         self.state.error = None;
         self.state.status = "loading".into();
+        self.state.import_status = None;
         self.state.position = 0.0;
         self.state.duration = 0.0;
         self.state.tracks.clear();
@@ -1406,6 +1420,9 @@ impl Actor {
             .watch_progress_for(&self.state.path)
             .ok()
             .flatten();
+        self.bind_media(media);
+    }
+    fn bind_media(&mut self, media: WatchMedia) {
         self.state.source_id = media.source_id.clone();
         self.state.title = media.title.clone();
         for item in &mut self.state.playback.playlist {
@@ -1900,6 +1917,7 @@ impl Actor {
                 self.state.title.clear();
                 self.state.path.clear();
                 self.state.source_id = None;
+                self.state.import_status = None;
                 self.state.status = "idle".into();
                 self.engine
                     .command(json!(["set_property", "fullscreen", false]))?;
@@ -2060,6 +2078,7 @@ impl Actor {
             self.state.error = Some(error.message);
         }
         self.progress = self.current_progress();
+        self.import_current();
     }
     fn selected_audio_stream(&self) -> Option<usize> {
         self.engine

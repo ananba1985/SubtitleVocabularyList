@@ -334,6 +334,125 @@ fn with_isolated_player(
 }
 
 #[test]
+#[ignore = "requires a fresh output directory and synthetic video with a silent audio track"]
+fn episode_import_follows_playback() {
+    with_isolated_player(|actor, receiver, store, root, path| {
+        let second = root.join("Episode2.mkv");
+        std::fs::copy(path, &second).unwrap();
+        let second = second.to_string_lossy().into_owned();
+        for (stem, english, chinese) in [
+            ("Episode1", "We will arrive tomorrow.", "我们明天到。"),
+            ("Episode2", "Please wait for me.", "请等我。"),
+        ] {
+            for (language, text) in [("en", english), ("zh", chinese)] {
+                std::fs::write(
+                    root.join(format!("{stem}.{language}.srt")),
+                    format!("1\n00:00:00,000 --> 00:01:00,000\n{text}\n"),
+                )
+                .unwrap();
+            }
+        }
+        // The first episode already has complete imported data.
+        let task = actor
+            .application
+            .import_start(vec![path.into()], uuid::Uuid::new_v4().to_string())
+            .unwrap();
+        wait(actor, receiver, |a| {
+            a.application.tasks.get(&task.id).unwrap().terminal()
+        });
+        assert_eq!(
+            actor.application.tasks.get(&task.id).unwrap().state,
+            "succeeded"
+        );
+        // Existing Windows imports can contain the native extended-length prefix.
+        store
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE sources SET path_hint=?",
+                [std::fs::canonicalize(path)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()],
+            )
+            .unwrap();
+        actor
+            .open(store.watch_media(Some(path), None).unwrap())
+            .unwrap();
+        wait(actor, receiver, |a| a.state.loaded && a.imports.is_empty());
+        let first_source = actor.state.source_id.clone().unwrap();
+        assert!(actor.state.playing);
+        let first_session = actor.state.session_id.clone();
+
+        // Resource-open switches to a new file; its background import must not reload mpv.
+        actor
+            .files(store.playback_files(&[second.clone()], true).unwrap())
+            .unwrap();
+        wait(actor, receiver, |a| {
+            a.state.loaded && a.state.path == second
+        });
+        let second_session = actor.state.session_id.clone();
+        assert_ne!(second_session, first_session);
+        assert_ne!(actor.state.source_id, Some(first_source.clone()));
+        assert!(actor.state.playing);
+        wait(actor, receiver, |a| {
+            a.imports.is_empty() && a.state.source_id.is_some()
+        });
+        let second_source = actor.state.source_id.clone().unwrap();
+        assert_ne!(second_source, first_source);
+        assert_eq!(actor.state.session_id, second_session);
+        assert_eq!(actor.engine.property("path"), json!(second));
+        assert!(actor.state.playing);
+        assert!(actor.state.title.starts_with("Episode2"));
+        assert!(actor.state.import_status.is_none());
+        assert!(store.watch_import_ready(Some(&second_source)).unwrap());
+        let import_count: i64 = store
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE kind='import'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(import_count, 2);
+        assert_eq!(
+            actor
+                .state
+                .playback
+                .playlist
+                .iter()
+                .find(|i| i.path == second)
+                .unwrap()
+                .source_id,
+            Some(second_source.clone())
+        );
+
+        control(actor, "pause", None, None);
+        wait(actor, receiver, |a| a.state.context.is_some());
+        let context = actor.state.context.as_ref().unwrap();
+        assert_eq!(context.source_id, second_source);
+        assert_eq!(context.text, "Please wait for me.");
+        assert_eq!(context.translation, "请等我。");
+        let saved = store.watch_collect(context, None).unwrap();
+        std::fs::write(
+            root.join("result.json"),
+            serde_json::to_vec_pretty(&json!({
+                "firstSource":first_source,"secondSource":second_source,"current":actor.state,
+                "saved":saved,"importCount":import_count,
+                "windowVisible":false,"audioOutput":false
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        println!(
+            "PASS: switched episode, background import, unchanged playback session and current-source collection; {}",
+            root.display()
+        );
+    });
+}
+
+#[test]
 #[ignore = "requires an explicit fresh output directory and silent video fixture"]
 fn open_autoplays() {
     with_isolated_player(|actor, receiver, store, root, path| {

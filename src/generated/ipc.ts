@@ -164,7 +164,7 @@ export type PlaybackPreferences = { speed: number, volume: number, muted: boolea
 
 export type PlaybackState = { preferences: PlaybackPreferences, playlist: Array<PlaylistItem>, currentPath: string | null, };
 
-export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, frame: WatchFrame | null, playback: PlaybackState, playlistIndex: number | null, chapters: Array<WatchChapter>, chapterIndex: number | null, loopA: number | null, loopB: number | null, };
+export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, importStatus: WatchImportStatus | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, frame: WatchFrame | null, playback: PlaybackState, playlistIndex: number | null, chapters: Array<WatchChapter>, chapterIndex: number | null, loopA: number | null, loopB: number | null, };
 
 export type PlaylistChange = { action: string, paths: Array<string>, index: number | null, destination: number | null, };
 
@@ -315,6 +315,8 @@ export type WatchContext = { revision: number, sourceId: string, exampleId: stri
 export type WatchControl = { action: string, value: number | null, text: string | null, expectedRevision: number | null, };
 
 export type WatchFrame = { path: string, width: number, height: number, positionMs: number, text: string, busy: boolean, error: string | null, };
+
+export type WatchImportStatus = { taskId: string | null, state: string, message: string, };
 
 export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, audioId: number | null, subtitleDelay: number, secondarySubtitleId: number | null, externalSubtitles: Array<string>, };
 

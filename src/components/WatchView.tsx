@@ -159,16 +159,23 @@ export function WatchView({
   }, []);
   useEffect(() => {
     let disposed = false;
-    call("sources_list")
-      .then((value) => {
-        if (!disposed) {
-          setSources(value);
-          setSelected(value[0]?.id ?? "");
-        }
-      })
-      .catch((e) => {
-        if (!disposed) setError(message(e));
-      });
+    let sourceRequest = 0;
+    const loadSources = () => {
+      const id = ++sourceRequest;
+      return call("sources_list")
+        .then((value) => {
+          if (!disposed && id === sourceRequest) {
+            setSources(value);
+          }
+        })
+        .catch((e) => {
+          if (!disposed) setError(message(e));
+        });
+    };
+    void loadSources();
+    const sourcesStop = listen("watch_sources_updated", () => {
+      void loadSources();
+    });
     call("watch_progress_get")
       .then((value) => {
         if (!disposed) setProgress(value);
@@ -184,6 +191,7 @@ export function WatchView({
       disposed = true;
       ++request.current;
       void stop.then((fn) => fn());
+      void sourcesStop.then((fn) => fn());
       void call("watch_control", {
         control: {
           action: "hide",
@@ -197,6 +205,11 @@ export function WatchView({
       }).catch(() => {});
     };
   }, [refresh]);
+  useEffect(() => {
+    // Follow actual file changes, while allowing a different episode to be
+    // selected for the explicit Open action between player updates.
+    setSelected(state?.path ? (state.sourceId ?? "") : "");
+  }, [state?.path, state?.sourceId, state?.sessionId]);
   useEffect(() => {
     const current = getCurrentWindow();
     let disposed = false;
@@ -454,14 +467,22 @@ export function WatchView({
         >
           {busy ? "正在打开…" : state?.loaded ? "添加视频" : "打开视频"}
         </button>
-        {!!sources.length && (
+        {(!!sources.length || !!state?.path) && (
           <>
             <select
               aria-label="已导入剧集"
               value={selected}
               onChange={(e) => setSelected(e.target.value)}
             >
-              <option value="">选择已导入剧集</option>
+              <option value="">
+                {state?.path && !state.sourceId
+                  ? `${state.title} · 当前视频`
+                  : "选择已导入剧集"}
+              </option>
+              {state?.sourceId &&
+                !sources.some((s) => s.id === state.sourceId) && (
+                  <option value={state.sourceId}>{state.title}</option>
+                )}
               {sources.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title}
@@ -580,6 +601,11 @@ export function WatchView({
           {fullscreen ? "退出全屏" : "全屏"}
         </button>
       </div>
+      {state?.path && state.importStatus?.message && (
+        <p role="status" className="muted">
+          {state.importStatus.message}
+        </p>
+      )}
       {state?.loaded &&
         (state.playback.preferences.loopMode !== "none" ||
           state.loopA !== null) && (

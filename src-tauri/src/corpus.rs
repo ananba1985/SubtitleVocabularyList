@@ -229,6 +229,16 @@ pub fn video_inputs(paths: &[String]) -> Result<Vec<PathBuf>, AppError> {
 }
 
 impl Store {
+    pub(crate) fn video_source_at(&self, path: &Path) -> Result<Option<(String, String)>, AppError> {
+        let canonical = path.canonicalize()?;
+        let simple = dunce::simplified(&canonical).to_string_lossy();
+        let native = canonical.to_string_lossy();
+        Ok(self.connection()?.query_row(
+            "SELECT id,title FROM sources WHERE kind='video' AND path_hint IN (?,?) ORDER BY imported_at DESC LIMIT 1",
+            params![simple, native], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).optional()?)
+    }
+
     pub fn install_corpus(
         &self,
         input_path: &Path,
@@ -240,7 +250,7 @@ impl Store {
             kind: "video".into(),
             title: imported.title.clone(),
             fingerprint: fingerprint.into(),
-            path_hint: Some(input_path.to_string_lossy().to_string()),
+            path_hint: Some(dunce::simplified(input_path).to_string_lossy().to_string()),
             duration_ms: Some(imported.duration_ms),
         })?;
         let now = Utc::now().timestamp_millis();

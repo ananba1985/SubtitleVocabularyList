@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-WATCH-001 |
-| 文档版本 | 0.13 |
-| 更新日期 | 2026-10-21 |
+| 文档版本 | 0.14 |
+| 更新日期 | 2026-10-22 |
 | 状态 | 本轮开发按用户接受结束；后台证据及未实测交互／真实服务边界保留，后续按缺陷修复 |
 | 需求依据 | [PRD §3.7、§5.7、FR-25 至 FR-29](../requirements/PRD.md) |
 | 架构依据 | [DEC-08、ARC-11](architecture.md) |
@@ -279,6 +279,8 @@ CMD-84 与 PlayerSnapshot 扩展见[接口设计](interfaces.md)。最小实际�
 
 音轨与两路字幕使用 aid／sid／secondary-sid。快照分别反映主选和第二字幕选中；外置字幕选择统一通过主窗口文件对话框，提交核对 revision。sub-visibility、secondary-sub-visibility、sub-scale、sub-pos 和循环模式追加至 PlaybackPreferences，旧 JSON 用默认值读取；轨道和延迟仍沿用逐文件 WatchProgress。ASS 定位与图片字幕按 mpv 自身支持处理，不强制覆盖原样式。
 
+调试命令 capture_frame 从 0.16.1 起请求当前 mpv 渲染器生成 window 合成截图，包含主／第二字幕和 OSD，避免读取可能为空白或过期的 GL_FRONT 缓冲。合成截图只能证明该渲染器的输出，不能单独证明实际屏幕呈现。后台正常检查复用产品的 Engine，在始终不可见的原生窗口中选择双字幕并核对解码文字及合成图；真实窗口验收另行记录。需求 FR-35 的显示行为和播放实现不因诊断方式改变，实际结果见[播放验证第 6 节](../testing/playback-results.md#6-0161-后台定位与调试取帧修复)。
+
 指定时间直接调用 mpv 内置 console 的 `get-input`，由 client_name／带会话的 handler_id 接收 CLIENT_MESSAGE submit，解析为秒数后发绝对定位，不执行输入文本为命令。该协议依据[固定版本 console](https://github.com/mpv-player/mpv/blob/e471496c56/player/lua/console.lua)，无外部脚本或新运行时依赖。相对定位、sub-seek、chapter、loop-file、loop-playlist、ab-loop-a/b 均为 mpv 原生命令／属性。章节从 chapter-list 读取；菜单提示文字字幕的定位能力受 mpv 已读字幕范围限制。
 
 显式循环模式互斥，列表循环启用 autoNext；关闭 autoNext 清除列表循环。显式模式切换清除 A–B，换集也清除 A–B，不持久化区间。菜单、console 输入和字幕文件选择时取消显示计时，关闭后不自行重启旧倒计时；主动暂停的显式定位在 SEEK 后读取新句，恢复历史进度的 SEEK 不被误判。换轨／样式更新使旧上下文失效并刷新暂停句，完整译文实际显示后仍遵守原计时规则。
@@ -318,3 +320,4 @@ player/files.rs 内存队列统一接收 Windows 启动 argv、单实例回调 a
 | 0.12 | 2026-10-21 | 接入原生菜单与鼠标转发、双字幕、时间输入、章节和循环，保持 mpv 播放核心 |
 
 | 0.13 | 2026-10-21 | 接入统一文件队列、双表面拖放、冷／热启动参数与可选打开方式登记 |
+| 0.14 | 2026-10-22 | 修订调试取帧为当前渲染器合成图，区分后台原生双字幕输出与真实窗口呈现 |

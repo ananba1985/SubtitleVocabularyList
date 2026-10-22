@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.4 |
-| 更新日期 | 2026-10-21 |
-| 状态 | 0.16.0 原生播放、进度操作及全屏进入已实测；后台连播与字幕解码／内存渲染通过，字幕宿主显示及剩余桌面操作待续，未生成安装包 |
+| 文档版本 | 0.5 |
+| 更新日期 | 2026-10-22 |
+| 状态 | 0.16.1 后台原生 OpenGL 双字幕合成图通过，修复调试取帧误判；既有实际操作证据保留，真实窗口显示及剩余操作待续，未生成安装包 |
 | 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
 
 ## 1 实现与实际检查
@@ -81,8 +81,33 @@ Computer Use 执行真实键盘、鼠标点击和拖动。局部窗口捕获未�
 
 真实桌面观察保存在 `observations.jsonl`；进度拖动的稳定记录为 `seek-drag-settled`。原生图包含 `fullscreen-osc.png`、`seek-click.png`、`seek-drag.png`、`secondary-subtitle.png`、`subtitle-after-seek.png`。当前暂停的是桌面操作验证，正式个人资料保持隔离，后续继续针对未完成正常操作核对，不重跑已通过项目或据后台结果宣布全部验收完成。
 
-## 6 修订记录
+## 6 0.16.1 后台定位与调试取帧修复
+
+2026-10-22 按用户要求在后台继续定位，未发送鼠标／键盘输入，未启动可见窗口，也没有读取或修改正式 Data。对应 FR-35／TC-71，本轮确认的是调试取帧缺陷，尚不能把前次缺字截图认定为真实屏幕不显示字幕。
+
+### 6.1 原因及修复范围
+
+原 capture_frame 在 SwapBuffers 之后直接读取 GL_FRONT。后台同一 OpenGL 会话中，绘制缓冲和 mpv 原生 window 截图均包含“我明天会到。”，GL_FRONT 读取却可得到空白图；该读取无法可靠代表当前合成帧。上一节缺少中文字幕的图来自这一旧诊断入口，现将该疑点改记为截图证据不足，不能据其认定字幕解码或渲染失败。
+
+`Engine::capture` 改为调用同一活动渲染器的 `screenshot-to-file … window`，从 mpv 获取包含两路字幕及 OSD 的合成图。仅 debug 构建提供该入口，不修改选轨、播放、暂停学习或自动收录逻辑。生成的图属于渲染输出证据；实际窗口是否显示仍留待用户有空后的桌面操作核对。
+
+### 6.2 一个原生正常流程的前后结果
+
+新增 `src-tauri/examples/player_subtitle_acceptance.rs`，直接包含并调用产品实际使用的 `player/mpv.rs`，不复制另一套渲染实现。示例创建未设置 WS_VISIBLE 的 960×600 HWND，从不调用 ShowWindow 或焦点／输入 API，前后均断言窗口不可见；选择无音轨的既有合成视频，并在加载前关闭音轨、静音。资料与 GPU 缓存只位于新的命名输出目录，不打开业务资料库。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 修复前正常流程 | 暂停在 20 秒，选中英文主轨和中文第二轨，旧 capture 不能取得含中文的图，正常流程的“字幕像素应存在”断言失败；输出保留在 `output/player-subtitle-opengl-0161/engine-before` |
+| 修复后同一正常流程 | `cargo run --quiet --locked --manifest-path src-tauri/Cargo.toml --example player_subtitle_acceptance -- output/player-subtitle-opengl-0161/engine-after "output/player-ui-acceptance-0161/UI Series/Episode1.mkv"` 通过。产品 Engine／libmpv OpenGL 返回主字幕 `I will arrive tomorrow.`、第二字幕 `我明天会到。`，暂停及位置 20.000 秒保持；第二字幕区域有 1,647 个变化像素，实际 PNG 同时显示中英文 |
+| 隔离及退出 | 示例全程无可见窗口、无声音和桌面输入，退出销毁引擎及原生 HWND；结果为 windowVisible=false、audioOutput=false。不启动调试客户端或安装版、不改变正式播放列表及个人词库 |
+
+证据包括 `engine-after/result.json`、`primary.png`、`secondary.png`，后台初步定位的 Python 脚本及图保留在同一 `output/player-subtitle-opengl-0161` 命名目录，均不提交媒体或数据到公共仓库。示例要求 Windows debug 构建及明确的静音双语夹具，已有输出目录拒绝覆盖。
+
+本轮没有观察到需要修改 mpv 双字幕渲染的后台故障。已修复调试取帧并取得可靠合成图；真实窗口呈现、退出全屏和跨应用拖放仍按用户要求等待后续操作，不声明全部桌面验收完成。
+
+## 7 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
 | 0.4 | 2026-10-21 | 补充真实鼠标／按键播放、进度、全屏和菜单证据，记录用户暂停桌面操作后的后台连播／字幕检查及待复核边界 |
+| 0.5 | 2026-10-22 | 定位并修复调试前台缓冲取帧误判，补充产品实际 Engine 的不可见窗口原生双字幕合成图及待人工边界 |

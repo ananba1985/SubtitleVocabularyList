@@ -1,6 +1,6 @@
 [package]
 name = "subtitle-vocabulary-list"
-version = "0.16.0"
+version = "0.16.1"
 description = "Offline Windows vocabulary notebook with original dialogue audio"
 edition = "2024"
 rust-version = "1.90"
@@ -62,6 +62,10 @@ required-features = ["ipc-types"]
 
 [[example]]
 name = "sync_probe"
+required-features = ["desktop"]
+
+[[example]]
+name = "player_subtitle_acceptance"
 required-features = ["desktop"]
 
 [dev-dependencies]

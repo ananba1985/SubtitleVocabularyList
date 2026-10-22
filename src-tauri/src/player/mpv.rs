@@ -693,26 +693,12 @@ impl Engine {
         Ok(())
     }
     #[cfg(debug_assertions)]
-    pub fn capture(&self, path: &Path, width: i32, height: i32) -> Result<(), AppError> {
-        unsafe {
-            let mut pixels = vec![0u8; (width.max(1) * height.max(1) * 4) as usize];
-            glReadBuffer(GL_FRONT);
-            glReadPixels(
-                0,
-                0,
-                width,
-                height,
-                GL_RGBA,
-                GL_UNSIGNED_BYTE,
-                pixels.as_mut_ptr().cast(),
-            );
-            let image = image::RgbaImage::from_raw(width as u32, height as u32, pixels)
-                .ok_or_else(|| error("无法读取视频帧"))?;
-            image::imageops::flip_vertical(&image)
-                .save(path)
-                .map_err(error)?;
-            Ok(())
-        }
+    pub fn capture(&self, path: &Path) -> Result<(), AppError> {
+        // GL_FRONT can be stale or unavailable for a composited/hidden HWND.
+        // Ask the active renderer for its composite, including both subtitles and OSD.
+        // This is rendering evidence, not proof of the physical window's presentation.
+        self.command(json!(["screenshot-to-file", path, "window"]))?;
+        Ok(())
     }
     /// Completing a command is insufficient: the controller arms only after this frame is presented.
     pub fn draw(&self, width: i32, height: i32, force: bool) -> Result<bool, AppError> {

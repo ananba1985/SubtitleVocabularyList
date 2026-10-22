@@ -1887,11 +1887,8 @@ impl Actor {
             }
             #[cfg(debug_assertions)]
             "capture_frame" => {
-                self.engine.capture(
-                    &self.application.store.root().join("jobs/watch-frame.png"),
-                    self.viewport.0,
-                    self.viewport.1,
-                )?;
+                self.engine
+                    .capture(&self.application.store.root().join("jobs/watch-frame.png"))?;
             }
             _ => return Err(failure("未知播放操作")),
         }

@@ -183,7 +183,8 @@ fn normal_background_flow() {
     assert_eq!(actor.state.playback.playlist[1].title, "Episode10");
     let first_path = actor.state.path.clone();
     let first_session = actor.state.session_id.clone();
-    assert!(actor.engine.flag("pause"));
+    assert!(!actor.engine.flag("pause"));
+    control(&mut actor, "pause", None, None);
     assert_eq!(actor.engine.property("sub-text"), json!("We are ready."));
 
     control(&mut actor, "subtitle", Some(1.0), None);
@@ -272,6 +273,107 @@ fn normal_background_flow() {
     .unwrap();
     println!(
         "PASS: real actor subtitle restore, file batches and EOF auto-next; isolated output {}",
+        root.display()
+    );
+}
+
+#[test]
+#[ignore = "requires an explicit fresh output directory and silent video fixture"]
+fn open_autoplays() {
+    let root = PathBuf::from(
+        std::env::var_os("SVL_PLAYER_TEST_OUTPUT").expect("SVL_PLAYER_TEST_OUTPUT required"),
+    );
+    let fixture = PathBuf::from(
+        std::env::var_os("SVL_PLAYER_TEST_VIDEO").expect("SVL_PLAYER_TEST_VIDEO required"),
+    );
+    assert!(!root.exists(), "Choose a fresh output directory");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = dunce::canonicalize(root).unwrap();
+    let path = root.join("Episode1.mkv");
+    std::fs::copy(fixture, &path).unwrap();
+    let path = path.to_string_lossy().into_owned();
+    let store = Arc::new(Store::open(root.join("Data")).unwrap());
+    let mut playback = PlaybackState::default();
+    playback.preferences.muted = true;
+    store.save_playback_state(&playback).unwrap();
+    let tasks = TaskManager::new(store.clone(), Arc::new(|_| {}));
+    let application = Arc::new(Application::new(
+        store.clone(),
+        tasks,
+        Settings {
+            watch_auto_collect: false,
+            offline_mode: true,
+            ..Default::default()
+        },
+    ));
+    let mut context = tauri::generate_context!();
+    context.config_mut().app.windows.clear();
+    let app = tauri::Builder::default()
+        .any_thread()
+        .build(context)
+        .unwrap();
+    let window = HiddenWindow::new();
+    let dll = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.tools/runtime/mpv/libmpv-2.dll");
+    let engine = mpv::Engine::new(window.0, &dll, &root.join("cache")).unwrap();
+    engine
+        .command(json!(["set_property", "aid", "no"]))
+        .unwrap();
+    let (sender, receiver) = mpsc::channel();
+    let mut actor = Actor::new(
+        engine,
+        application,
+        app.handle().clone(),
+        Arc::default(),
+        sender,
+        window.0.0 as isize,
+    );
+    let mut results = Vec::new();
+    for action in ["open", "select", "append", "file-open", "restore"] {
+        let previous_session = actor.state.session_id.clone();
+        if actor.state.loaded {
+            control(&mut actor, "pause", None, None);
+            if action != "select" {
+                control(&mut actor, "close", None, None);
+            }
+        }
+        match action {
+            "open" => actor
+                .open(store.watch_media(Some(&path), None).unwrap())
+                .unwrap(),
+            "select" | "restore" => select(&mut actor, action),
+            _ => actor
+                .files(
+                    store
+                        .playback_files(&[path.clone()], action == "file-open")
+                        .unwrap(),
+                )
+                .unwrap(),
+        }
+        wait(&mut actor, &receiver, |a| {
+            a.state.session_id != previous_session
+                && a.state.loaded
+                && a.state.playing
+                && !a.engine.flag("pause")
+                && a.engine.number("time-pos").unwrap_or(0.0) > 0.1
+        });
+        assert!(!actor.user_pause);
+        results.push(
+            json!({"action":action,"playing":true,"position":actor.engine.number("time-pos")}),
+        );
+    }
+    control(&mut actor, "close", None, None);
+    assert!(!unsafe { IsWindowVisible(window.0) }.as_bool());
+    assert!(app.webview_windows().is_empty());
+    std::fs::write(
+        root.join("result.json"),
+        serde_json::to_vec_pretty(&json!({
+            "nativeActor":true,"windowVisible":false,"audioOutput":false,"opens":results
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    println!(
+        "PASS: opening starts real mpv playback without a second play action; {}",
         root.display()
     );
 }

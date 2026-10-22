@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.85 |
+| 文档版本 | 0.86 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -18,7 +18,7 @@
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、已准备译文、显示后 5 秒整句收录、OCR 保底及手动收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
-| 播放能力补齐验证 | [testing/playback-results.md](testing/playback-results.md) | 原生列表、连播、倍速和偏好；0.16.4 原生 D3D11 修正、隐藏样本及安装版实际播放采样 | 实装取得 DXGI／GPU 视频引擎活动；约 30 秒无呈现丢弃但有一次短暂阻塞，声音、交互及清晰度比较未新增确认 |
+| 播放能力补齐验证 | [testing/playback-results.md](testing/playback-results.md) | 列表、连播、倍速、偏好，0.16.4 实装采样及 0.16.5 主动打开后直接播放 | 自动播放五个入口的单次真实 Actor 静音流程通过；历史呈现、声音及窗口证据保留版本边界，未重装 |
 | 文件拖放与打开 | [边看边学设计第 12 节](design/watch-and-learn.md#12-拖放与文件入口0160)、[播放验证](testing/playback-results.md#4-0160-拖放与文件打开) | FR-37／M-33／TC-73、74：视频目录字幕拖放和冷／热启动，保持紧凑界面 | 安装关联配置与本机实际安装验收分别记录 |
 | 常用播放控制 | [design/watch-and-learn.md](design/watch-and-learn.md)、[testing/playback-results.md](testing/playback-results.md#3-0150-常用播放控制) | FR-34 至 FR-36、M-30 至 M-32、TC-70 至 TC-72：原生菜单、双字幕、定位与循环 | 菜单构建和引擎／存储正常路径通过，新增宿主操作未人工验收，不阻塞交付 |
 | 边看边学增量验证 | [testing/watch-and-learn-results.md](testing/watch-and-learn-results.md) | 历史原生输入、Qwen／OCR／手动区间及旧选轨资料播放正常结果和人工步骤 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
@@ -247,3 +247,4 @@
 
 | 0.81 | 2026-10-21 | 登记文件拖放与打开增量及实际 Computer Use 检查边界 |
 | 0.85 | 2026-10-22 | 索引 0.16.4 安装版实际播放后台采样，区分原生 D3D11／GPU 视频活动、零呈现丢弃和一次短暂呈现阻塞 |
+| 0.86 | 2026-10-22 | 索引 0.16.5 主动打开直接播放及最小后台正常结果，保留返回页面的暂停行为 |

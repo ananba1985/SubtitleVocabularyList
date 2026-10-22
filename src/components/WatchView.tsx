@@ -192,6 +192,9 @@ export function WatchView({
           expectedRevision: null,
         },
       }).catch(() => {});
+      void call("watch_viewport_set", {
+        viewport: { x: 0, y: 0, width: 1, height: 1, visible: false },
+      }).catch(() => {});
     };
   }, [refresh]);
   useEffect(() => {
@@ -272,9 +275,6 @@ export function WatchView({
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
       document.removeEventListener("visibilitychange", update);
-      void call("watch_viewport_set", {
-        viewport: { x: 0, y: 0, width: 1, height: 1, visible: false },
-      }).catch(() => {});
     };
   }, [!!state?.path, collectionOpen]);
   const start = async (path?: string, sourceId?: string) => {

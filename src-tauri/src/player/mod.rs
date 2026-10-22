@@ -1048,9 +1048,9 @@ impl Actor {
             self.state.playback.playlist.len() - 1
         };
         self.prepared_media = Some(media);
-        self.engine
-            .command(json!(["set_property", "pause", true]))?;
         self.engine.command(json!(["playlist-play-index", index]))?;
+        self.engine
+            .command(json!(["set_property", "pause", false]))?;
         self.sync_playlist()?;
         Ok(())
     }
@@ -1101,9 +1101,9 @@ impl Actor {
                                 .position(|p| p.path == path)
                         })
                         .unwrap_or(0);
-                    self.engine
-                        .command(json!(["set_property", "pause", true]))?;
                     self.engine.command(json!(["playlist-play-index", index]))?;
+                    self.engine
+                        .command(json!(["set_property", "pause", false]))?;
                 }
             }
             "select" | "restore" => {
@@ -1127,11 +1127,9 @@ impl Actor {
                     return Err(failure("请选择播放列表中的视频"));
                 }
                 self.invalidate();
-                if !self.state.loaded {
-                    self.engine
-                        .command(json!(["set_property", "pause", true]))?;
-                }
                 self.engine.command(json!(["playlist-play-index", index]))?;
+                self.engine
+                    .command(json!(["set_property", "pause", false]))?;
             }
             "previous" | "next" => {
                 self.invalidate();
@@ -1231,9 +1229,9 @@ impl Actor {
                 .ok_or_else(|| failure("视频不在播放列表中"))?;
             self.pending_subtitles = None;
             self.invalidate();
-            self.engine
-                .command(json!(["set_property", "pause", true]))?;
             self.engine.command(json!(["playlist-play-index", index]))?;
+            self.engine
+                .command(json!(["set_property", "pause", false]))?;
         }
         if !files.subtitles.is_empty()
             && let Some(path) = target

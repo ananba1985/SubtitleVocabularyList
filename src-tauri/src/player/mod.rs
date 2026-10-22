@@ -974,7 +974,7 @@ impl Actor {
                         crate::vocabulary::digest(text.as_bytes())
                     ),
                     media_sha256: media.media_sha256.clone(),
-                    audio_stream: None,
+                    audio_stream: self.selected_audio_stream(),
                     precise_timing: false,
                     subtitle_start_ms: position,
                     subtitle_end_ms: position,
@@ -997,6 +997,15 @@ impl Actor {
                 self.user_pause = paused;
                 if paused {
                     self.pending_context = Some(Instant::now() + Duration::from_millis(60));
+                }
+            }
+            "audio_focus" if self.engine.flag("pause") => {
+                // Previewing an OCR clip must not discard the paused sentence or its editor.
+                self.clock.cancel();
+                self.pending_display = false;
+                self.state.remaining_seconds = None;
+                if self.state.status == "counting" || self.state.status == "awaiting_display" {
+                    self.state.status = "cancelled".into();
                 }
             }
             "hide" | "audio_focus" => {
@@ -1071,6 +1080,19 @@ impl Actor {
             ]));
         }
     }
+    fn selected_audio_stream(&self) -> Option<usize> {
+        self.engine
+            .property("track-list")
+            .as_array()
+            .and_then(|tracks| {
+                tracks
+                    .iter()
+                    .find(|track| track["type"] == "audio" && track["selected"] == true)
+            })
+            .and_then(|track| track["ff-index"].as_u64())
+            .map(|index| index as usize)
+    }
+
     fn prepare_context(&mut self) -> Result<(), AppError> {
         let Some(media) = &self.media else {
             return Ok(());
@@ -1081,14 +1103,7 @@ impl Actor {
         let position = self.engine.number("time-pos").unwrap_or(0.0);
         let delay = self.engine.number("sub-delay").unwrap_or(0.0);
         let tracks = self.engine.property("track-list");
-        let audio = tracks
-            .as_array()
-            .and_then(|t| {
-                t.iter()
-                    .find(|t| t["type"] == "audio" && t["selected"] == true)
-            })
-            .and_then(|t| t["ff-index"].as_u64())
-            .map(|n| n as usize);
+        let audio = self.selected_audio_stream();
         let mut context = None;
         for prefix in ["", "secondary-"] {
             let text = self.engine.property(&format!("{prefix}sub-text"));

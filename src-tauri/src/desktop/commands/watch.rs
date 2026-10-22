@@ -55,6 +55,7 @@ pub(crate) async fn watch_collection_prepare(
     handle: tauri::AppHandle,
     session_id: String,
     expected_revision: u64,
+    clip_range: Option<crate::watch::WatchClipRange>,
 ) -> Result<crate::watch::WatchContext, AppError> {
     let app = app.inner().clone();
     background(move || {
@@ -65,9 +66,12 @@ pub(crate) async fn watch_collection_prepare(
                 "播放上下文已变化，请重新暂停后收录。",
             ));
         }
-        let context = state
+        let mut context = state
             .context
             .ok_or_else(|| AppError::new("not_found", "没有当前原句。"))?;
+        if let Some(range) = clip_range {
+            context = context.with_manual_clip(&range, (state.duration * 1000.0).round() as i64)?;
+        }
         app.store
             .bind_watch_context(&state.path, &state.title, &context)
     })

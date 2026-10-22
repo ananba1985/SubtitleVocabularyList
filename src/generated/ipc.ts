@@ -298,6 +298,8 @@ export type TransitionAssessment = { sessionId: string, expectedRevision: number
 
 export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "watch" | "practice" | "reviews" | "leech" | "sync" | "tasks" | "settings";
 
+export type WatchClipRange = { startMs: number, endMs: number, };
+
 export type WatchContext = { revision: number, sourceId: string, exampleId: string, text: string, translation: string, translationRevision: string, startMs: number, endMs: number, textSource: string, previous: boolean, locationKey: string, mediaSha256: string, audioStream: number | null, preciseTiming: boolean, subtitleStartMs: number, subtitleEndMs: number, };
 
 export type WatchControl = { action: string, value: number | null, text: string | null, expectedRevision: number | null, };
@@ -431,7 +433,7 @@ export interface CommandMap {
   translation_window_hide: { args: undefined; result: void };
   translation_window_pin: { args: { pinned: boolean }; result: void };
   tray_action_get: { args: undefined; result: TrayNavigation | null };
-  watch_collection_prepare: { args: { sessionId: string; expectedRevision: number }; result: WatchContext };
+  watch_collection_prepare: { args: { sessionId: string; expectedRevision: number; clipRange?: WatchClipRange | null }; result: WatchContext };
   watch_control: { args: { control: WatchControl }; result: PlayerSnapshot };
   watch_open: { args: { path?: string | null; sourceId?: string | null }; result: PlayerSnapshot };
   watch_progress_get: { args: undefined; result: WatchProgress | null };

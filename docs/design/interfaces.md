@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.62 |
+| 文档版本 | 0.63 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -227,13 +227,13 @@ assessment_preview/start 使用后台线程计算并在开始事务内冻结；s
 
 ### 2.5 边看边学命令（核心已接入）
 
-FR-25 至 FR-29 的 CMD-63 至 CMD-71 唯一维护于[边看边学设计 §7.2](watch-and-learn.md#72-命令与实现状态)：CMD-63 至 CMD-66、CMD-69 与 CMD-71 已注册。0.11.0 的 watch_collection_prepare 接受 sessionId／expectedRevision，返回绑定来源的 WatchContext，随后进入既有收录草稿。CMD-67／68／70 保留，当前上下文、OCR 裁剪／核对及 close 使用控制器动作。快照新增 WatchFrame 及上下文的 locationKey、mediaSha256、audioStream、preciseTiming、字幕时间；精确媒体起止与原字幕时间分别用于原声和中文对应。
+FR-25 至 FR-29 的 CMD-63 至 CMD-71 唯一维护于[边看边学设计 §7.2](watch-and-learn.md#72-命令与实现状态)：CMD-63 至 CMD-66、CMD-69 与 CMD-71 已注册。watch_collection_prepare 接受 sessionId／expectedRevision，0.13.1 增加可空 clipRange：{startMs,endMs}；只对已确认 OCR 手动草稿使用，核对范围、音轨和当前暂停版本，返回绑定来源的 WatchContext，随后进入既有收录草稿。原自动 OCR 快照保持只含采集位置。CMD-67／68／70 保留，当前上下文、OCR 裁剪／核对及 close 使用控制器动作。快照新增 WatchFrame 及上下文的 locationKey、mediaSha256、audioStream、preciseTiming、字幕时间；精确媒体起止与原字幕时间分别用于原声和中文对应。
 
 默认暂停只读已准备译文；按需补充和查词复用 CMD-38 至 CMD-41，独立 watch owner 不替换小窗会话，watch_query_updated 只发主窗口。query_translation 动作核对播放器会话／上下文版本，只在完整 ready 后保存有效译文并由原生绘制确认启动计时；running 预览不计时。ocr_crop 的 text 为 PixelRect JSON，confirm_ocr 的 text 为核对原文，均须 expectedRevision；没有精确边界则收录文字。Settings 的 watchAutoCollect／watchCollectDelaySeconds、watch_updated、watch_collected 及原手动确认保持，完整译文显示后默认等 5 秒。
 
 ### 2.6 本地中英字幕命令
 
-0.12.0 的媒体互斥沿用 watch_control 的 audio_focus 动作（内部暂停、不建立用户暂停上下文），并通过全应用 audio_focus 事件传 owner。原生视频 owner 为 watch，网页媒体 owner 为窗口标签与会话标识；该事件不写学习历史。
+0.12.0 的媒体互斥沿用 watch_control 的 audio_focus 动作（播放中内部暂停、不建立用户暂停上下文；0.13.1 已暂停时保留当前上下文并取消自动计时），并通过全应用 audio_focus 事件传 owner。原生视频 owner 为 watch，网页媒体 owner 为窗口标签与会话标识；该事件不写学习历史。
 
 0.10.0 为 FR-30／31 新增三个命令，均进入现有 IPC 生成与签名检查链。
 
@@ -452,3 +452,5 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.60 | 2026-10-21 | 登记 CMD-69 来源绑定、独立 watch 流式事件、原生查询／OCR 动作和新上下文字段 |
 | 0.61 | 2026-10-21 | 登记 audio_focus 控制动作与跨窗口媒体互斥通知 |
 | 0.62 | 2026-10-21 | 登记 CMD-75 至 CMD-83 在线字幕配置、检索下载、核对导入和偏移契约及当前来源资产加载 |
+
+| 0.63 | 2026-10-21 | CMD-69 增加可空 clipRange，复用预览与收录接口；已暂停 audio_focus 保留上下文 |

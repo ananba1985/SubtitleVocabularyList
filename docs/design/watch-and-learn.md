@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-WATCH-001 |
-| 文档版本 | 0.7 |
+| 文档版本 | 0.8 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 0.13.0 已接入字幕、流式、OCR、音频互斥及在线字幕核对；后台正常数据流程通过，真实服务及新增窗口待人工验收 |
 | 需求依据 | [PRD §3.7、§5.7、FR-25 至 FR-29](../requirements/PRD.md) |
@@ -78,7 +78,7 @@ flowchart LR
 
 ### 3.2 状态与生命周期
 
-`PlayerSession` 持有 libmpv handle、媒体标识、播放位置、轨道和暂停来源；`PausedContext` 是本次暂停的不可变快照。实现位置为 `src-tauri/src/player/`、`watch.rs` 与前端 `WatchView`；尚未接入的 OCR／查询扩展继续按后文方案实施。
+`PlayerSession` 持有 libmpv handle、媒体标识、播放位置、轨道和暂停来源；`PausedContext` 是本次暂停的不可变快照。实现位置为 `src-tauri/src/player/`、`watch.rs` 与前端 `WatchView`；OCR／查询实现与后续人工验收分别见专项结果。
 
 观察文件加载、pause、time-pos、轨道、字幕及延迟变化；进度显示合并通知，不逐帧发 IPC 或查库。暂停请求成功且位置稳定后读取上下文；处理前后核对同一文件、轨道和暂停版本。退出页面或最小化到托盘时暂停、隐藏视频并保存位置，返回时保持暂停；完全退出释放 libmpv。原有任务和同步按原生命周期运行。
 
@@ -136,13 +136,13 @@ OCR 只有帧时间时标记为“采集位置”，不冒充对白的完整起�
 
 ### 6.2 原声
 
-字幕具有可靠起止时间时，复用 FFmpeg 截取及原声保存能力，手动确认或自动提交时保存到应用管理的媒体目录；自动保存不发声、不影响视频继续播放。OCR 仅有帧时间时，手动路径可调整、试听片段区间；自动路径仅保存文字和采集位置，不能把推测区间标为精确对白原声。语音兜底继续标为 Windows 生成语音。
+字幕具有可靠起止时间时，复用 FFmpeg 截取及原声保存能力，手动确认或自动提交时保存到应用管理的媒体目录；自动保存不发声、不影响视频继续播放。OCR 仅有帧时间时，0.13.1 在核对原文后提供默认折叠的“原声区间（可选）”：起止秒数初始为建议值，用户准备片段后用普通音频控件试听，不自动播放；明确“使用此片段”后，手动收录草稿采用该区间，仍须确认保存。调整区间会使旧选择和试听失效，可改回只存文字。核心用 `with_manual_clip` 创建独立草稿副本，地点标识附 `manual-clip:<start>:<end>`；不修改原 OCR 暂停快照，不触发自动保存，自动路径仍仅保存文字和采集位置。`preciseTiming=true` 在该副本中只表示已有人为选定的原声范围，不表示识别到了字幕起止，原 `textSource=frame_ocr` 保留。语音兜底继续标为 Windows 生成语音。
 
 确认保存的原声独立于视频原路径，后续移动视频不破坏已存音频；未收录缓存按已有回收规则处理。词条、例句、原声和学习历史继续遵守 FR-12，不缩减同步范围。
 
 ### 6.3 共存规则
 
-0.12.0 的 HTML 媒体捕获 play 事件，同窗口暂停其他媒体并广播 `audio_focus`，同时用 watch_control 的 audio_focus 使原生视频内部暂停。原生 playing 从 false 变为 true 时广播 owner=watch，各窗口暂停学习音频；不自动继续被暂停的会话。只改变播放状态，不修改课程／题目草稿或学习记录。该路径代码与编译检查完成，真实跨窗口听感待人工验收。
+0.12.0 的 HTML 媒体捕获 play 事件，同窗口暂停其他媒体并广播 `audio_focus`，同时用 watch_control 的 audio_focus 使原生视频内部暂停。原生 playing 从 false 变为 true 时广播 owner=watch，各窗口暂停学习音频；不自动继续被暂停的会话。只改变播放状态，不修改课程／题目草稿或学习记录。0.13.1 已暂停时收到 audio_focus 只取消自动计时，保留当前原句、OCR 编辑和手动区间；正在播放时仍执行内部暂停并使播放上下文失效。此修正避免试听本句原声反而关闭编辑区；实际听感仍待人工确认。该路径代码与编译检查完成，真实跨窗口听感待人工验收。
 
 | 现有功能 | 新模块接入规则 |
 | --- | --- |
@@ -193,11 +193,11 @@ CMD-63 至 CMD-66、CMD-69、CMD-71 已注册并由现有 Rust DTO 链生成前�
 | CMD-66 | `watch_viewport_set` | 逻辑矩形和可见性 → 确认；缩放由宿主读取，宿主处理 HWND，不写业务资料 |
 | CMD-67（保留） | `watch_context_prepare` | 当前由暂停控制器按文字字幕／同源索引／帧 OCR 取得上下文 |
 | CMD-68（保留） | `watch_ocr_retry` | 当前由 watch_control 的 ocr_crop（text 为 PixelRect JSON）及 confirm_ocr（text 为核对原文）处理，必须核对 expectedRevision |
-| CMD-69 | `watch_collection_prepare` | sessionId、expectedRevision → 绑定后的 WatchContext；只准备来源及例句，再用既有 collection_from_example／collection_prepare 建草稿及 CMD-09 确认 |
+| CMD-69 | `watch_collection_prepare` | sessionId、expectedRevision、可空 clipRange（startMs／endMs） → 绑定后的 WatchContext；只准备来源及例句，再用既有 collection_from_example／collection_prepare 建草稿及 CMD-09 确认 |
 | CMD-70（保留） | `watch_close` | 当前由 watch_control 的 close 动作停止视频并保存位置，完全退出时释放引擎 |
 | CMD-71 | `watch_progress_get` | 无参数 → 本机 WatchProgress 或 null；已注册 |
 
-查询沿用 CMD-38 至 CMD-41，watch origin 的 locationKey 为 `playerSession:contextRevision`；更新事件为主窗口专用 `watch_query_updated`。watch_control 的 query_translation 只采用该暂停版本的整句查询，部分结果不计时，完成才写缓存并绘制。`watch_updated` 通知快照变化，`watch_collected` 通知已保存项刷新。OCR 没有精确区间时当前只存文字，手动区间编辑／试听仍未接入，不把它描述为已完成。
+查询沿用 CMD-38 至 CMD-41，watch origin 的 locationKey 为 `playerSession:contextRevision`；更新事件为主窗口专用 `watch_query_updated`。watch_control 的 query_translation 只采用该暂停版本的整句查询，部分结果不计时，完成才写缓存并绘制。`watch_updated` 通知快照变化，`watch_collected` 通知已保存项刷新。OCR 默认只存文字；0.13.1 的可空 clipRange 只为已确认 OCR 的手动草稿绑定范围，核对当前暂停版本、视频时长及所选音轨，复用 preview_start、原声缓存和既有收录提交。自动控制器持有的 OCR 上下文保持不变。
 
 设置复用现有本机设置读写入口，不增加独立命令。当前暂停译文的实际显示确认携带 sessionId、contextRevision、translationRevision；原生 OSD／React 适配回报可见呈现后才启动核心计时，不能因 `watch_context_prepare` 返回而提前开始。自动提交由控制器在条件满足时内部调用统一收录服务，不允许前端绕过倒计时直接提交任意旧字幕。
 
@@ -272,3 +272,5 @@ M-20 锁定 Windows 构建来源、版本、摘要、C API／渲染方式及所�
 | 0.6 | 2026-10-21 | 接入全窗口媒体与原生视频的音频互斥，保留内部暂停不触发收录及人工验收边界 |
 
 | 0.7 | 2026-10-21 | 对齐在线字幕与偏移接入、固定播放资源清单及发布预检设计，保留真实服务和人工窗口边界 |
+
+| 0.8 | 2026-10-21 | 补齐 OCR 手动原声范围、试听与确认收录，保留自动快照及暂停中音频互斥的原句 |

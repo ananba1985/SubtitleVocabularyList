@@ -115,7 +115,7 @@ export function WatchOcr({
         确认原文
       </button>
       <small className="muted">
-        仅有画面采集位置，收录时保存文字；不生成未经核对的原声区间。
+        只有画面采集位置，自动收录仅存文字；确认原文后可展开“原声区间”，手动选择并试听。
       </small>
     </div>
   );

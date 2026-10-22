@@ -1709,4 +1709,8 @@ h3 {
 .subtitle-preview > div { padding: .5rem; border-bottom: 1px solid #d8e1d7; }
 .subtitle-preview p { white-space: pre-line; margin: .3rem 0; }
 .online-subtitles, .subtitle-service { margin-top: 1rem; }
+.watch-clip { margin-top: .8rem; }
+.watch-clip-range { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; }
+.watch-clip-range label { flex: 0 1 10rem; }
+.watch-clip audio { display: block; max-width: 100%; margin: .7rem 0; }
 @media (max-width:800px) { .subtitle-query-fields { grid-template-columns: repeat(3,minmax(0,1fr)); } .subtitle-query-fields > label:first-child { grid-column: 1 / -1; } }

@@ -6,11 +6,13 @@ import { call, message, time } from "../api";
 import { SubtitleSettings } from "./SubtitleSettings";
 import { WatchQuery, type WatchRequest } from "./WatchQuery";
 import { WatchOcr } from "./WatchOcr";
+import { WatchClip } from "./WatchClip";
 import type { CollectionSeed, Settings, SourceSummary } from "../types";
 import type {
   PlayerSnapshot,
   WatchControl,
   WatchProgress,
+  WatchClipRange,
 } from "../generated/ipc";
 
 export function WatchView({
@@ -37,6 +39,11 @@ export function WatchView({
     (WatchRequest & { revision: number; playerSession: string }) | null
   >(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [manualClip, setManualClip] = useState<{
+    session: string;
+    revision: number;
+    range: WatchClipRange;
+  } | null>(null);
   const video = useRef<HTMLDivElement>(null),
     request = useRef(0);
   const refresh = useCallback(async () => {
@@ -254,6 +261,11 @@ export function WatchView({
       bound = await call("watch_collection_prepare", {
         sessionId: state!.sessionId,
         expectedRevision: context.revision,
+        clipRange:
+          manualClip?.session === state!.sessionId &&
+          manualClip.revision === context.revision
+            ? manualClip.range
+            : null,
       });
     } catch (e) {
       setError(message(e));
@@ -526,6 +538,25 @@ export function WatchView({
                   </button>
                 )}
               </div>
+              {!context.preciseTiming && context.textSource === "frame_ocr" && (
+                <WatchClip
+                  key={`${state.sessionId}:${context.revision}`}
+                  context={context}
+                  playerSession={state.sessionId}
+                  duration={state.duration}
+                  onChange={(range) =>
+                    setManualClip(
+                      range
+                        ? {
+                            session: state.sessionId,
+                            revision: context.revision,
+                            range,
+                          }
+                        : null,
+                    )
+                  }
+                />
+              )}
               {query &&
                 state.sessionId === query.playerSession &&
                 context.revision === query.revision && (

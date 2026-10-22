@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.75 |
+| 文档版本 | 0.76 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -18,7 +18,7 @@
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、已准备译文、显示后 5 秒整句收录、OCR 保底及手动收录 | 0.11.0 直接字幕、流式查询和帧 OCR 核对已接入，后台正常通过，新增窗口待人工确认 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 0.11.0 后台正常结果及 0.12.0 音频互斥接入见专项记录；新增交互及真实在线服务待确认；发行资源及预检设计见详细方案 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 核心闭环及本地文本双轨通过，完整剩余开发继续，不自动打包 |
-| 边看边学增量验证 | [testing/watch-and-learn-results.md](testing/watch-and-learn-results.md) | 历史原生输入、0.11.0 真实 Qwen 流式／原声／OCR 后台正常结果及人工步骤 | 用户需要使用电脑后停止 Computer Use，新增交互待人工验收，核心与窗口证据分开 |
+| 边看边学增量验证 | [testing/watch-and-learn-results.md](testing/watch-and-learn-results.md) | 历史原生输入、Qwen 流式／原声／OCR 及 0.13.1 手动区间正常结果和人工步骤 | 用户需要使用电脑后停止 Computer Use，新增交互待人工验收，核心与窗口证据分开 |
 | 双语字幕导入设计 | [design/subtitle-import.md](design/subtitle-import.md) | FR-30／31，本地中英轨优先、在线补缺、时间对齐、既有中文优先及历史保持 | 0.10.0 本地文本双轨与时间复用通过；在线及校正数据流程通过／真实服务待确认，图片轨待实际样本 |
 | 本地双语字幕验证 | [testing/subtitle-import-results.md](testing/subtitle-import-results.md) | TC-65／67，真实 FFmpeg 导入、Computer Use 选择、暂停中文及旧词条保持 | 记录正常结果、ASS 标记及边缘重叠修正；原生视频捕获限制与未测项如实保留 |
 | 在线字幕增量验证 | [testing/online-subtitle-results.md](testing/online-subtitle-results.md) | SubDL 官方契约、下载后 ZIP 解析、版本核对、偏移和旧资料保持 | 0.13.0 无网络正常数据流程通过；真实服务及新增窗口待人工确认 |
@@ -229,3 +229,5 @@
 | 0.74 | 2026-10-21 | 索引 0.12.0 音频互斥及图片字幕原资产接入，实际样本与交互待人工确认 |
 
 | 0.75 | 2026-10-21 | 索引在线字幕正常数据证据及实际服务待确认边界，对齐播放资源和实施状态 |
+
+| 0.76 | 2026-10-21 | 索引 OCR 手动区间与原声确认的核心正常结果及人工边界 |

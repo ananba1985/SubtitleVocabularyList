@@ -35,6 +35,52 @@ pub struct WatchContext {
     pub subtitle_end_ms: i64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct WatchClipRange {
+    pub start_ms: i64,
+    pub end_ms: i64,
+}
+
+impl WatchContext {
+    /// Only a manual draft gets this interval; the paused OCR snapshot stays text-only.
+    pub fn with_manual_clip(
+        &self,
+        range: &WatchClipRange,
+        duration_ms: i64,
+    ) -> Result<Self, AppError> {
+        if self.text_source != "frame_ocr" || self.precise_timing {
+            return Err(AppError::new(
+                "invalid_input",
+                "当前原句已有字幕区间，无需选择 OCR 原声区间。",
+            ));
+        }
+        if range.start_ms < 0 || range.end_ms <= range.start_ms || range.end_ms > duration_ms {
+            return Err(AppError::new(
+                "invalid_input",
+                "请在视频时长内选择有效的原声起止位置。",
+            ));
+        }
+        if self.audio_stream.is_none() {
+            return Err(AppError::new(
+                "resource_missing",
+                "当前没有可提取的音轨，可仅保存文字。",
+            ));
+        }
+        let mut draft = self.clone();
+        draft.example_id.clear();
+        draft.start_ms = range.start_ms;
+        draft.end_ms = range.end_ms;
+        draft.location_key = format!(
+            "{}:manual-clip:{}:{}",
+            self.location_key, range.start_ms, range.end_ms
+        );
+        draft.precise_timing = true;
+        Ok(draft)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]

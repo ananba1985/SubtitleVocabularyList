@@ -277,9 +277,9 @@ fn normal_background_flow() {
     );
 }
 
-#[test]
-#[ignore = "requires an explicit fresh output directory and silent video fixture"]
-fn open_autoplays() {
+fn with_isolated_player(
+    check: impl FnOnce(&mut Actor, &Receiver<Message>, &Store, &std::path::Path, &str),
+) {
     let root = PathBuf::from(
         std::env::var_os("SVL_PLAYER_TEST_OUTPUT").expect("SVL_PLAYER_TEST_OUTPUT required"),
     );
@@ -327,53 +327,128 @@ fn open_autoplays() {
         sender,
         window.0.0 as isize,
     );
-    let mut results = Vec::new();
-    for action in ["open", "select", "append", "file-open", "restore"] {
-        let previous_session = actor.state.session_id.clone();
-        if actor.state.loaded {
-            control(&mut actor, "pause", None, None);
-            if action != "select" {
-                control(&mut actor, "close", None, None);
-            }
-        }
-        match action {
-            "open" => actor
-                .open(store.watch_media(Some(&path), None).unwrap())
-                .unwrap(),
-            "select" | "restore" => select(&mut actor, action),
-            _ => actor
-                .files(
-                    store
-                        .playback_files(&[path.clone()], action == "file-open")
-                        .unwrap(),
-                )
-                .unwrap(),
-        }
-        wait(&mut actor, &receiver, |a| {
-            a.state.session_id != previous_session
-                && a.state.loaded
-                && a.state.playing
-                && !a.engine.flag("pause")
-                && a.engine.number("time-pos").unwrap_or(0.0) > 0.1
-        });
-        assert!(!actor.user_pause);
-        results.push(
-            json!({"action":action,"playing":true,"position":actor.engine.number("time-pos")}),
-        );
-    }
+    check(&mut actor, &receiver, &store, &root, &path);
     control(&mut actor, "close", None, None);
     assert!(!unsafe { IsWindowVisible(window.0) }.as_bool());
     assert!(app.webview_windows().is_empty());
-    std::fs::write(
-        root.join("result.json"),
-        serde_json::to_vec_pretty(&json!({
-            "nativeActor":true,"windowVisible":false,"audioOutput":false,"opens":results
-        }))
-        .unwrap(),
-    )
-    .unwrap();
-    println!(
-        "PASS: opening starts real mpv playback without a second play action; {}",
-        root.display()
-    );
+}
+
+#[test]
+#[ignore = "requires an explicit fresh output directory and silent video fixture"]
+fn open_autoplays() {
+    with_isolated_player(|actor, receiver, store, root, path| {
+        let mut results = Vec::new();
+        for action in ["open", "select", "append", "file-open", "restore"] {
+            let previous_session = actor.state.session_id.clone();
+            if actor.state.loaded {
+                control(actor, "pause", None, None);
+                if action != "select" {
+                    control(actor, "close", None, None);
+                }
+            }
+            match action {
+                "open" => actor
+                    .open(store.watch_media(Some(&path), None).unwrap())
+                    .unwrap(),
+                "select" | "restore" => select(actor, action),
+                _ => actor
+                    .files(
+                        store
+                            .playback_files(&[path.to_owned()], action == "file-open")
+                            .unwrap(),
+                    )
+                    .unwrap(),
+            }
+            wait(actor, receiver, |a| {
+                a.state.session_id != previous_session
+                    && a.state.loaded
+                    && a.state.playing
+                    && !a.engine.flag("pause")
+                    && a.engine.number("time-pos").unwrap_or(0.0) > 0.1
+            });
+            assert!(!actor.user_pause);
+            results.push(
+                json!({"action":action,"playing":true,"position":actor.engine.number("time-pos")}),
+            );
+        }
+        std::fs::write(
+            root.join("result.json"),
+            serde_json::to_vec_pretty(&json!({
+                "nativeActor":true,"windowVisible":false,"audioOutput":false,"opens":results
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        println!(
+            "PASS: opening starts real mpv playback without a second play action; {}",
+            root.display()
+        );
+    });
+}
+
+#[test]
+#[ignore = "requires an explicit fresh output directory and silent video fixture"]
+fn mouse_stop() {
+    with_isolated_player(|actor, receiver, store, root, path| {
+        actor
+            .open(store.watch_media(Some(path), None).unwrap())
+            .unwrap();
+        wait(actor, receiver, |a| {
+            a.state.loaded && a.state.playing && a.state.position > 0.1
+        });
+        let playlist = actor.state.playback.playlist.clone();
+        actor
+            .engine
+            .command(json!([
+                "script-message-to",
+                "osc",
+                "osc-visibility",
+                "always"
+            ]))
+            .unwrap();
+        wait(actor, receiver, |a| {
+            a.engine.number("user-data/osc/margins/b").unwrap_or(0.0) > 0.0
+        });
+        let dimensions = actor.engine.property("osd-dimensions");
+        let width = dimensions["w"].as_f64().unwrap();
+        let height = dimensions["h"].as_f64().unwrap();
+        // Coordinates of the built-in bottombar's first custom button, scaled
+        // using the native OSC's own margin. This never moves the OS cursor.
+        let scale = height * actor.engine.number("user-data/osc/margins/b").unwrap() / 56.0;
+        let x = (width - 16.0 * scale).round() as i32;
+        let y = (height - 42.0 * scale).round() as i32;
+        actor.engine.command(json!(["mouse", x, y])).unwrap();
+        actor.engine.capture(&root.join("stop-button.png")).unwrap();
+        actor
+            .engine
+            .command(json!(["keydown", "MBTN_LEFT"]))
+            .unwrap();
+        thread::sleep(Duration::from_millis(30));
+        actor.engine.command(json!(["keyup", "MBTN_LEFT"])).unwrap();
+        wait(actor, receiver, |a| {
+            !a.state.loaded && !a.state.playing && a.state.path.is_empty()
+        });
+        assert_eq!(actor.state.playback.playlist, playlist);
+        let progress = store.watch_progress_for(path).unwrap().unwrap();
+        assert!(progress.position > 0.1);
+        assert!(!actor.fullscreen);
+        assert!(!actor.engine.flag("fullscreen"));
+        assert!(actor.state.context.is_none());
+        assert!(actor.state.remaining_seconds.is_none());
+        std::fs::write(
+            root.join("result.json"),
+            serde_json::to_vec_pretty(&json!({
+                "nativeOscMouseClick":true,"windowVisible":false,"audioOutput":false,
+                "buttonPosition":{"x":x,"y":y},"playlistPreserved":true,
+                "savedPosition":progress.position,"playing":actor.state.playing,
+                "path":actor.state.path,"fullscreen":actor.fullscreen
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        println!(
+            "PASS: native OSC mouse stop preserves progress and playlist; {}",
+            root.display()
+        );
+    });
 }

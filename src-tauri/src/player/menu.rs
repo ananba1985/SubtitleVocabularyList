@@ -132,6 +132,7 @@ fn items(s: &PlayerSnapshot, fullscreen: bool) -> Vec<Item> {
             None,
             None,
         ),
+        action("停止播放", "close", None, None),
         group(
             "剧集",
             vec![

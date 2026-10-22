@@ -477,6 +477,13 @@ export function WatchView({
         )}
         <div className="watch-playback-controls">
           <button
+            disabled={busy || !state?.path}
+            onClick={() => void control("close")}
+            title="停止并关闭当前视频，保留播放列表和观看进度"
+          >
+            ■ 停止播放
+          </button>
+          <button
             aria-label="上一集"
             disabled={busy || !state?.loaded || (state.playlistIndex ?? 0) <= 0}
             onClick={() => void playlistChange("previous")}

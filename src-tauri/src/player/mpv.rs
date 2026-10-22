@@ -154,7 +154,12 @@ impl Engine {
                     ("osc", "yes"),
                     (
                         "script-opts",
-                        "osc-showwindowed=yes,osc-showfullscreen=yes,osc-boxvideo=no,osc-windowcontrols=no,osc-idlescreen=no",
+                        concat!(
+                            "osc-showwindowed=yes,osc-showfullscreen=yes,osc-boxvideo=no,",
+                            "osc-windowcontrols=no,osc-idlescreen=no,",
+                            "osc-custom_button_1_content=■,",
+                            "osc-custom_button_1_mbtn_left_command=script-message svl-stop"
+                        ),
                     ),
                     ("osd-align-x", "right"),
                     ("osd-align-y", "top"),

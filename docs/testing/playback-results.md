@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.10 |
+| 文档版本 | 0.11 |
 | 更新日期 | 2026-10-22 |
-| 状态 | 0.16.5 主动打开后自动播放的真实 Actor 静音正常流程通过；保留 0.16.4 实装呈现采样及历史实际窗口／声音边界，未重装或操作桌面 |
+| 状态 | 0.16.6 原生 OSC 鼠标停止的真实 Actor 静音正常流程通过；保留自动播放、实装采样及历史窗口／声音边界，未重装或操作桌面 |
 | 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
 
 ## 1 实现与实际检查
@@ -212,7 +212,25 @@ cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --feature
 
 结果为 **1 项通过，116 项过滤**，正常流程耗时 1.64 秒；证据保留 `output/player-autoplay-0165/result.json` 及独立 Data／缓存。`pnpm build` 通过，包含版本一致性、Rust IPC 契约、TypeScript 与 Vite，保留既有大分块提示。测试程序无图标资源的既有提示保留，不影响检查。此前 `normal_background_flow` 初始加载断言随新行为改为播放，再主动暂停进入其原有字幕流程；本轮没有额外重跑该较大流程。真实窗口点击、跨应用拖放、声音听感和重新安装均未执行，不能据后台检查宣称这些路径已经人工验收；当前用户安装版仍为 0.16.4。
 
-## 11 修订记录
+## 11 0.16.6 鼠标停止播放
+
+对应用户反馈及 FR-25／34、TC-70，补齐三处鼠标入口：普通窗口播放工具区“■ 停止播放”、mpv 内置 OSC 右侧“■”、视频原生右键菜单“停止播放”。OSC 使用固定版本已有的 custom_button 配置，不复制控制条或自建渲染层；按钮发送 `script-message svl-stop`，由 Actor 的 CLIENT_MESSAGE 处理转到现有 close 动作。
+
+停止先保存观看位置，取消旧学习上下文／OCR／查询和未完成倒计时，调用 mpv stop，立即更新 loaded=false／playing=false 并清空当前视频；同步关闭原生和宿主全屏。播放列表及个人学习数据保留，不退出单词本。
+
+最小正常检查 `player::native_tests::mouse_stop` 复用真实 Actor／Engine 和隔离 Store；使用无音轨合成视频，禁用音轨且静音、禁用自动收录，只有不可见 HWND，无 Tauri WebView 窗口。播放后显示内置 OSC，根据其自身 margins 计算按钮命中位置，调用 mpv 的内部 mouse／keydown／keyup 输入一次左键点击，未直接调用 close，也没有移动系统鼠标或投递桌面输入。原生 CLIENT_MESSAGE 到达后，实际文件关闭、playing=false、列表保持，逐文件进度保存为 0.458 秒；学习上下文和计时为空，原生及 Actor fullscreen 均为 false。
+
+```powershell
+$env:SVL_PLAYER_TEST_OUTPUT = 'D:/Projects/codex/SubtitleVocabularyList/output/player-mouse-stop-0166'
+$env:SVL_PLAYER_TEST_VIDEO = 'D:/Projects/codex/SubtitleVocabularyList/output/player-ui-acceptance-0161/UI Series/Episode1.mkv'
+cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --features ipc-types player::native_tests::mouse_stop -- --ignored --exact --nocapture
+```
+
+结果 **1 项通过，117 项过滤**，正常流程耗时 1.05 秒。`pnpm build` 的版本、Rust IPC 契约、TypeScript 和 Vite 检查通过，保留既有大分块提示。证据保留在 `output/player-mouse-stop-0166/result.json`、`stop-button.png` 及独立 Data／缓存；实际查看合成图确认右侧停止方块已显示，点击坐标为 947,565（960×600 输出）。测试程序无应用图标资源的既有提示保留，不影响检查。
+
+本轮证明内置 OSC 的实际命中与消息处理正常，不把内部鼠标事件称为真人桌面操作。工具栏和菜单的入口已接到同一 close，真实窗口点击及全屏退出往返未人工执行；安装包未生成，当前安装版不因此自动更新。
+
+## 12 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -223,3 +241,4 @@ cargo test --quiet --locked --manifest-path src-tauri/Cargo.toml --lib --feature
 | 0.8 | 2026-10-22 | 关联用户明确请求的 0.16.4 打包及交付摘要核对，未新增安装或实际音画证据 |
 | 0.9 | 2026-10-22 | 记录用户已安装版本的实际后台 DXGI／GPU 视频引擎与呈现采样，区分零呈现丢弃、一次短暂阻塞和不可读的 mpv 内部计数 |
 | 0.10 | 2026-10-22 | 记录 0.16.5 主动打开后直接播放及避免视图区重建暂停的修复，登记五个入口的单次静音后台正常结果 |
+| 0.11 | 2026-10-22 | 补齐工具栏、原生 OSC 和右键菜单鼠标停止，记录单次内部鼠标命中、停止及进度／列表保持的后台正常证据 |

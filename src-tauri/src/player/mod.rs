@@ -1896,10 +1896,17 @@ impl Actor {
                 self.load_generation += 1;
                 self.media = None;
                 self.state.loaded = false;
+                self.state.playing = false;
                 self.state.title.clear();
                 self.state.path.clear();
                 self.state.source_id = None;
                 self.state.status = "idle".into();
+                self.engine
+                    .command(json!(["set_property", "fullscreen", false]))?;
+                self.fullscreen = false;
+                if let Some(window) = self.handle.get_webview_window("main") {
+                    let _ = window.set_fullscreen(false);
+                }
             }
             #[cfg(debug_assertions)]
             "capture_frame" => {
@@ -2269,7 +2276,16 @@ impl Actor {
                 Some(mpv::PlayerEvent {
                     id: 16, messages, ..
                 }) => {
-                    if messages
+                    if messages.first().is_some_and(|name| name == "svl-stop") {
+                        if let Err(error) = self.control(WatchControl {
+                            action: "close".into(),
+                            value: None,
+                            text: None,
+                            expected_revision: None,
+                        }) {
+                            self.state.error = Some(error.message);
+                        }
+                    } else if messages
                         .first()
                         .is_some_and(|name| name == &format!("svl-time:{}", self.state.session_id))
                         && messages.get(1).is_some_and(|event| event == "submit")

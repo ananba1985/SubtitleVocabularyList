@@ -78,7 +78,11 @@ export function SubtitleSettings({
           >
             <option value="">使用原有译文缓存</option>
             {info.assets
-              .filter((a) => a.language === "zh" || a.language === "en-zh")
+              .filter(
+                (a) =>
+                  a.cueCount > 0 &&
+                  (a.language === "zh" || a.language === "en-zh"),
+              )
               .map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.title || a.language} ·{" "}

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { CaptureOverlay } from "./components/CaptureOverlay";
 import { QueryView } from "./components/QueryView";
+import { useAudioFocus } from "./audioFocus";
 import "./styles.css";
 
 class AppBoundary extends React.Component<
@@ -30,6 +31,7 @@ class AppBoundary extends React.Component<
 }
 
 function ReadyView() {
+  useAudioFocus();
   React.useEffect(() => {
     window.dispatchEvent(new Event("svl-app-ready"));
   }, []);

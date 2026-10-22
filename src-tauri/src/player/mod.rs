@@ -529,6 +529,7 @@ struct Actor {
     fullscreen: bool,
     last_notice: String,
     ocr_cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    audio_active: bool,
 }
 fn failure(detail: impl Into<String>) -> AppError {
     AppError::new("player_unavailable", detail)
@@ -576,6 +577,7 @@ impl Actor {
             fullscreen: false,
             last_notice: String::new(),
             ocr_cancel: None,
+            audio_active: false,
         }
     }
     fn receive(&mut self, message: Message) {
@@ -975,7 +977,7 @@ impl Actor {
                     self.pending_context = Some(Instant::now() + Duration::from_millis(60));
                 }
             }
-            "hide" => {
+            "hide" | "audio_focus" => {
                 self.engine
                     .command(json!(["set_property", "pause", true]))?;
                 self.invalidate();
@@ -1451,6 +1453,12 @@ impl Actor {
         }
     }
     fn publish(&mut self) {
+        if self.audio_active != self.state.playing {
+            self.audio_active = self.state.playing;
+            if self.audio_active {
+                let _ = self.handle.emit("audio_focus", json!({"owner":"watch"}));
+            }
+        }
         let value = serde_json::to_string(&self.state).unwrap_or_default();
         if value != self.last_publish {
             self.last_publish = value;

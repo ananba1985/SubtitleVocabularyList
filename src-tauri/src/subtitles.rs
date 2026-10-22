@@ -218,6 +218,65 @@ pub fn prepare_local(
         .to_owned();
         let lang = language(&title);
         let Some((extension, codec)) = text_codec(&track.codec_name) else {
+            if matches!(
+                track.codec_name.as_str(),
+                "hdmv_pgs_subtitle" | "dvd_subtitle" | "dvb_subtitle"
+            ) {
+                let extension = if track.codec_name == "hdmv_pgs_subtitle" {
+                    "sup"
+                } else {
+                    "mks"
+                };
+                let path = directory.join(format!("track-{}.{}", track.index, extension));
+                let result = media::run_tool(
+                    &tools.ffmpeg,
+                    &[
+                        "-nostdin".into(),
+                        "-y".into(),
+                        "-v".into(),
+                        "error".into(),
+                        "-i".into(),
+                        input.to_string_lossy().into_owned(),
+                        "-map".into(),
+                        format!("0:{}", track.index),
+                        "-c:s".into(),
+                        "copy".into(),
+                        path.to_string_lossy().into_owned(),
+                    ],
+                    flag,
+                );
+                match result {
+                    Ok(_) => {
+                        let sha256 = crate::corpus::file_hash(&path)?;
+                        bundle.assets.push(SubtitleAsset {
+                            id: vocabulary::digest(
+                                format!("embedded:{}:{sha256}", track.index).as_bytes(),
+                            ),
+                            language: lang.into(),
+                            title: title.clone(),
+                            origin: "embedded".into(),
+                            stream_index: Some(track.index),
+                            format: track.codec_name.clone(),
+                            relative_path: path
+                                .strip_prefix(root)
+                                .unwrap()
+                                .to_string_lossy()
+                                .replace('\\', "/"),
+                            sha256,
+                            cues: vec![],
+                        });
+                        bundle.warnings.push(format!(
+                            "图片字幕轨 {} 已保留原资产；未取得文字，播放暂停时可 OCR 核对。",
+                            track.index
+                        ));
+                    }
+                    Err(e) if e.code == "cancelled" => return Err(e),
+                    Err(e) => bundle
+                        .warnings
+                        .push(format!("图片字幕轨 {}：{}", track.index, e.message)),
+                }
+                continue;
+            }
             bundle.warnings.push(format!(
                 "字幕轨 {}（{}）保留在原视频中，尚未取得可对齐文字。",
                 track.index, track.codec_name
@@ -344,9 +403,19 @@ pub fn prepare_local(
     bundle.selected_chinese_id = bundle
         .assets
         .iter()
-        .find(|a| a.language == "zh" && a.title.contains("简体"))
-        .or_else(|| bundle.assets.iter().find(|a| a.language == "zh"))
-        .or_else(|| bundle.assets.iter().find(|a| a.language == "en-zh"))
+        .find(|a| a.language == "zh" && !a.cues.is_empty() && a.title.contains("简体"))
+        .or_else(|| {
+            bundle
+                .assets
+                .iter()
+                .find(|a| a.language == "zh" && !a.cues.is_empty())
+        })
+        .or_else(|| {
+            bundle
+                .assets
+                .iter()
+                .find(|a| a.language == "en-zh" && !a.cues.is_empty())
+        })
         .map(|a| a.id.clone());
     progress("subtitles", tracks.len(), tracks.len());
     Ok(bundle)
@@ -498,11 +567,9 @@ impl Store {
             .subtitle_bundle(source_id)?
             .ok_or_else(|| AppError::new("not_found", "请先取得本地字幕。"))?;
         if let Some(id) = &asset_id {
-            if !bundle
-                .assets
-                .iter()
-                .any(|a| &a.id == id && matches!(a.language.as_str(), "zh" | "en-zh"))
-            {
+            if !bundle.assets.iter().any(|a| {
+                &a.id == id && !a.cues.is_empty() && matches!(a.language.as_str(), "zh" | "en-zh")
+            }) {
                 return Err(AppError::new("invalid_input", "请选择中文字幕。"));
             }
         }

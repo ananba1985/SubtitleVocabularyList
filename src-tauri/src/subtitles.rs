@@ -131,7 +131,7 @@ pub fn english_text(text: &str) -> Option<String> {
         .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
-fn chinese_text(text: &str) -> Option<String> {
+pub(crate) fn chinese_text(text: &str) -> Option<String> {
     let lines: Vec<_> = text
         .lines()
         .map(str::trim)

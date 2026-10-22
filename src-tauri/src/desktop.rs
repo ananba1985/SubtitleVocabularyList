@@ -164,7 +164,14 @@ pub fn run() {
             let settings = application.settings()?;
             application.start_preparation_scheduler();
             let query_handle=app.handle().clone();
-            application.queries.observe(Arc::new(move|session|{let _=query_handle.emit_to("translator","query_updated",serde_json::json!({"sessionId":session.session_id,"inputRevision":session.input_revision,"queryId":session.query_id,"origin":session.input.origin.kind}));}));
+            application.queries.observe(Arc::new(move |session| {
+                let watch = session.input.origin.kind == "watch";
+                let _ = query_handle.emit_to(
+                    if watch { "main" } else { "translator" },
+                    if watch { "watch_query_updated" } else { "query_updated" },
+                    serde_json::json!({"sessionId":session.session_id,"inputRevision":session.input_revision,"queryId":session.query_id,"origin":session.input.origin.kind}),
+                );
+            }));
             let clipboard=crate::desktop_query::ClipboardWatcher::default();clipboard.initialize(&application)?;app.manage(clipboard);
             app.manage(application);
             app.manage(NativeDesktop::default());

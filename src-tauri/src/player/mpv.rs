@@ -447,6 +447,17 @@ impl Engine {
             })
         })
     }
+    pub fn save_subtitle_frame(&self, path: &Path) -> Result<(u32, u32), AppError> {
+        // Includes the player's subtitles, excludes this app's translation/OSC OSD.
+        let shot = self.screenshot("subtitles")?;
+        let (width, height) = (shot.width as u32, shot.height as u32);
+        let image = image::RgbaImage::from_raw(width, height, shot.pixels)
+            .ok_or_else(|| error("暂停帧像素无效"))?;
+        image
+            .save(path)
+            .map_err(|e| error(format!("无法保存暂停帧：{e}")))?;
+        Ok((width, height))
+    }
     // Compare the same frozen frame with/without the player's own subtitle layer.
     // This locates rendered ASS/PGS text even when it follows a character, without
     // changing subtitle visibility on screen or guessing positions from plain text.

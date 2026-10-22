@@ -160,7 +160,7 @@ export type Page<T> = { items: Array<T>, total: number, };
 
 export type PixelRect = { x: number, y: number, width: number, height: number, };
 
-export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, };
+export type PlayerSnapshot = { sessionId: string, revision: number, title: string, path: string, sourceId: string | null, playing: boolean, loaded: boolean, position: number, duration: number, volume: number, subtitleDelay: number, tracks: Array<WatchTrack>, context: WatchContext | null, status: string, remainingSeconds: number | null, collectedEntryId: string | null, error: string | null, renderer: string, translationVisibleAt: number | null, collectionStartedAt: number | null, frame: WatchFrame | null, };
 
 export type PluginField = { id: string, label: string, secret: boolean, required: boolean, };
 
@@ -278,9 +278,11 @@ export type TransitionAssessment = { sessionId: string, expectedRevision: number
 
 export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "watch" | "practice" | "reviews" | "leech" | "sync" | "tasks" | "settings";
 
-export type WatchContext = { revision: number, sourceId: string, exampleId: string, text: string, translation: string, translationRevision: string, startMs: number, endMs: number, textSource: string, previous: boolean, };
+export type WatchContext = { revision: number, sourceId: string, exampleId: string, text: string, translation: string, translationRevision: string, startMs: number, endMs: number, textSource: string, previous: boolean, locationKey: string, mediaSha256: string, audioStream: number | null, preciseTiming: boolean, subtitleStartMs: number, subtitleEndMs: number, };
 
 export type WatchControl = { action: string, value: number | null, text: string | null, expectedRevision: number | null, };
+
+export type WatchFrame = { path: string, width: number, height: number, positionMs: number, text: string, busy: boolean, error: string | null, };
 
 export type WatchProgress = { sourceId: string | null, path: string, position: number, subtitleId: number | null, audioId: number | null, subtitleDelay: number, };
 
@@ -400,6 +402,7 @@ export interface CommandMap {
   translation_window_hide: { args: undefined; result: void };
   translation_window_pin: { args: { pinned: boolean }; result: void };
   tray_action_get: { args: undefined; result: TrayNavigation | null };
+  watch_collection_prepare: { args: { sessionId: string; expectedRevision: number }; result: WatchContext };
   watch_control: { args: { control: WatchControl }; result: PlayerSnapshot };
   watch_open: { args: { path?: string | null; sourceId?: string | null }; result: PlayerSnapshot };
   watch_progress_get: { args: undefined; result: WatchProgress | null };

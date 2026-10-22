@@ -534,11 +534,31 @@ impl Store {
         example_id: &str,
         cancelled: &AtomicBool,
     ) -> Result<AudioAsset, AppError> {
+        let watch: Option<String> = self.connection()?.query_row(
+            "SELECT value_json FROM settings WHERE key=?", [format!("watch:clip:{example_id}")], |r| r.get(0),
+        ).optional()?;
+        let watch = watch.map(|s| serde_json::from_str::<crate::watch::WatchClip>(&s)).transpose()?;
+        self.ensure_clip_inner(tools, source_id, example_id,
+            watch.as_ref().map(|v| (Path::new(&v.path), v.stream)), cancelled)
+    }
+
+    pub fn ensure_clip_from_video(
+        &self, tools: &MediaTools, source_id: &str, example_id: &str,
+        path: &Path, stream: Option<usize>, cancelled: &AtomicBool,
+    ) -> Result<AudioAsset, AppError> {
+        self.ensure_clip_inner(tools, source_id, example_id, Some((path, stream)), cancelled)
+    }
+
+    fn ensure_clip_inner(
+        &self, tools: &MediaTools, source_id: &str, example_id: &str,
+        video: Option<(&Path, Option<usize>)>, cancelled: &AtomicBool,
+    ) -> Result<AudioAsset, AppError> {
         let example = self.source_example(source_id, example_id)?;
         let recipe = vocabulary::digest(
             format!(
-                "aac128-v1:{source_id}:{}:{}",
-                example.start_ms, example.end_ms
+                "aac128-v1:{source_id}:{}:{}{}",
+                example.start_ms, example.end_ms,
+                video.map(|(_, stream)| format!(":video:{stream:?}")).unwrap_or_default()
             )
             .as_bytes(),
         );
@@ -547,11 +567,11 @@ impl Store {
         {
             return Ok(asset);
         }
-        let audio: String = self.connection()?.query_row(
+        let audio: String = if let Some((path, _)) = video { path.to_string_lossy().into_owned() } else { self.connection()?.query_row(
             "SELECT audio_path FROM sources WHERE id=?",
             [source_id],
             |row| row.get(0),
-        )?;
+        )? };
         if !Path::new(&audio).is_file() {
             return Err(AppError::new(
                 "resource_missing",
@@ -563,12 +583,13 @@ impl Store {
             .join("jobs")
             .join(format!("clip-{}.m4a", Uuid::new_v4()));
         let result = (|| {
-            let duration = media::extract_clip(
+            let duration = media::extract_clip_stream(
                 tools,
                 Path::new(&audio),
                 &temporary,
                 example.start_ms,
                 example.end_ms,
+                video.and_then(|(_, stream)| stream),
                 cancelled,
             )?;
             let digest = file_hash(&temporary)?;

@@ -27,6 +27,12 @@ pub struct WatchContext {
     pub end_ms: i64,
     pub text_source: String,
     pub previous: bool,
+    pub location_key: String,
+    pub media_sha256: String,
+    pub audio_stream: Option<usize>,
+    pub precise_timing: bool,
+    pub subtitle_start_ms: i64,
+    pub subtitle_end_ms: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -50,6 +56,13 @@ pub struct WatchMedia {
     pub text_source: String,
     pub examples: Vec<CandidateExample>,
     pub subtitles: Option<crate::subtitles::SubtitleBundle>,
+    pub media_sha256: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WatchClip {
+    pub path: String,
+    pub stream: Option<usize>,
 }
 
 impl Store {
@@ -85,13 +98,14 @@ impl Store {
         if !file.is_file() {
             return Err(AppError::new("invalid_input", "请选择视频文件。"));
         }
+        let media_sha256 = crate::corpus::file_hash(&file)?;
         if let Some((id, _, title, fingerprint, corpus, text_source)) = record {
             let subtitles = self.subtitle_bundle(&id)?;
             let expected = subtitles
                 .as_ref()
                 .map(|s| s.media_sha256.as_str())
                 .unwrap_or(&fingerprint);
-            if crate::corpus::file_hash(&file)? != expected {
+            if media_sha256 != expected {
                 return Err(AppError::new(
                     "conflict",
                     "视频内容与导入资料不一致，请重新导入后再使用原句译文。",
@@ -124,6 +138,7 @@ impl Store {
                 text_source,
                 examples,
                 subtitles,
+                media_sha256,
             })
         } else {
             Ok(WatchMedia {
@@ -139,6 +154,7 @@ impl Store {
                 text_source: "subtitle".into(),
                 examples: vec![],
                 subtitles: None,
+                media_sha256,
             })
         }
     }
@@ -180,7 +196,128 @@ impl Store {
             end_ms: e.end_ms,
             text_source: media.text_source.clone(),
             previous: subtitle_time >= e.end_ms,
+            location_key: String::new(),
+            media_sha256: media.media_sha256.clone(),
+            audio_stream: media.audio_stream,
+            precise_timing: true,
+            subtitle_start_ms: e.start_ms,
+            subtitle_end_ms: e.end_ms,
         }))
+    }
+
+    /// Current decoder text is authoritative; importing the whole episode is optional.
+    pub fn watch_text_context(
+        &self,
+        media: &WatchMedia,
+        raw: &str,
+        start_ms: i64,
+        end_ms: i64,
+        revision: u64,
+        track: &str,
+        audio_stream: Option<usize>,
+        alignment: Option<(i64, i64)>,
+    ) -> Result<Option<WatchContext>, AppError> {
+        let Some(text) = crate::subtitles::english_text(raw) else {
+            return Ok(None);
+        };
+        if text.chars().count() > 4000 || start_ms < 0 || end_ms <= start_ms {
+            return Ok(None);
+        }
+        let indexed = media.examples.iter().find(|e| {
+            e.text == text && (e.start_ms - start_ms).abs() < 80 && (e.end_ms - end_ms).abs() < 80
+        });
+        let (cue_start, cue_end) = alignment.unwrap_or((start_ms, end_ms));
+        let translation = media
+            .subtitles
+            .as_ref()
+            .and_then(|b| b.translation(cue_start, cue_end))
+            .or(self.sentence_translation(&text)?)
+            .or_else(|| crate::subtitles::chinese_text(raw))
+            .unwrap_or_default();
+        Ok(Some(WatchContext {
+            revision,
+            source_id: media.source_id.clone().unwrap_or_default(),
+            example_id: indexed.map(|e| e.id.clone()).unwrap_or_default(),
+            location_key: format!(
+                "watch:{track}:{start_ms}:{end_ms}:{}",
+                vocabulary::digest(text.as_bytes())
+            ),
+            media_sha256: media.media_sha256.clone(),
+            audio_stream,
+            precise_timing: true,
+            subtitle_start_ms: cue_start,
+            subtitle_end_ms: cue_end,
+            text,
+            translation_revision: vocabulary::digest(translation.as_bytes()),
+            translation,
+            start_ms: indexed.map(|e| e.start_ms).unwrap_or(start_ms),
+            end_ms: indexed.map(|e| e.end_ms).unwrap_or(end_ms),
+            text_source: "player_text".into(),
+            previous: false,
+        }))
+    }
+
+    /// Called only for an explicit collection draft or an accepted automatic save.
+    pub fn bind_watch_context(
+        &self,
+        path: &str,
+        title: &str,
+        context: &WatchContext,
+    ) -> Result<WatchContext, AppError> {
+        if !context.source_id.is_empty() && !context.example_id.is_empty() {
+            self.save_watch_clip(context, path)?;
+            return Ok(context.clone());
+        }
+        if crate::corpus::file_hash(std::path::Path::new(path))? != context.media_sha256 {
+            return Err(AppError::new(
+                "conflict",
+                "视频内容已变化，请重新打开后收录。",
+            ));
+        }
+        let mut bound = context.clone();
+        if bound.source_id.is_empty() {
+            bound.source_id = self.add_source(&vocabulary::SourceInput {
+                kind: "video".into(),
+                title: title.into(),
+                fingerprint: context.media_sha256.clone(),
+                path_hint: Some(path.into()),
+                duration_ms: None,
+            })?;
+        }
+        let db = self.connection()?;
+        bound.example_id = vocabulary::insert_example(
+            &db,
+            &vocabulary::ExampleInput {
+                text: context.text.clone(),
+                source_id: Some(bound.source_id.clone()),
+                location_key: context.location_key.clone(),
+                start_ms: context.precise_timing.then_some(context.start_ms),
+                end_ms: context.precise_timing.then_some(context.end_ms),
+                ..Default::default()
+            },
+            chrono::Utc::now().timestamp_millis(),
+        )?;
+        db.execute("UPDATE sources SET audio_path=COALESCE(audio_path,?),text_source=COALESCE(text_source,?) WHERE id=?",
+            rusqlite::params![path,context.text_source,bound.source_id])?;
+        drop(db);
+        self.save_watch_clip(&bound, path)?;
+        if !context.translation.is_empty() {
+            self.save_sentence_translation(
+                &context.text,
+                &context.translation,
+                "subtitle://player",
+                "播放器字幕",
+            )?;
+        }
+        Ok(bound)
+    }
+
+    fn save_watch_clip(&self, context: &WatchContext, path: &str) -> Result<(), AppError> {
+        if context.precise_timing {
+            self.connection()?.execute("INSERT INTO settings(key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+                rusqlite::params![format!("watch:clip:{}", context.example_id), serde_json::to_string(&WatchClip { path: path.into(), stream: context.audio_stream })?])?;
+        }
+        Ok(())
     }
 
     pub fn watch_progress(&self) -> Result<Option<WatchProgress>, AppError> {
@@ -225,15 +362,31 @@ impl Store {
                 "没有已保存的完整译文，未自动收录。",
             ));
         }
-        let mut example = crate::application::example_input_from_corpus(
-            self,
-            &context.source_id,
-            &context.example_id,
-            &context.translation,
-        )?;
+        let mut example = if context.precise_timing {
+            crate::application::example_input_from_corpus(
+                self,
+                &context.source_id,
+                &context.example_id,
+                &context.translation,
+            )?
+        } else {
+            let (text, location_key) = self.connection()?.query_row(
+                "SELECT text,location_key FROM examples WHERE id=? AND source_id=?",
+                rusqlite::params![context.example_id, context.source_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            )?;
+            vocabulary::ExampleInput {
+                text,
+                location_key,
+                context_meaning: context.translation.clone(),
+                source_id: Some(context.source_id.clone()),
+                ..Default::default()
+            }
+        };
         let translation = self
             .subtitle_bundle(&context.source_id)?
-            .and_then(|b| b.translation(context.start_ms, context.end_ms))
+            .filter(|_| context.precise_timing)
+            .and_then(|b| b.translation(context.subtitle_start_ms, context.subtitle_end_ms))
             .or(self.sentence_translation(&context.text)?);
         if example.text != context.text
             || translation.as_deref() != Some(context.translation.as_str())

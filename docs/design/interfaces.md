@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.59 |
+| 文档版本 | 0.60 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
@@ -227,9 +227,9 @@ assessment_preview/start 使用后台线程计算并在开始事务内冻结；s
 
 ### 2.5 边看边学命令（核心已接入）
 
-FR-25 至 FR-29 的 CMD-63 至 CMD-71 唯一维护于[边看边学设计 §7.2](watch-and-learn.md#72-命令与实现状态)：CMD-63 至 CMD-66 与 CMD-71 已实现打开、状态、播放控制、视频视图区及本机进度，DTO 已生成。CMD-67 至 CMD-70 保留，帧 OCR／专用查询与草稿扩展尚未实现；当前上下文和 close 动作由播放器核心处理。播放器上下文带 sessionId、contextRevision、已保存译文及其版本，查询、OCR、显示确认和草稿核对版本；状态含实际显示后计时及自动保存结果，事件只通知标识后读取快照。
+FR-25 至 FR-29 的 CMD-63 至 CMD-71 唯一维护于[边看边学设计 §7.2](watch-and-learn.md#72-命令与实现状态)：CMD-63 至 CMD-66、CMD-69 与 CMD-71 已注册。0.11.0 的 watch_collection_prepare 接受 sessionId／expectedRevision，返回绑定来源的 WatchContext，随后进入既有收录草稿。CMD-67／68／70 保留，当前上下文、OCR 裁剪／核对及 close 使用控制器动作。快照新增 WatchFrame 及上下文的 locationKey、mediaSha256、audioStream、preciseTiming、字幕时间；精确媒体起止与原字幕时间分别用于原声和中文对应。
 
-默认暂停只读导入时保存的句译文；按需补充和查词复用 CMD-38 至 CMD-41 等命令。自动收录由核心在完整译文实际显示后满设定时长再调用同一收录服务，不从 pause 或请求返回时间计时；手动确认继续用 CMD-09。设置复用本机设置入口，默认开启、5 秒；实现时扩展 watch 来源、触发类型、稳定操作标识及必要 DTO，并使用现有类型生成链，不建平行提交协议。播放器核心已接入定时与取消，Settings 新增 watchAutoCollect／watchCollectDelaySeconds；watch_updated 通知 sessionId／revision，watch_collected 通知保存完成后全局刷新。watch_control 的 expectedRevision 可核对暂停上下文，fullscreen／exit_fullscreen 提供原生焦点下的全屏控制；未实现的查询／OCR 命令继续保留，不作为可调用接口。
+默认暂停只读已准备译文；按需补充和查词复用 CMD-38 至 CMD-41，独立 watch owner 不替换小窗会话，watch_query_updated 只发主窗口。query_translation 动作核对播放器会话／上下文版本，只在完整 ready 后保存有效译文并由原生绘制确认启动计时；running 预览不计时。ocr_crop 的 text 为 PixelRect JSON，confirm_ocr 的 text 为核对原文，均须 expectedRevision；没有精确边界则收录文字。Settings 的 watchAutoCollect／watchCollectDelaySeconds、watch_updated、watch_collected 及原手动确认保持，完整译文显示后默认等 5 秒。
 
 ### 2.6 本地中英字幕命令
 
@@ -431,3 +431,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 
 | 0.58 | 2026-10-21 | 登记边看边学五个实际命令、生成 DTO、自动保存通知和全屏控制；其余命令保持预留 |
 | 0.59 | 2026-10-21 | 登记 CMD-72 至 CMD-74 本地字幕资产、聚合取得和中文选择接口 |
+| 0.60 | 2026-10-21 | 登记 CMD-69 来源绑定、独立 watch 流式事件、原生查询／OCR 动作和新上下文字段 |

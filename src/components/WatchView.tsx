@@ -4,6 +4,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { call, message, time } from "../api";
 import { SubtitleSettings } from "./SubtitleSettings";
+import { WatchQuery, type WatchRequest } from "./WatchQuery";
+import { WatchOcr } from "./WatchOcr";
 import type { CollectionSeed, Settings, SourceSummary } from "../types";
 import type {
   PlayerSnapshot,
@@ -31,6 +33,9 @@ export function WatchView({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [options, setOptions] = useState(false);
+  const [query, setQuery] = useState<
+    (WatchRequest & { revision: number; playerSession: string }) | null
+  >(null);
   const [fullscreen, setFullscreen] = useState(false);
   const video = useRef<HTMLDivElement>(null),
     request = useRef(0);
@@ -39,7 +44,12 @@ export function WatchView({
     const next = await call("watch_state_get");
     if (id === request.current) setState(next);
   }, []);
-  const control = async (action: string, value?: number, text?: string) => {
+  const control = async (
+    action: string,
+    value?: number,
+    text?: string,
+    expectedRevision?: number,
+  ) => {
     setError("");
     try {
       const next = await call("watch_control", {
@@ -47,7 +57,7 @@ export function WatchView({
           action,
           value: value ?? null,
           text: text ?? null,
-          expectedRevision: null,
+          expectedRevision: expectedRevision ?? null,
         } satisfies WatchControl,
       });
       setState(next);
@@ -225,23 +235,47 @@ export function WatchView({
                     : status === "cancelled"
                       ? "本次不自动收录"
                       : "";
-  const manual = async (target: string, kind: string) => {
+  const lookup = async (target: string, mode: "explain" | "translate") => {
+    if (!context || !state || !target.trim()) return;
+    await control("cancel_auto");
+    setQuery({
+      target: target.trim(),
+      mode,
+      nonce: Date.now(),
+      revision: context.revision,
+      playerSession: state.sessionId,
+    });
+  };
+  const manual = async (target: string, kind: string, meaning?: string) => {
     if (!context || !target.trim()) return;
     await control("cancel_auto");
+    let bound = context;
+    try {
+      bound = await call("watch_collection_prepare", {
+        sessionId: state!.sessionId,
+        expectedRevision: context.revision,
+      });
+    } catch (e) {
+      setError(message(e));
+      return;
+    }
     collect({
       kind,
       text: target.trim(),
       context: context.text,
-      meaning: kind === "sentence" ? context.translation : "",
-      sourceId: context.sourceId,
-      example: {
-        id: context.exampleId,
-        text: context.text,
-        startMs: context.startMs,
-        endMs: context.endMs,
-        decision: null,
-        revision: 1,
-      },
+      meaning: meaning ?? (kind === "sentence" ? context.translation : ""),
+      sourceId: bound.sourceId,
+      locationKey: bound.locationKey,
+      example: bound.preciseTiming
+        ? {
+            id: bound.exampleId,
+            text: bound.text,
+            startMs: bound.startMs,
+            endMs: bound.endMs,
+            decision: null,
+            revision: 1,
+          }
+        : undefined,
     });
   };
   return (
@@ -310,7 +344,7 @@ export function WatchView({
       {options && (
         <div className="watch-options">
           <SubtitleSettings
-            sourceId={state?.sourceId ?? selected}
+            sourceId={state?.loaded ? (state.sourceId ?? "") : selected}
             onChanged={async () => {
               await control("refresh_subtitles");
             }}
@@ -418,6 +452,14 @@ export function WatchView({
               </button>
             )}
           </div>
+          {state.frame && (
+            <WatchOcr
+              frame={state.frame}
+              control={(action, text) =>
+                control(action, undefined, text, state.revision)
+              }
+            />
+          )}
           {!state.playing && context && (
             <>
               <div
@@ -436,13 +478,27 @@ export function WatchView({
                       ".watch-sentence",
                     )
                   )
-                    void manual(
-                      target,
-                      target.includes(" ") ? "phrase" : "word",
-                    );
+                    void lookup(target, "explain");
                 }}
               >
-                {context.text}
+                {context.text
+                  .split(/([A-Za-z]+(?:['’\-][A-Za-z]+)*)/)
+                  .map((part, index) =>
+                    /^[A-Za-z]/.test(part) ? (
+                      <button
+                        key={index}
+                        className="watch-word"
+                        onClick={() => {
+                          if (!window.getSelection()?.toString().trim())
+                            void lookup(part, "explain");
+                        }}
+                      >
+                        {part}
+                      </button>
+                    ) : (
+                      <span key={index}>{part}</span>
+                    ),
+                  )}
               </div>
               <p className="watch-translation">
                 {context.translation || "暂无已保存译文"}
@@ -450,7 +506,9 @@ export function WatchView({
               <div className="watch-caption-actions">
                 <small>
                   {context.previous ? "上一句 · " : ""}
-                  {time(context.startMs)}—{time(context.endMs)}
+                  {context.preciseTiming
+                    ? `${time(context.startMs)}—${time(context.endMs)}`
+                    : `OCR 采集位置 ${time(context.startMs)} · 无精确原声区间`}
                 </small>
                 <button
                   className="text-button"
@@ -458,7 +516,36 @@ export function WatchView({
                 >
                   手动收录整句
                 </button>
+                {!context.translation && (
+                  <button
+                    className="text-button"
+                    onClick={() => void lookup(context.text, "translate")}
+                  >
+                    翻译当前句
+                  </button>
+                )}
               </div>
+              {query &&
+                state.sessionId === query.playerSession &&
+                context.revision === query.revision && (
+                  <WatchQuery
+                    key={`${query.playerSession}:${query.revision}:${query.nonce}`}
+                    request={query}
+                    context={context}
+                    playerSession={state.sessionId}
+                    collect={(target, meaning) =>
+                      void manual(
+                        target,
+                        query.mode === "translate"
+                          ? "sentence"
+                          : target.includes(" ")
+                            ? "phrase"
+                            : "word",
+                        meaning,
+                      )
+                    }
+                  />
+                )}
             </>
           )}
         </div>

@@ -239,7 +239,7 @@ impl QueryRuntime {
             "replacement".into()
         } else if matches!(
             input.origin.kind.as_str(),
-            "selection" | "ocr" | "clipboard"
+            "selection" | "ocr" | "clipboard" | "watch"
         ) {
             input.origin.kind.clone()
         } else {
@@ -266,7 +266,7 @@ impl QueryRuntime {
             results: vec![],
         };
         state.owners.insert(owner, id.clone());
-        if !replacement {
+        if !replacement && session.input.origin.kind != "watch" {
             state.current = Some(id.clone());
         }
         state.sessions.insert(id, session.clone());

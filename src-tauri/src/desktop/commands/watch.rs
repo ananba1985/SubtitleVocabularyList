@@ -49,6 +49,31 @@ pub(crate) async fn watch_progress_get(
 }
 
 #[svl_ipc_macros::command]
+pub(crate) async fn watch_collection_prepare(
+    app: AppState<'_>,
+    handle: tauri::AppHandle,
+    session_id: String,
+    expected_revision: u64,
+) -> Result<crate::watch::WatchContext, AppError> {
+    let app = app.inner().clone();
+    background(move || {
+        let state = handle.state::<NativePlayer>().state()?;
+        if state.session_id != session_id || state.revision != expected_revision || state.playing {
+            return Err(AppError::new(
+                "conflict",
+                "播放上下文已变化，请重新暂停后收录。",
+            ));
+        }
+        let context = state
+            .context
+            .ok_or_else(|| AppError::new("not_found", "没有当前原句。"))?;
+        app.store
+            .bind_watch_context(&state.path, &state.title, &context)
+    })
+    .await
+}
+
+#[svl_ipc_macros::command]
 pub(crate) async fn subtitle_info_get(
     app: AppState<'_>,
     source_id: String,

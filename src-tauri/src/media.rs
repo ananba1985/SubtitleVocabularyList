@@ -981,6 +981,13 @@ pub fn extract_clip(
     end_ms: i64,
     cancelled: &AtomicBool,
 ) -> Result<i64, AppError> {
+    extract_clip_stream(tools, audio, output, start_ms, end_ms, None, cancelled)
+}
+
+pub fn extract_clip_stream(
+    tools: &MediaTools, audio: &Path, output: &Path, start_ms: i64, end_ms: i64,
+    stream: Option<usize>, cancelled: &AtomicBool,
+) -> Result<i64, AppError> {
     if start_ms < 0 || end_ms <= start_ms {
         return Err(AppError::new("invalid_input", "对白截取范围无效。"));
     }
@@ -1001,6 +1008,8 @@ pub fn extract_clip(
             &audio.to_string_lossy(),
             "-t",
             &format!("{:.3}", (end_ms - start_ms) as f64 / 1000.0),
+            "-map",
+            &stream.map(|n| format!("0:{n}")).unwrap_or_else(|| "0:a:0".into()),
             "-vn",
             "-c:a",
             "aac",

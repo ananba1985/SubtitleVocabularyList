@@ -39,6 +39,7 @@ svl_ipc_macros::catalog! {
         watch::watch_control,
         watch::watch_viewport_set,
         watch::watch_progress_get,
+        watch::watch_collection_prepare,
         watch::subtitle_info_get,
         watch::subtitle_prepare_start,
         watch::subtitle_chinese_select,

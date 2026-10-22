@@ -41,6 +41,19 @@ pub struct WatchTrack {
     pub selected: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct WatchFrame {
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+    pub position_ms: i64,
+    pub text: String,
+    pub busy: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +78,7 @@ pub struct PlayerSnapshot {
     pub renderer: String,
     pub translation_visible_at: Option<i64>,
     pub collection_started_at: Option<i64>,
+    pub frame: Option<WatchFrame>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -100,6 +114,7 @@ enum Message {
         u64,
         Result<crate::vocabulary::CollectionResult, AppError>,
     ),
+    Recognized(u64, Result<String, AppError>),
     Shutdown(Sender<()>),
 }
 static KEYBOARD: OnceLock<Mutex<Option<Sender<Message>>>> = OnceLock::new();
@@ -513,6 +528,7 @@ struct Actor {
     shutdown_reply: Option<Sender<()>>,
     fullscreen: bool,
     last_notice: String,
+    ocr_cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 fn failure(detail: impl Into<String>) -> AppError {
     AppError::new("player_unavailable", detail)
@@ -559,6 +575,7 @@ impl Actor {
             shutdown_reply: None,
             fullscreen: false,
             last_notice: String::new(),
+            ocr_cancel: None,
         }
     }
     fn receive(&mut self, message: Message) {
@@ -654,6 +671,22 @@ impl Actor {
                     }
                 }
             }
+            Message::Recognized(revision, result) => {
+                if revision == self.state.revision && self.user_pause && self.engine.flag("pause") {
+                    if let Some(frame) = self.state.frame.as_mut() {
+                        self.ocr_cancel = None;
+                        frame.busy = false;
+                        match result {
+                            Ok(text) => {
+                                frame.text = text;
+                                frame.error = None;
+                            }
+                            Err(error) => frame.error = Some(error.message),
+                        }
+                        self.state.status = "ocr_review".into();
+                    }
+                }
+            }
             Message::Shutdown(reply) => {
                 self.invalidate();
                 self.stopped = true;
@@ -663,6 +696,15 @@ impl Actor {
         self.publish();
     }
     fn invalidate(&mut self) {
+        if let Some(flag) = self.ocr_cancel.take() {
+            flag.store(true, Ordering::Relaxed);
+        }
+        if let Some(frame) = self.state.frame.take() {
+            let _ = std::fs::remove_file(frame.path);
+        }
+        if let Some(query) = self.application.queries.owner("watch") {
+            let _ = self.application.queries.cancel(&query.session_id, None);
+        }
         self.clock.cancel();
         self.user_pause = false;
         self.pending_context = None;
@@ -803,14 +845,135 @@ impl Actor {
                 self.state.remaining_seconds = None;
                 self.state.status = "cancelled".into();
             }
+            "query_translation" => {
+                let query = self
+                    .application
+                    .queries
+                    .get(control.text.as_deref())?
+                    .ok_or_else(|| failure("当前查询已结束"))?;
+                let context = self
+                    .state
+                    .context
+                    .as_ref()
+                    .ok_or_else(|| failure("当前没有可翻译原句"))?;
+                if !self.user_pause
+                    || !self.engine.flag("pause")
+                    || query.input.origin.kind != "watch"
+                    || query.input.origin.location_key
+                        != format!("{}:{}", self.state.session_id, self.state.revision)
+                    || query.input.mode != "translate"
+                    || query.input.target != context.text
+                {
+                    return Err(AppError::new(
+                        "conflict",
+                        "播放上下文已变化，未采用旧译文。",
+                    ));
+                }
+                if !query.results.is_empty()
+                    && query
+                        .results
+                        .iter()
+                        .all(|r| matches!(r.state.as_str(), "failed" | "cancelled"))
+                {
+                    self.overlay.clear();
+                    self.engine
+                        .translation("", self.viewport.0, self.viewport.1)?;
+                    self.state.status = "translation_failed".into();
+                }
+                if let Some(result) = query.results.iter().find(|r| r.value.is_some()) {
+                    let value = result.value.as_ref().unwrap();
+                    if result.state == "ready" {
+                        if context.translation == value.translation && !self.overlay.is_empty() {
+                            return Ok(());
+                        }
+                        let settings = self.application.settings()?;
+                        self.application.store.save_sentence_translation(
+                            &context.text,
+                            &value.translation,
+                            &settings.model_url,
+                            &settings.model_name,
+                        )?;
+                        self.refresh_translation()?;
+                    } else if result.state == "running"
+                        && !value.translation.is_empty()
+                        && context.translation.is_empty()
+                    {
+                        self.clock.cancel();
+                        self.pending_display = false;
+                        self.state.remaining_seconds = None;
+                        self.state.status = "translating".into();
+                        self.overlay = value.translation.clone();
+                        self.engine
+                            .translation(&self.overlay, self.viewport.0, self.viewport.1)?;
+                    }
+                }
+            }
+            "ocr_crop" => {
+                let rect: crate::ocr::PixelRect =
+                    serde_json::from_str(control.text.as_deref().unwrap_or(""))?;
+                self.recognize_frame(Some(rect))?;
+            }
+            "confirm_ocr" => {
+                if !self.user_pause || !self.engine.flag("pause") {
+                    return Err(failure("请先暂停后核对文字"));
+                }
+                let position = self
+                    .state
+                    .frame
+                    .as_ref()
+                    .ok_or_else(|| failure("暂停帧已失效"))?
+                    .position_ms;
+                let text = control.text.unwrap_or_default().trim().to_owned();
+                crate::explanations::validate_input(&text, "")?;
+                if text.is_empty() {
+                    return Err(failure("请核对识别到的英文原文"));
+                }
+                let media = self.media.as_ref().ok_or_else(|| failure("视频已关闭"))?;
+                let translation = self
+                    .application
+                    .store
+                    .sentence_translation(&text)?
+                    .unwrap_or_default();
+                let context = WatchContext {
+                    revision: self.state.revision + 1,
+                    source_id: media.source_id.clone().unwrap_or_default(),
+                    example_id: String::new(),
+                    text: text.clone(),
+                    translation_revision: crate::vocabulary::digest(translation.as_bytes()),
+                    translation,
+                    start_ms: position,
+                    end_ms: position,
+                    text_source: "frame_ocr".into(),
+                    previous: false,
+                    location_key: format!(
+                        "watch-ocr:{position}:{}",
+                        crate::vocabulary::digest(text.as_bytes())
+                    ),
+                    media_sha256: media.media_sha256.clone(),
+                    audio_stream: None,
+                    precise_timing: false,
+                    subtitle_start_ms: position,
+                    subtitle_end_ms: position,
+                };
+                self.invalidate();
+                self.user_pause = true;
+                self.present_context(context)?;
+            }
             "refresh_subtitles" => {
-                let paused=self.user_pause && self.engine.flag("pause");
-                if let Some(media)=self.media.as_mut() {
-                    media.subtitles=media.source_id.as_deref().map(|id|self.application.store.subtitle_bundle(id)).transpose()?.flatten();
+                let paused = self.user_pause && self.engine.flag("pause");
+                if let Some(media) = self.media.as_mut() {
+                    media.subtitles = media
+                        .source_id
+                        .as_deref()
+                        .map(|id| self.application.store.subtitle_bundle(id))
+                        .transpose()?
+                        .flatten();
                 }
                 self.invalidate();
-                self.user_pause=paused;
-                if paused { self.pending_context=Some(Instant::now()+Duration::from_millis(60)); }
+                self.user_pause = paused;
+                if paused {
+                    self.pending_context = Some(Instant::now() + Duration::from_millis(60));
+                }
             }
             "hide" => {
                 self.engine
@@ -891,22 +1054,165 @@ impl Actor {
         if !self.user_pause || !self.engine.flag("pause") {
             return Ok(());
         }
-        if self.engine.number("sid").map(|n| n as i64) != self.bound_sid {
-            self.state.status = "subtitle_changed".into();
-            return Ok(());
-        }
         let position = self.engine.number("time-pos").unwrap_or(0.0);
         let delay = self.engine.number("sub-delay").unwrap_or(0.0);
-        let context = self.application.store.watch_context(
-            media,
-            (position * 1000.0) as i64,
-            (delay * 1000.0) as i64,
-            self.state.revision,
-        )?;
+        let tracks = self.engine.property("track-list");
+        let audio = tracks
+            .as_array()
+            .and_then(|t| {
+                t.iter()
+                    .find(|t| t["type"] == "audio" && t["selected"] == true)
+            })
+            .and_then(|t| t["ff-index"].as_u64())
+            .map(|n| n as usize);
+        let mut context = None;
+        for prefix in ["", "secondary-"] {
+            let text = self.engine.property(&format!("{prefix}sub-text"));
+            let (Some(text), Some(start), Some(end)) = (
+                text.as_str(),
+                self.engine.number(&format!("{prefix}sub-start")),
+                self.engine.number(&format!("{prefix}sub-end")),
+            ) else {
+                continue;
+            };
+            let track_delay = self
+                .engine
+                .number(&format!("{prefix}sub-delay"))
+                .unwrap_or(0.0);
+            let subtitle_speed = self.engine.number("sub-speed").unwrap_or(1.0);
+            let sid = self.engine.property(if prefix.is_empty() {
+                "sid"
+            } else {
+                "secondary-sid"
+            });
+            let track = tracks
+                .as_array()
+                .and_then(|t| t.iter().find(|t| t["type"] == "sub" && t["id"] == sid));
+            let key = track
+                .map(|t| format!("{}:{}", t["ff-index"], t["external-filename"]))
+                .unwrap_or_else(|| sid.to_string());
+            context = self.application.store.watch_text_context(
+                media,
+                text,
+                ((start * subtitle_speed + track_delay) * 1000.0).round() as i64,
+                ((end * subtitle_speed + track_delay) * 1000.0).round() as i64,
+                self.state.revision,
+                &key,
+                audio,
+                Some((
+                    (start * 1000.0).round() as i64,
+                    (end * 1000.0).round() as i64,
+                )),
+            )?;
+            if context.is_some() {
+                break;
+            }
+        }
+        if context.is_none() && self.engine.number("sid").map(|n| n as i64) == self.bound_sid {
+            context = self.application.store.watch_context(
+                media,
+                (position * 1000.0) as i64,
+                (delay * 1000.0) as i64,
+                self.state.revision,
+            )?;
+        }
         let Some(context) = context else {
-            self.state.status = "no_subtitle".into();
+            self.capture_ocr_frame()?;
             return Ok(());
         };
+        self.present_context(context)
+    }
+
+    fn refresh_translation(&mut self) -> Result<(), AppError> {
+        if let Some(mut context) = self
+            .state
+            .context
+            .clone()
+            .filter(|c| c.text_source == "frame_ocr")
+        {
+            context.translation = self
+                .application
+                .store
+                .sentence_translation(&context.text)?
+                .unwrap_or_default();
+            context.translation_revision =
+                crate::vocabulary::digest(context.translation.as_bytes());
+            self.present_context(context)
+        } else {
+            self.prepare_context()
+        }
+    }
+
+    fn capture_ocr_frame(&mut self) -> Result<(), AppError> {
+        let path = self.application.store.root().join("jobs").join(format!(
+            "watch-{}-{}.png",
+            self.state.session_id, self.state.revision
+        ));
+        let (width, height) = self.engine.save_subtitle_frame(&path)?;
+        self.state.frame = Some(WatchFrame {
+            path: path.to_string_lossy().into_owned(),
+            width,
+            height,
+            position_ms: (self.engine.number("time-pos").unwrap_or(0.0) * 1000.0).round() as i64,
+            text: String::new(),
+            busy: false,
+            error: None,
+        });
+        self.recognize_frame(None)
+    }
+
+    fn recognize_frame(&mut self, crop: Option<crate::ocr::PixelRect>) -> Result<(), AppError> {
+        if !self.user_pause || !self.engine.flag("pause") {
+            return Err(failure("请先暂停视频"));
+        }
+        let frame = self
+            .state
+            .frame
+            .as_mut()
+            .ok_or_else(|| failure("暂停帧已失效"))?;
+        if frame.busy {
+            return Err(failure("正在识别，请稍候"));
+        }
+        if let Some(rect) = &crop {
+            rect.validate(&crate::ocr::ScreenBounds {
+                x: 0,
+                y: 0,
+                width: frame.width,
+                height: frame.height,
+            })?;
+        }
+        frame.busy = true;
+        frame.error = None;
+        let frame_path = std::path::PathBuf::from(&frame.path);
+        let program = self.application.settings()?.tools.tesseract;
+        let revision = self.state.revision;
+        let sender = self.sender.clone();
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.ocr_cancel = Some(cancelled.clone());
+        self.state.status = "recognizing".into();
+        std::thread::spawn(move || {
+            let temporary =
+                frame_path.with_file_name(format!("watch-crop-{}.png", uuid::Uuid::new_v4()));
+            let result = (|| {
+                let input = if let Some(rect) = crop {
+                    let image = image::open(&frame_path).map_err(|e| failure(e.to_string()))?;
+                    image
+                        .crop_imm(rect.x, rect.y, rect.width, rect.height)
+                        .save(&temporary)
+                        .map_err(|e| failure(e.to_string()))?;
+                    &temporary
+                } else {
+                    &frame_path
+                };
+                crate::ocr::recognize(&program, input, &cancelled)
+            })();
+            let _ = std::fs::remove_file(temporary);
+            let _ = sender.send(Message::Recognized(revision, result));
+        });
+        Ok(())
+    }
+
+    fn present_context(&mut self, context: WatchContext) -> Result<(), AppError> {
         let has_translation = context
             .translation
             .chars()
@@ -981,7 +1287,7 @@ impl Actor {
         }
         if self.pending_context.is_some_and(|at| now >= at) {
             self.pending_context = None;
-            if let Err(error) = self.prepare_context() {
+            if let Err(error) = self.refresh_translation() {
                 self.state.error = Some(error.message);
                 self.state.status = "failed".into();
             }
@@ -994,7 +1300,7 @@ impl Actor {
             && now >= self.translation_retry_at
         {
             self.translation_retry_at = now + Duration::from_secs(1);
-            if let Err(error) = self.prepare_context() {
+            if let Err(error) = self.refresh_translation() {
                 self.state.error = Some(error.message);
                 self.state.status = "failed".into();
             }
@@ -1037,18 +1343,28 @@ impl Actor {
                 let sender = self.sender.clone();
                 let session = self.state.session_id.clone();
                 let revision = self.state.revision;
+                let path = self.state.path.clone();
+                let title = self.state.title.clone();
                 std::thread::spawn(move || {
                     let result = (|| {
+                        let context = app.store.bind_watch_context(&path, &title, &context)?;
                         if let Some(receipt) = app.store.watch_receipt(&context)? {
                             return Ok(receipt);
                         }
-                        let asset = app.store.ensure_clip(
-                            &app.settings()?.tools,
-                            &context.source_id,
-                            &context.example_id,
-                            &std::sync::atomic::AtomicBool::new(false),
-                        )?;
-                        app.store.watch_collect(&context, Some(&asset.id))
+                        let asset = if context.precise_timing {
+                            Some(app.store.ensure_clip_from_video(
+                                &app.settings()?.tools,
+                                &context.source_id,
+                                &context.example_id,
+                                std::path::Path::new(&path),
+                                context.audio_stream,
+                                &std::sync::atomic::AtomicBool::new(false),
+                            )?)
+                        } else {
+                            None
+                        };
+                        app.store
+                            .watch_collect(&context, asset.as_ref().map(|a| a.id.as_str()))
                     })();
                     let _ = sender.send(Message::Saved(session, revision, result));
                 });
@@ -1090,6 +1406,8 @@ impl Actor {
                     "already_saved" => "本句已收录".into(),
                     "cancelled" => "本次不收录".into(),
                     "missing_translation" => "暂无已保存译文".into(),
+                    "recognizing" => "正在识别暂停帧字幕…".into(),
+                    "ocr_review" => "按 Esc 核对识别原文".into(),
                     "saving" => "正在收录整句…".into(),
                     _ => String::new(),
                 }

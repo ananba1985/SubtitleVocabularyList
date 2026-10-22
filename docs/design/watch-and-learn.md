@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DES-WATCH-001 |
-| 文档版本 | 0.4 |
+| 文档版本 | 0.5 |
 | 更新日期 | 2026-10-21 |
-| 状态 | 核心闭环已接入 0.9.0 开发版；完整模块继续实施，见第 1.1 节 |
+| 状态 | 0.11.0 已接入直接字幕、流式查询与帧 OCR 核对；后台正常检查通过，新增窗口交互待人工验收 |
 | 需求依据 | [PRD §3.7、§5.7、FR-25 至 FR-29](../requirements/PRD.md) |
 | 架构依据 | [DEC-08、ARC-11](architecture.md) |
 | 开发与验证 | [开发计划](../planning/watch-and-learn-plan.md)、[TC-59 至 TC-64](../testing/test-plan.md#34-边看边学正常场景) |
@@ -18,11 +18,20 @@
 
 ### 1.1 当前实现范围
 
-本轮先完成用户要求的“内嵌播放 → 暂停显示已保存译文 → 显示后 5 秒收录整句”。实现位置为 `player/{mod,mpv}.rs`、`watch.rs`、`WatchView.tsx`。当前可靠上下文来自已导入同源对白索引和 `sentence_translations`，打开时核对媒体摘要及轨道；未导入视频可以直接播放，但尚未接入直接从任意字幕建学习来源、当前句模型补充及帧 OCR。选中文本／整句可进入原收录确认窗口，按词解释继续列在后续工作，不能将 FR-25 至 FR-29 全部标为完成。
+0.9.0 先完成内嵌、已有译文及定时收录，0.10.0 增加本地双语字幕。0.11.0 接入当前主／第二文字字幕、按需流式查询及无文字时的帧 OCR 核对。代码位于 `player/{mod,mpv}.rs`、`watch.rs`、`WatchView/WatchQuery/WatchOcr.tsx`。新增核心正常结果及待人工操作见[专项结果第 5 节](../testing/watch-and-learn-results.md#5-0110-后台开发增量)。音频互斥、在线取得和发行资源仍待收尾，不把整个模块标为完成。
 
 运行与验证边界唯一记录于[专项结果](../testing/watch-and-learn-results.md)。开发版资源已锁定；发行资源许可材料、随包接入及安装验收留到明确发布请求，不在本轮生成安装包。
 
-后续导入双语字幕要求见[独立设计](subtitle-import.md)：内置／本地中英轨优先，按文件名与季集在线补缺，再按时间对齐。当前只复用已导入的英文来源与保存译文，尚不能将该后续设计视为已接入。
+双语字幕见[独立设计](subtitle-import.md)：本地文本双轨与中文时间复用已接入，按文件名与季集在线补缺尚未实现。
+
+### 1.2 0.11.0 实际适配
+
+- 暂停优先读 mpv 的 `sub-text/sub-start/sub-end`，再读第二字幕；没有可靠当前文字时，只有匹配原导入轨才回退到同源索引。原字幕 cue 时间用于中文对应，媒体时间按字幕延迟／速度换算后用于原声，二者分别保留。不同帧率与字幕特殊格式尚无兼容矩阵证据。
+- 直接播放不创建全片候选。手动创建收录草稿或定时保存获准后，按打开时核对的媒体摘要创建／复用轻量 video 来源，写入需要的例句。该来源没有 corpus，不冒充完成整片预习导入；日后显式导入可复用同一默认媒体身份。精确对白原声复用 FFmpeg，按当前音轨截取，文件保存后与原路径分离。
+- 查询复用 CMD-38 至 CMD-41 和 ModelGate，新增独立 `watch` owner，不改变小窗当前输入。只选已启用本地 Qwen；点词或选短语查释义，缺译文点“翻译当前句”。`watch_query_updated` 发给主窗口，流式预览可显示但不计时；ready 后保存有效句缓存，再由原生译文绘制确认启动完整 5 秒。继续、定位、换轨、离页会使旧版本失效并撤销订阅。
+- 无可靠文字时用 `screenshot-raw subtitles` 保存冻结视频帧，包含原字幕、不包含应用译文／OSC；后台复用英语 Tesseract，不产生逐次任务历史。界面可在帧图内拖选、重新识别、编辑并确认原文。未确认前不建立可自动保存上下文；确认后的 OCR 只有采集点，无对白起止，自动及默认手动收录仅存文字，不伪造精确原声。原帧与裁剪图在上下文失效／识别结束时清理。
+
+上述读取接口依据 [mpv 官方手册](https://mpv.io/manual/stable/)；时间换算核对了上游 `player/command.c` 与 `sub/dec_sub.c` 的字幕时间接口。模型失败保留原错误，不触发 OCR 掩盖翻译问题。
 
 ## 2 页面与交互
 
@@ -172,7 +181,7 @@ OCR 只有帧时间时标记为“采集位置”，不冒充对白的完整起�
 
 ### 7.2 命令与实现状态
 
-CMD-63 至 CMD-66 已注册并由现有 Rust DTO 链生成前端类型，参数用 camelCase。CMD-67 至 CMD-70 保留编号，当前上下文读取／关闭先合并在控制器内，未暴露这些独立命令；OCR 和查询扩展尚未接入。
+CMD-63 至 CMD-66、CMD-69、CMD-71 已注册并由现有 Rust DTO 链生成前端类型，参数用 camelCase。CMD-67／68／70 保留编号：上下文、OCR 和关闭合并在控制器动作内，不暴露同名独立命令。
 
 | 编号 | 命令提案 | 输入与输出边界 |
 | --- | --- | --- |
@@ -180,13 +189,13 @@ CMD-63 至 CMD-66 已注册并由现有 Rust DTO 链生成前端类型，参数�
 | CMD-64 | `watch_state_get` | 无参数 → PlayerSnapshot／WatchContext，含已存译文版本、显示状态及倒计时／保存结果；不触发模型查询 |
 | CMD-65 | `watch_control` | action、value／text、可选 expectedRevision → 新快照；播放、用户暂停、定位、音量、轨道、字幕延迟及取消本次自动收录；记录动作来源，恢复播放作废未到时计时 |
 | CMD-66 | `watch_viewport_set` | 逻辑矩形和可见性 → 确认；缩放由宿主读取，宿主处理 HWND，不写业务资料 |
-| CMD-67 | `watch_context_prepare` | sessionId、expectedContextRevision → 原文及与其对应的已保存句译文；按字幕／索引／OCR 顺序取原文，同版本复用，不默认请求模型 |
-| CMD-68 | `watch_ocr_retry` | sessionId、expectedContextRevision、帧内选区 → 更新后的 OCR 上下文；不改旧收录 |
-| CMD-69 | `watch_collection_prepare` | 上下文版本、选中目标、可选已确认音频区间、operationId → 现有 CollectionDraft；随后用 CMD-09 确认 |
+| CMD-67（保留） | `watch_context_prepare` | 当前由暂停控制器按文字字幕／同源索引／帧 OCR 取得上下文 |
+| CMD-68（保留） | `watch_ocr_retry` | 当前由 watch_control 的 ocr_crop（text 为 PixelRect JSON）及 confirm_ocr（text 为核对原文）处理，必须核对 expectedRevision |
+| CMD-69 | `watch_collection_prepare` | sessionId、expectedRevision → 绑定后的 WatchContext；只准备来源及例句，再用既有 collection_from_example／collection_prepare 建草稿及 CMD-09 确认 |
 | CMD-70（保留） | `watch_close` | 当前由 watch_control 的 close 动作停止视频并保存位置，完全退出时释放引擎 |
 | CMD-71 | `watch_progress_get` | 无参数 → 本机 WatchProgress 或 null；已注册 |
 
-后续查询继续使用 CMD-38 至 CMD-41 等已有 translation 会话命令，在来源枚举中明确新增 watch 并关联上下文版本。`watch_updated` 已接入，只通知会话及版本，界面读取完整快照；`watch_collected` 在自动保存完成时通知主界面刷新，即使用户已继续播放或离页也不丢刷新；流式事件沿用 query_updated，界面同时核对查询输入版本与播放器上下文版本。音频区间编辑在草稿预览内完成，不新增独立音频任务系统。
+查询沿用 CMD-38 至 CMD-41，watch origin 的 locationKey 为 `playerSession:contextRevision`；更新事件为主窗口专用 `watch_query_updated`。watch_control 的 query_translation 只采用该暂停版本的整句查询，部分结果不计时，完成才写缓存并绘制。`watch_updated` 通知快照变化，`watch_collected` 通知已保存项刷新。OCR 没有精确区间时当前只存文字，手动区间编辑／试听仍未接入，不把它描述为已完成。
 
 设置复用现有本机设置读写入口，不增加独立命令。当前暂停译文的实际显示确认携带 sessionId、contextRevision、translationRevision；原生 OSD／React 适配回报可见呈现后才启动核心计时，不能因 `watch_context_prepare` 返回而提前开始。自动提交由控制器在条件满足时内部调用统一收录服务，不允许前端绕过倒计时直接提交任意旧字幕。
 
@@ -243,3 +252,4 @@ M-20 锁定 Windows 构建来源、版本、摘要、C API／渲染方式及所�
 
 | 0.3 | 2026-10-21 | 接入首个内嵌、保存译文与定时收录闭环；锁定 render API、显示确认、原字幕就近定位、全屏及实际命令／持久化，明确后续范围 |
 | 0.4 | 2026-10-21 | 记录原生鼠标归一化、拖动捕获和明确按键释放；关联后续双语字幕导入设计 |
+| 0.5 | 2026-10-21 | 接入当前字幕、轻量来源、独立流式查询与帧 OCR 核对，登记实际接口及后台正常证据，人工交互待确认 |

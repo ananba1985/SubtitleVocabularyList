@@ -31,6 +31,74 @@ fn finished(app: &Application, id: &str) -> subtitle_vocabulary_list_core::queri
 }
 
 #[test]
+fn automatic_query_translates_chinese_and_explains_english() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(directory.path()).unwrap());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let settings = Settings {
+        model_url: format!("http://{}", listener.local_addr().unwrap()),
+        ..Default::default()
+    };
+    let server = std::thread::spawn(move || {
+        for (target, source, destination, value) in [
+            ("最终", "zh-CN", "en", json!({"meaning":"","translation":"finally","notes":""})),
+            ("eventually", "en", "zh-CN", json!({"meaning":"最终；终于","translation":"","notes":""})),
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut data = Vec::new();
+            let request: serde_json::Value = loop {
+                let mut buffer = [0; 4096];
+                let size = stream.read(&mut buffer).unwrap();
+                assert!(size > 0);
+                data.extend_from_slice(&buffer[..size]);
+                if let Some(end) = data.windows(4).position(|p| p == b"\r\n\r\n") {
+                    let length: usize = String::from_utf8_lossy(&data[..end]).lines()
+                        .find_map(|line| line.to_lowercase().strip_prefix("content-length:")
+                            .map(|n| n.trim().parse().unwrap())).unwrap();
+                    if data.len() >= end + 4 + length {
+                        break serde_json::from_slice(&data[end + 4..end + 4 + length]).unwrap();
+                    }
+                }
+            };
+            let input: serde_json::Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(input["target"], target);
+            assert_eq!(input["sourceLanguage"], source);
+            assert_eq!(input["targetLanguage"], destination);
+            let system = request["messages"][0]["content"].as_str().unwrap();
+            if source == "zh-CN" {
+                assert!(system.contains("将 target 完整译成 targetLanguage"));
+                assert_eq!(request["max_tokens"], 2048);
+            } else {
+                assert!(system.contains("常用的简短中文解释"));
+            }
+            let response = json!({"choices":[{"finish_reason":"stop","message":{"content":value.to_string()}}]}).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+        }
+    });
+    let app = Arc::new(Application::new(
+        Arc::clone(&store),
+        TaskManager::new(Arc::clone(&store), Arc::new(|_| {})),
+        settings,
+    ));
+    // Omitted languages use the same automatic defaults as the query window.
+    let mut input: QueryInput = serde_json::from_value(json!({"target":"最终","context":"","mode":"auto"})).unwrap();
+    let mut session_id: Option<String> = None;
+    for (target, expected) in [("最终", "finally"), ("eventually", "最终；终于")] {
+        input.target = target.into();
+        let session = app.queries.open(input.clone(), session_id.as_deref()).unwrap();
+        app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+        let completed = finished(&app, &session.session_id);
+        assert_eq!(completed.input.source_language, "auto");
+        assert_eq!(completed.input.target_language, "auto");
+        assert_eq!(completed.results[0].value.as_ref().unwrap().text(), expected);
+        session_id = Some(session.session_id);
+    }
+    server.join().unwrap();
+    assert!(store.list_entries("", 0, 40).unwrap().is_empty());
+}
+
+#[test]
 fn named_project_explanation_in_notes_is_displayed_and_saved() {
     let directory = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(directory.path()).unwrap());

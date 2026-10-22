@@ -16,8 +16,8 @@ const empty: QueryInput = {
   target: "",
   context: "",
   mode: "auto",
-  sourceLanguage: "en",
-  targetLanguage: "zh-CN",
+  sourceLanguage: "auto",
+  targetLanguage: "auto",
   origin: { kind: "input", sourceId: null, sourceTitle: "", locationKey: "" },
 };
 const states: Record<string, string> = {
@@ -324,7 +324,7 @@ export function QueryView() {
           ref={input}
           rows={2}
           aria-label="查询文字"
-          placeholder="输入英文，Enter 查询"
+          placeholder="输入中文译英文，输入英文译中文；Enter 查询"
           value={draft.target}
           onChange={(e) => change({ ...draft, target: e.target.value })}
           onKeyDown={(e) => {
@@ -347,7 +347,7 @@ export function QueryView() {
             }
           >
             <option value="auto">自动识别</option>
-            <option value="explain">词义解释</option>
+            <option value="explain">英文词义解释</option>
             <option value="translate">整段翻译</option>
           </select>
           <button

@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-IF-001 |
-| 文档版本 | 0.66 |
-| 更新日期 | 2026-10-21 |
+| 文档版本 | 0.67 |
+| 更新日期 | 2026-10-22 |
 | 状态 | 主要命令已实现；同步边界与整体验证继续 |
 | 需求依据 | [PRD](../requirements/PRD.md) 的 FR-01 至 FR-24；FR-25 至 FR-29 核心接入、其余实施中；NFR-02 至 NFR-05 |
 | 架构依据 | [架构设计](architecture.md) 的 ARC-01 至 ARC-10；ARC-11 为增量实施模块 |
@@ -200,6 +200,8 @@ CMD-38 至 CMD-44 已在 0.5.0 接通，字段、事件与取消契约见 [Pot �
 实际参数：translation_session_open 为 `{input:QueryInput,sessionId?:string}`；QueryInput 包含 target、context、mode（auto／explain／translate）、sourceLanguage、targetLanguage 和 origin。0.8.30 查询入口默认 auto，查询时统一解析实际 explain／translate，QuerySession.input 保留用户选择；显式模式保持。get 的 sessionId 可空，空时返回当前会话。query_start 为 `{sessionId,expectedInputRevision,providerIds,automatic,persist}`；providerIds 空表示所有已启用且支持本次能力的服务，automatic 时还筛选 autoQuery，整段翻译排除仅支持词典的服务。cancel 为 `{sessionId,queryId?:string}`。返回完整 QuerySession，含输入版本、查询标识和各服务独立状态／值／错误；query_updated 只通知标识，当前快照通过 get 读取。mode 仍为原字符串字段，不新增 DTO 字段或命令。
 
 0.8.7 起，内置本地模型的 running 结果可以带临时 QueryValue，字段形状不变，仅含已经解码的正文片段；ready 才表示完整且通过校验的有效结果。客户端收到流式 query_updated 后重新 get，沿用原有输入版本及查询标识核对。临时值不能收录或写入查询缓存，失败清除临时值；持久化表结构不变。具体等待状态和输出规则见 [Pot 替代设计第 4 节](pot-replacement.md#4-会话取消与进度)。
+
+0.16.2 起，QueryInput.sourceLanguage／targetLanguage 支持 auto，省略时也默认 auto；手动、划词、截图及剪贴板入口使用此默认。query_start 先按当前原文解析中英方向，再解析实际模式；QuerySession.input 保留 auto，便于修改后重新识别。中文输入统一翻译成英文，英文词义解释模式仅用于英译中；显式语言参数保留，观剧与选区替换仍指定 en／zh-CN。语言检测规则与缓存身份见 [Pot 替代设计第 4 节](pot-replacement.md#4-会话取消与进度)。DTO 字段及命令名称保持。
 
 clipboard_listener_set 为 `{enabled,preferences:{debounceMs,persistResults}}`，间隔 100～2000 ms，返回运行期 enabled、error 和偏好；get 无参数。providers_update 为 `{update:{id,enabled,autoQuery,sendContext,order,maxConcurrency,values,secrets}}`；order 为 0～1000，外部并发为 1～16，本机模型沿用全局许可。返回配置不含 secrets，仅 credentialFields 表示已配置的凭据字段。插件为 `{path}` 安装单个小于 512 KB 的 JSON，或 `{pluginId}` 卸载；升级默认关闭，协议为 1，首版仅 translation／dictionary。
 
@@ -478,3 +480,4 @@ NFR-02／NFR-03／NFR-04，沿用 system 适配层、background 和同一生成�
 | 0.65 | 2026-10-21 | 扩展 CMD-65 菜单、双字幕、定位和循环动作，登记文件选择事件及生成快照 |
 
 | 0.66 | 2026-10-21 | 登记 CMD-85／86 和文件队列信号，复用既有列表／字幕控制 |
+| 0.67 | 2026-10-22 | 明确查询语言 auto 默认、逐次方向解析及中译英模式，保持显式语言调用 |

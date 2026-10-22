@@ -45,7 +45,35 @@ pub struct QueryInput {
     pub origin: QueryOrigin,
 }
 impl QueryInput {
+    fn resolve_languages(&mut self) {
+        if self.source_language == "auto" {
+            self.source_language = if self
+                .target
+                .chars()
+                .any(|c| ('\u{3400}'..='\u{9fff}').contains(&c))
+            {
+                "zh-CN"
+            } else {
+                "en"
+            }
+            .into();
+        }
+        if self.target_language == "auto" {
+            self.target_language = if self.source_language.starts_with("zh") {
+                "en"
+            } else {
+                "zh-CN"
+            }
+            .into();
+        }
+    }
+
     fn resolved_mode(&self) -> &str {
+        // The dictionary prompt and stored explanations are English-to-Chinese.
+        // Reverse queries, including a single Chinese word, need translation.
+        if !self.source_language.starts_with("en") || !self.target_language.starts_with("zh") {
+            return "translate";
+        }
         if self.mode != "auto" {
             return &self.mode;
         }
@@ -79,10 +107,10 @@ impl QueryInput {
     }
 }
 fn source_language() -> String {
-    "en".into()
+    "auto".into()
 }
 fn target_language() -> String {
-    "zh-CN".into()
+    "auto".into()
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -584,8 +612,9 @@ impl Application {
             .ok_or_else(|| AppError::new("conflict", "输入已改变，请重新查询。"))?
             .input
             .clone();
-        // Keep the selected auto mode in the UI session. Work and cache identity
-        // use the resolved mode, so a word definition cannot stand in for a passage.
+        // Retain automatic language/mode choices in the editable UI session.
+        // Resolve again for each query before service selection and cache lookup.
+        input.resolve_languages();
         input.mode = input.resolved_mode().to_owned();
         explanations::validate_input(&input.target, &input.context)?;
         cancel_locked(&mut state, &session_id);

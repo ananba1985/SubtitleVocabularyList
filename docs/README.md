@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.83 |
+| 文档版本 | 0.84 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -62,6 +62,7 @@
 | 0.1 候选发布与验收 | [release/0.1.0-release-notes.md](release/0.1.0-release-notes.md) | 匹配源码交付、技术验证、兼容边界与用户步骤 | 技术验收与用户实际验收分别记录 |
 | 0.6.1 安装测试包 | [release/0.6.1-release-notes.md](release/0.6.1-release-notes.md) | 同一脚本打包、产物与源码校验、本机安装步骤 | 已生成包，实际安装和使用由用户验证 |
 | 0.16.3 本机安装试用 | [release/0.16.3-release-notes.md](release/0.16.3-release-notes.md) | 根目录脚本、固定 libmpv 资源、产物摘要及真实剧集试用 | 构建与安装结果分开记录，播放器完整依赖源码材料边界另行说明 |
+| 0.16.4 原生播放器修复包 | [release/0.16.4-release-notes.md](release/0.16.4-release-notes.md) | 根目录脚本重新打包、原生 D3D11 修复、匹配源码和交付摘要 | 打包及必要文件核对通过，未执行安装或新增实际音画验收 |
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 版本管理 | [development/version-management.md](development/version-management.md) | 三段版本规则、主版本人工控制、统一来源、工具与变更记录 | 递增不表示发布，不触发打包；文档/schema/策略号独立 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |

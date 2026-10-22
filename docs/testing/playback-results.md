@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PLAYBACK-001 |
-| 文档版本 | 0.3 |
+| 文档版本 | 0.4 |
 | 更新日期 | 2026-10-21 |
-| 状态 | 0.16.0 文件入口正常路径及 Computer Use 窗口核对通过；跨应用拖放受工具限制未实测，未生成安装包 |
+| 状态 | 0.16.0 原生播放、进度操作及全屏进入已实测；后台连播与字幕解码／内存渲染通过，字幕宿主显示及剩余桌面操作待续，未生成安装包 |
 | 依据 | FR-32 至 FR-37、M-28 至 M-33、TC-68 至 TC-74 |
 
 ## 1 实现与实际检查
@@ -54,3 +54,35 @@
 | 真实拖放边界 | Computer Use 可以读取窗口，但跨窗口 drag 首先报告终点越界，调整布局后又拒绝落点进入另一应用（“not target window explorer.exe”）；没有成功投递拖放。视频／字幕进入同一队列后的真实处理已核对，WebView DragDrop 与原生 WM_DROPFILES 的实际鼠标投递仍未确认 |
 
 本轮没有实际声音听感或原生视频画面显示通过证据：窗口捕获中的原生视频区域为空白，不能据此声称画面已验收。未扩展复测此前功能，未生成发布 exe／安装包、未改变系统默认播放器。源码补齐两种拖放入口及启动链路，后续实际使用反馈按缺陷修复，不以工具不能跨应用拖动阻塞开发。命名的隔离 Data、视频和记录保留，未提交到公共仓库。
+
+## 5 0.16.0 实际操作复核与后台续查
+
+本轮用户明确授权 Computer Use 检查播放暂停、进度条、全屏、右键菜单、字幕、连播及拖放。随后用户需要使用电脑，要求改为后台检查；从该指示起停止桌面输入，并结束本轮隔离 debug 客户端，没有操作正式安装客户端或 `D:\SubtitleVocabularyList\Data`。没有修改播放器产品代码，没有递增应用版本或生成安装包。
+
+运行 `pnpm desktop:dev`，指定 `output/player-ui-acceptance-0161/Data` 和独立 identifier `com.subtitlevocabularylist.playerui0161`；目录后缀是检查编号，应用仍为 0.16.0。全局取词快捷键和自动收录在该隔离库中关闭，播放静音。使用两段 60 秒绿／蓝底合成视频，无音轨，内含英文及中文 SubRip 轨。原夹具、隔离 Data 和结果文件保留，不提交至公共仓库。
+
+Computer Use 执行真实键盘、鼠标点击和拖动。局部窗口捕获未包含 OpenGL 视频层，补充从隔离客户端读取状态和 `GL_FRONT` 渲染缓冲；这些读数用于观察，不以调用播放／定位命令代替鼠标操作。缩放为 200%，坐标操作使用对应 screenshotId。
+
+| 用户要求的检查 | 本轮实际结果及边界 |
+| --- | --- |
+| 播放／暂停 | 通过。聚焦视频后 Space 开播，再次 Space 暂停在 13.500 秒；mpv 原生 OSC 的播放、暂停按钮也实际点击成功，位置从 10.917 秒继续到 36.833 秒，状态分别为 playing=true／false |
+| 进度条 | 通过。原生 OSC 点击从 13.500 秒定位到 30.083 秒；真实拖动后稳定读数为 10.417 秒，仍保持暂停。拖动刚结束的首次快照尚未刷新，依据随后稳定状态及对应画面核对，没有把旧快照当作定位失败 |
+| 全屏 | 已实际进入。窗口查询 fullscreen=true，视频区域为整个 1280×800 逻辑窗口；原生渲染缓冲为 2560×1600，显示合成画面与英文。退出全屏尚未执行，不能将进入结果扩大为完整往返通过 |
+| 右键菜单 | 已实际打开并选择。右击视频后出现 Windows 原生菜单，经“字幕 → 第二字幕 → zho subrip”选中轨道 2，菜单关闭，快照 secondary=true。其余菜单项未逐项扩展检查 |
+| 字幕 | 选轨动作通过，宿主显示仍待复核。选中第二字幕后及再次定位后的 GL_FRONT 图均未见中文，英文正常；同一视频在无窗口 libmpv 中可返回“我明天会到。”，软件内存渲染也同时显示中英文。已排除该夹具中文字幕为空或不能解码，但后台软件渲染不能证明原生 OpenGL 宿主正常；保留该疑点，尚未认定或修复具体产品缺陷 |
+| 自动连播 | 后台正常链路通过，窗口片尾连播尚未操作。真实 libmpv 自动从首项 EOF 加载第二项，on_load 钩子顺序与加载顺序一致，倍速保持 1.25×；没有将命令驱动的后台结果写成 Computer Use 通过 |
+| 视频／目录／字幕拖放 | 本轮尚未投递真实跨应用拖放。已完成的隔离文件分类结果保留：目录自然排序 Episode2 在 Episode10 前，视频和字幕分别入对应批次，--data-dir 未被当作媒体。WebView DragDrop 和原生 WM_DROPFILES 共用文件队列的实现已读查；代码核对不能替代实际鼠标拖入 |
+
+### 5.1 后台执行与证据
+
+1. `cargo run --quiet --locked --manifest-path src-tauri/Cargo.toml --no-default-features --example playback_acceptance -- output/player-ui-acceptance-0161/background-playback "output/player-ui-acceptance-0161/UI Series/Episode1.mkv"`：通过。新隔离库中列表、逐文件进度／轨道、偏好和当前项保存后重开一致。编译仅有既有 no-default unused／dead-code 提示。
+2. `python scripts/verify-playback-normal.py .tools/runtime/mpv/libmpv-2.dll output/player-ui-acceptance-0161/background-playback`：通过。vo=null／ao=null／audio=no，不创建窗口，不播放声音；自动 EOF 连播、返回上一项、移除列表项和偏好读数正常。输出 `background-playback/mpv.json`。
+3. 本轮命名目录内 `diagnose-subtitles.py` 调用同一固定版本 libmpv，先在暂停中选择第二字幕，再正常定位。`secondary-sub-text` 两次均为中文；使用 render API 的软件后端将画面写入内存及 PNG，无窗口、无声音。输出 `subtitle-diagnosis.json`、`secondary-selected-paused-software.png` 和 `secondary-after-seek-software.png`。该诊断用于区分字幕解码和原生宿主显示，不改产品渲染后端。
+
+真实桌面观察保存在 `observations.jsonl`；进度拖动的稳定记录为 `seek-drag-settled`。原生图包含 `fullscreen-osc.png`、`seek-click.png`、`seek-drag.png`、`secondary-subtitle.png`、`subtitle-after-seek.png`。当前暂停的是桌面操作验证，正式个人资料保持隔离，后续继续针对未完成正常操作核对，不重跑已通过项目或据后台结果宣布全部验收完成。
+
+## 6 修订记录
+
+| 版本 | 日期 | 内容 |
+| --- | --- | --- |
+| 0.4 | 2026-10-21 | 补充真实鼠标／按键播放、进度、全屏和菜单证据，记录用户暂停桌面操作后的后台连播／字幕检查及待复核边界 |

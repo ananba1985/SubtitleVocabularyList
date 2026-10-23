@@ -39,7 +39,7 @@ Tauri 官方提供 Rust 与 Kotlin 的移动插件桥接；Android SDK 的文件
 
 词典来自桌面同一资源清单，构建时校验并编入 assets，首次手机启动时由后台线程安装到私有 files 目录；完成后 Store 通过受锁保护的词库引用重新载入。手机界面等待资源准备后提供查询。Windows 仍走原资料目录和启动流程；跨设备资料交换保持服务器拓扑。完整 debug 构建和 Windows 隔离启动通过，手机实际安装／查询、同步、媒体及 OCR 的完成状态见 [Android 验证记录](../testing/android-results.md)。
 
-0.17.1 增加共享 `HostStartup`，手机先等待 `app_ready` 再读应用状态，避免 WebView 先加载时访问未注册状态。Android 原生视图负责系统栏和键盘 Insets；该次重开修复的真机复核仍待连接恢复。
+0.17.1 增加共享 `HostStartup`，手机先等待 `app_ready` 再读应用状态，避免 WebView 先加载时访问未注册状态。Android 原生视图负责系统栏和键盘 Insets；真机升级冷启动、资料保持与键盘适配现已通过。
 
 0.18.0 将 `credentials`、`site_connection`、`sync_http`、`sync_transport` 接到两端同一命令表。平台差异仅在 DPAPI／Keystore 和系统浏览器；同步完整资料、原声、差量、回执与水平测试历史保持原实现。`device_sync.rs` 只维护手机本机偏好、明确资料归属及上次完成时间，不建立第二个同步协议。手机共用 `SyncView` 的批准、冲突核对和保留历史入口，没有增加 P1 测试创建功能。
 

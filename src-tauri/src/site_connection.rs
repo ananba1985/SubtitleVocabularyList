@@ -64,6 +64,8 @@ mod connected_host {
                         "expired"
                     } else if c.account_scope.is_some() {
                         "connected"
+                    } else if c.display_code.is_none() {
+                        "request_unconfirmed"
                     } else {
                         "pending"
                     }
@@ -73,7 +75,7 @@ mod connected_host {
             request_id: credential.map(|c| c.request_id.clone()),
             display_code: credential.and_then(|c| c.display_code.clone()),
             authorization_url: credential
-                .filter(|c| c.account_scope.is_none())
+                .filter(|c| c.account_scope.is_none() && c.display_code.is_some())
                 .map(|c| format!("{site}/desktop-connect?request={}", c.request_id)),
             account_scope: credential.and_then(|c| c.account_scope.clone()),
             expires_at: credential.map(|c| c.expires_at).unwrap_or(0),
@@ -81,6 +83,7 @@ mod connected_host {
     }
     pub(crate) fn client() -> Result<Client, AppError> {
         Client::builder()
+            .user_agent(format!("SubtitleVocabularyList/{} ({})", env!("CARGO_PKG_VERSION"), std::env::consts::OS))
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(30))
@@ -89,6 +92,9 @@ mod connected_host {
     }
     pub(crate) fn read_response(response: reqwest::blocking::Response) -> Result<Value, AppError> {
         let status = response.status();
+        if status == reqwest::StatusCode::FORBIDDEN {
+            return Err(AppError::new("site_access_denied", "站点拒绝访问（HTTP 403），尚未建立连接。请确认当前网络能正常打开站点，本机资料和待重试请求保留。"));
+        }
         let mut bytes = vec![];
         response
             .take(1_000_001)
@@ -269,6 +275,9 @@ mod connected_host {
             let site = require_online(self)?;
             let credential = credentials::load(self.store.root(), &site)?
                 .ok_or_else(|| AppError::new("auth_required", "请先发起站点连接。"))?;
+            if credential.account_scope.is_none() && credential.display_code.is_none() {
+                return Err(AppError::new("request_unconfirmed", "站点尚未确认此请求，请先重试连接并取得核对码。"));
+            }
             credentials::open_authorization(&site, &credential.request_id)
         }
     }

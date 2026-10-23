@@ -59,7 +59,8 @@ class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
         try {
             val manager = activity.getSystemService(ConnectivityManager::class.java)
             val capabilities = manager.getNetworkCapabilities(manager.activeNetwork)
-            val connected = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            // Reachability of the configured site is decided by the actual HTTP request.
+            val connected = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
             invoke.resolve(JSObject().put("connected", connected).put("metered", manager.isActiveNetworkMetered).put("foreground", foreground))
         } catch (_: Exception) {
             invoke.reject("无法读取手机网络状态。", "provider_unavailable")

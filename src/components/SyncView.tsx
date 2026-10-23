@@ -183,6 +183,7 @@ export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void;
   const stateNames: Record<string, string> = {
     disconnected: "尚未连接",
     pending: "等待浏览器批准",
+    request_unconfirmed: "站点尚未确认连接请求，请检查任务结果后重试",
     connected: "已保存账号连接",
     expired: "连接已过期",
     rejected: "请求已拒绝",
@@ -212,7 +213,7 @@ export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void;
           </p>
           {connection.offline && (
             <p className="notice banner">
-              已启用手动离线。请在“本地设置”取消手动离线并保存，再发起连接；已有词库和测验仍可使用。
+              已启用手动离线。{mobile ? "请在上方取消手动离线，再发起连接。" : "请在“本地设置”取消手动离线并保存，再发起连接。"}已有词库和测验仍可使用。
             </p>
           )}
           {connection.deviceName && (
@@ -259,7 +260,7 @@ export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void;
                 ? "重新连接账号"
                 : "发起 / 重试连接"}
             </button>
-            {connection.requestId && (
+            {connection.authorizationUrl && (
               <button
                 disabled={busy || connection.offline}
                 onClick={() =>
@@ -269,7 +270,7 @@ export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void;
                 打开浏览器连接页
               </button>
             )}
-            {connection.requestId && (
+            {(connection.displayCode || connection.accountScope) && (
               <button
                 disabled={busy || connection.offline}
                 onClick={() => run("connection_check")}

@@ -47,7 +47,7 @@ export function MobileAccount({ settings, refreshKey, changed, requestSync, auto
             setState({ ...state, preferences }); if (autoSync) requestSync();
           }); }} />自动同步（回到前台、保存后）</label>
         <p className="muted">原声等待 Wi-Fi 等不计费网络。移动网络遇到需要传输的原声时，会保留待同步进度。</p>
-        {state.network.metered && <p className="notice">当前网络计费，原声传输等待 Wi-Fi。</p>}
+        {state.network.connected && state.network.metered && <p className="notice">当前网络计费，原声传输等待 Wi-Fi。</p>}
         {!state.network.connected && <p className="notice">当前无可用网络，本地学习照常保存。</p>}
         <p>上次完整交换：{state.lastCompletedAt ? new Date(state.lastCompletedAt).toLocaleString() : "尚未完成"}</p>
         <p>本机原声：{state.readyAudio} 份已准备 · {state.missingAudio} 份待准备</p>

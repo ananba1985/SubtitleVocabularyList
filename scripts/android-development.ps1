@@ -31,9 +31,12 @@ try {
     } else {
         # USB reverse is a development transport only. The installed app is independent.
         $svlAdb = Join-Path $svlAndroid.SdkRoot 'platform-tools/adb.exe'
+        $svlDevices = @(& $svlAdb devices | Select-String '^\S+\s+device$' | ForEach-Object { ($_.Line -split '\s+')[0] })
         if (-not $Device) {
-            $svlDevices = @(& $svlAdb devices | Select-String '^\S+\s+device$' | ForEach-Object { ($_.Line -split '\s+')[0] })
             if ($svlDevices.Count -eq 1) { $Device = $svlDevices[0] }
+        }
+        if ($Mode -eq 'Dev' -and ($svlDevices.Count -ne 1 -or $Device -notin $svlDevices)) {
+            throw 'Connect exactly one authorized device for this development entry; use Studio to choose among multiple devices.'
         }
         if ($Device) {
             & $svlAdb -s $Device reverse tcp:1420 tcp:1420
@@ -41,7 +44,8 @@ try {
         } elseif ($Mode -eq 'Dev') { throw 'Choose a connected device with -Device before starting Android development.' }
         $svlArgs = @('android', 'dev', '--features', 'mobile', '--host', '127.0.0.1')
         if ($Mode -eq 'Studio') { $svlArgs += '--open' }
-        if ($Device) { $svlArgs += $Device }
+        # Tauri's positional DEVICE matches a friendly device name, not an ADB serial.
+        # With one connected device the CLI selects it directly; the serial is only for reverse.
     }
     & pnpm tauri @svlArgs
     if ($LASTEXITCODE -ne 0) { throw "Android $Mode failed (exit $LASTEXITCODE)." }

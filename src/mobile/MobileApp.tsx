@@ -49,7 +49,11 @@ export default function MobileApp() {
   const collect = (seed: CollectionSeed) => dispatch({ type: "open", seed });
   async function setOffline(offlineMode: boolean) {
     if (!settings) return;
-    try { setSettings(await call("settings_update", { settings: { ...settings, offlineMode } })); }
+    try {
+      setSettings(await call("settings_update", { settings: { ...settings, offlineMode } }));
+      setRefreshKey((value) => value + 1);
+      if (!offlineMode) automaticSync.request();
+    }
     catch (e) { setError(message(e)); }
   }
   return (

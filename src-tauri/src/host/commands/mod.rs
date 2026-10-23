@@ -41,6 +41,9 @@ where
 svl_ipc_macros::catalog! {
         system::app_ready,
         mobile_media::video_library,
+        mobile_media::video_learning_get,
+        mobile_media::video_learning_visible,
+        mobile_media::video_learning_skip,
         mobile_media::video_pick,
         mobile_media::video_open,
         mobile_media::video_state,

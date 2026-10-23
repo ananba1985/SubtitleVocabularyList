@@ -73,7 +73,7 @@ export default function MobileApp() {
           {!info && !error && <p role="status">正在打开手机本地词库…</p>}
           {page === "library" && info && <LibraryView compact info={info} refreshKey={refreshKey} collect={collect}
             onChanged={() => { changed(); automaticSync.request(); }} report={(e) => setError(message(e))} />}
-          {page === "watch" && info && <MobileWatch collect={collect} covered={!!queue.current} />}
+          {page === "watch" && info && settings && <MobileWatch collect={collect} covered={!!queue.current} settings={settings} saved={setSettings} />}
           {page === "reviews" && info && <>
             <div className="toolbar" aria-label="复习方式">
               <button aria-pressed={!special} onClick={() => setSpecial(false)}>计划复习</button>

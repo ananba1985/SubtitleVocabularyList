@@ -35,7 +35,7 @@ class ClipExporter(private val activity: Activity, private val video: VideoPlaye
         val output = File(args.path).canonicalFile
         require(output.parentFile == File(activity.filesDir, "jobs").canonicalFile && output.extension == "m4a")
         val audio = video.selectedAudio() ?: throw IllegalArgumentException("当前没有可截取音轨。")
-        video.pause()
+        if (!video.snapshot().getBoolean("paused")) video.pause()
         // ExoPlayer prefixes the base source's group/format IDs with 0: when external
         // subtitle sources are merged. Transformer reads the base video by itself.
         val merged = audio.first.getFormat(audio.second).id?.startsWith("0:") == true

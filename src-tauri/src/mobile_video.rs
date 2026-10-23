@@ -17,7 +17,9 @@ pub struct VideoTrack { pub id: String, pub format_id: String, pub kind: String,
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-pub struct VideoState { pub session_id: String, pub uri: String, pub position_ms: u64, pub duration_ms: u64, pub playing: bool, pub ended: bool, pub speed: f64, pub tracks: Vec<VideoTrack>, pub error: Option<String> }
+pub struct VideoState { pub session_id: String, pub uri: String, pub position_ms: u64, pub duration_ms: u64, pub playing: bool, pub paused: bool,
+    pub revision: u64, pub user_paused: bool, pub foreground: bool, pub window_focused: bool, pub fullscreen: bool,
+    pub ended: bool, pub speed: f64, pub tracks: Vec<VideoTrack>, pub error: Option<String> }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
@@ -54,8 +56,8 @@ pub(crate) fn invoke<T: serde::de::DeserializeOwned>(command: &str, args: serde_
     { let _ = (command, args); Err(AppError::new("provider_unavailable", "此媒体接口用于 Android 客户端。")) }
 }
 
-fn key(name: &str, uri: &str) -> String { format!("android.{name}:{}", vocabulary::digest(uri.as_bytes())) }
-fn setting<T: serde::de::DeserializeOwned>(store: &Store, key: &str) -> Result<Option<T>, AppError> {
+pub(crate) fn key(name: &str, uri: &str) -> String { format!("android.{name}:{}", vocabulary::digest(uri.as_bytes())) }
+pub(crate) fn setting<T: serde::de::DeserializeOwned>(store: &Store, key: &str) -> Result<Option<T>, AppError> {
     let json: Option<String> = store.connection()?.query_row("SELECT value_json FROM settings WHERE key=?", [key], |r| r.get(0)).optional()?;
     json.map(|s| serde_json::from_str(&s).map_err(Into::into)).transpose()
 }
@@ -91,6 +93,7 @@ pub(crate) fn open(store: &Store, uri: &str) -> Result<VideoState, AppError> {
         "positionMs":progress.map(|p| (p.position * 1000.0) as u64).unwrap_or(0),"speed":playback.preferences.speed,
         "audioKey":tracks.get("audio").cloned().unwrap_or_default(),"subtitleKey":tracks.get("subtitle").cloned().unwrap_or_default()}))?;
     playback.current_path = Some(uri.into());
+    save(store,&key("verified",uri),&String::new())?;
     store.save_playback_state(&playback)?;
     if let Some(index) = setting::<MediaIndex>(store,&key("index",uri))? {
         for subtitle in index.subtitles.iter().filter(|s|s.id.starts_with("content://")) {
@@ -205,6 +208,7 @@ pub(crate) fn export_audio(uri: &str, path: &std::path::Path, start_ms: i64, end
 impl Application {
     pub(crate) fn video_index_start(&self, uri: String, operation_id: String) -> Result<TaskHandle<VideoStudy>, AppError> {
         let media = reference(&self.store, &uri)?; let store = Arc::clone(&self.store); let hash = vocabulary::digest(uri.as_bytes());
+        let opened = state(&store)?.session_id;
         self.tasks.start_typed("video_index",&operation_id,&hash,move |context| {
             context.subject(&media.title); context.progress("subtitle_index",0,1,"正在读取本地视频指纹与文本字幕，视频可继续播放"); context.check_cancelled()?;
             let mut index: MediaIndex = invoke("mediaIndex",serde_json::json!({"uri":uri}))?; context.check_cancelled()?;
@@ -215,7 +219,10 @@ impl Application {
                     index.subtitles.insert(0,refreshed);
                 }
             }
-            install(&store,&media,&index)
+            let result = install(&store,&media,&index)?;
+            let current = state(&store)?;
+            if current.uri == uri && current.session_id == opened { save(&store,&key("verified",&uri),&opened)?; }
+            Ok(result)
         })
     }
     pub(crate) fn video_subtitle_add(&self, uri: String, language: String, operation_id: String) -> Result<TaskHandle<VideoStudy>, AppError> {

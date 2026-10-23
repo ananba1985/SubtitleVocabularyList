@@ -6,6 +6,18 @@ pub(crate) async fn video_library(app: AppState<'_>) -> Result<PlaybackState, Ap
     let app = app.inner().clone(); background(move || app.store.playback_state()).await
 }
 #[svl_ipc_macros::command]
+pub(crate) async fn video_learning_get(app: AppState<'_>) -> Result<crate::mobile_learning::VideoLearning, AppError> {
+    let app = app.inner().clone(); background(move ||app.video_learning()).await
+}
+#[svl_ipc_macros::command]
+pub(crate) async fn video_learning_visible(app: AppState<'_>, revision: u64, visible: bool) -> Result<(), AppError> {
+    let app = app.inner().clone(); background(move ||app.video_learning_visible(revision,visible)).await
+}
+#[svl_ipc_macros::command]
+pub(crate) async fn video_learning_skip(app: AppState<'_>, revision: u64) -> Result<(), AppError> {
+    let app = app.inner().clone(); background(move ||app.video_learning_skip(revision)).await
+}
+#[svl_ipc_macros::command]
 pub(crate) async fn video_pick(app: AppState<'_>) -> Result<PlaybackState, AppError> {
     let app = app.inner().clone(); background(move || mobile_video::pick(&app.store)).await
 }

@@ -322,7 +322,9 @@ export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "wa
 
 export type VideoControl = { sessionId: string, action: string, value: number | null, text: string | null, kind: string | null, };
 
-export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
+export type VideoLearning = { sessionId: string, context: WatchContext | null, eligible: boolean, remainingSeconds: number | null, collected: boolean, skipped: boolean, task: TaskSnapshot | null, };
+
+export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, paused: boolean, revision: number, userPaused: boolean, foreground: boolean, windowFocused: boolean, fullscreen: boolean, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
 
 export type VideoStudy = { sourceId: string, sha256: string, subtitles: SubtitleInfo, };
 
@@ -482,6 +484,9 @@ export interface CommandMap {
   video_context: { args: undefined; result: WatchContext | null };
   video_control: { args: { control: VideoControl }; result: VideoState };
   video_index_start: { args: { uri: string; operationId: string }; result: TaskHandle<VideoStudy> };
+  video_learning_get: { args: undefined; result: VideoLearning };
+  video_learning_skip: { args: { revision: number }; result: void };
+  video_learning_visible: { args: { revision: number; visible: boolean }; result: void };
   video_library: { args: undefined; result: PlaybackState };
   video_open: { args: { uri: string }; result: VideoState };
   video_pick: { args: undefined; result: PlaybackState };

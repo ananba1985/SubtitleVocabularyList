@@ -8,6 +8,7 @@ import android.content.pm.ActivityInfo
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.*
@@ -55,6 +56,9 @@ class VideoPlayer(private val activity: Activity) {
     private var selectionApplied = false
     private var fullscreen = false
     private var lastViewport: VideoArgs? = null
+    private var revision = 0L
+    private var userPaused = false
+    private var pendingPause = ""
     private val back = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() { setFullscreen(false) }
     }
@@ -65,6 +69,7 @@ class VideoPlayer(private val activity: Activity) {
         require(Uri.parse(args.uri).scheme == "content")
         destroy()
         uri = args.uri; sessionId = args.sessionId; error = null
+        revision++; userPaused = false; pendingPause = ""
         audioKey = args.audioKey; subtitleKey = args.subtitleKey; selectionApplied = false
         player = ExoPlayer.Builder(activity).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
@@ -73,7 +78,15 @@ class VideoPlayer(private val activity: Activity) {
             addListener(object : Player.Listener {
                 override fun onPlayerError(failure: PlaybackException) { if (sessionId == args.sessionId) error = "视频无法播放：${failure.errorCodeName}。请检查文件授权和编码。" }
                 override fun onPlaybackSuppressionReasonChanged(reason: Int) { if (reason != Player.PLAYBACK_SUPPRESSION_REASON_NONE) pause() }
+                override fun onPlayWhenReadyChanged(ready: Boolean, reason: Int) {
+                    if (sessionId != args.sessionId) return
+                    revision++
+                    userPaused = !ready && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST && pendingPause != "internal"
+                    pendingPause = ""
+                }
+                override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) { revision++ }
                 override fun onTracksChanged(tracks: Tracks) {
+                    revision++
                     if (!selectionApplied && tracks.groups.isNotEmpty()) {
                         selectionApplied = true
                         if (audioKey.isNotEmpty()) select(C.TRACK_TYPE_AUDIO, audioKey)
@@ -115,6 +128,10 @@ class VideoPlayer(private val activity: Activity) {
             }
         }
         return JSObject().put("sessionId", sessionId).put("uri", uri)
+            .put("revision", revision).put("userPaused", userPaused).put("paused", player?.playWhenReady != true)
+            .put("foreground", (activity as AppCompatActivity).lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+            .put("windowFocused", activity.hasWindowFocus())
+            .put("fullscreen", fullscreen)
             .put("positionMs", player?.currentPosition?.coerceAtLeast(0) ?: 0)
             .put("durationMs", player?.duration?.coerceAtLeast(0) ?: 0)
             .put("playing", player?.isPlaying == true).put("ended", player?.playbackState == Player.STATE_ENDED)
@@ -144,7 +161,7 @@ class VideoPlayer(private val activity: Activity) {
         if (args.sessionId != sessionId) { invoke.reject("当前视频已切换，请重新操作。", "conflict"); return }
         when (args.action) {
             "play" -> if (foreground) player?.apply { if (playbackState == Player.STATE_ENDED) seekTo(0); play() }
-            "pause" -> pause()
+            "pause" -> pause(true)
             "seek" -> player?.seekTo(args.value.toLong().coerceAtLeast(0))
             "speed" -> player?.setPlaybackSpeed(args.value.toFloat().coerceIn(0.25f, 3f))
             "hide" -> { pause(); if (fullscreen) setFullscreen(false); view?.visibility = View.GONE }
@@ -175,6 +192,7 @@ class VideoPlayer(private val activity: Activity) {
         }
     }
     private fun setFullscreen(value: Boolean) {
+        revision++
         fullscreen = value; back.isEnabled = value
         view?.setFullscreenButtonState(value)
         val bars = WindowInsetsControllerCompat(activity.window, activity.window.decorView)
@@ -205,6 +223,6 @@ class VideoPlayer(private val activity: Activity) {
         current.prepare(); current.playWhenReady = playing
         invoke.resolve(snapshot())
     }
-    fun pause() { player?.pause() }
+    fun pause(user: Boolean = false) { revision++; pendingPause = if (user) "user" else "internal"; userPaused = user; player?.pause() }
     fun destroy() { if (fullscreen) setFullscreen(false); (view?.parent as? ViewGroup)?.removeView(view); view?.player = null; view = null; player?.release(); player = null }
 }

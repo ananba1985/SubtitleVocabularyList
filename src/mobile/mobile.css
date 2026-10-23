@@ -42,3 +42,7 @@
 .mobile-watch .video-seek { display:block; margin:14px 0; }
 .mobile-watch .video-seek input { width:100%; display:block; }
 .mobile-watch .field-row label { flex:1; min-width:90px; max-width:100%; }
+.mobile-app .watch-word { display:inline; border:0; padding:2px 4px; background:transparent; font-size:inherit; color:inherit; text-decoration:underline dotted #85a391; }
+.mobile-app .mobile-learning-options { margin:12px 0; padding:12px; border:1px solid #d8e0d8; border-radius:10px; }
+.mobile-app .mobile-learning-options label { display:block; margin-top:10px; }
+.mobile-app .mobile-learning-options input[type=number] { max-width:100px; margin-left:8px; }

@@ -16,12 +16,19 @@ import { useAutomaticSync } from "./useAutomaticSync";
 import { useMobileInputs } from "./useMobileInputs";
 import { MobileOcrModal } from "./MobileOcrModal";
 import { MobileServiceSettings } from "./MobileServiceSettings";
+import { PracticeView, type PracticePanel } from "../components/PracticeView";
+import { EpisodesView, type EpisodePanel } from "../components/EpisodesView";
+import { AssessmentView } from "../components/AssessmentView";
+import { SubtitleServiceSettings } from "../components/OnlineSubtitlePanel";
 import "./mobile.css";
 
 export default function MobileApp() {
-  const [page, setPage] = useState<"library" | "watch" | "reviews" | "account">(
+  const [page, setPage] = useState<"library" | "watch" | "reviews" | "learning" | "account">(
     "library",
   );
+  const [learning, setLearning] = useState("practice");
+  const [practicePanel, setPracticePanel] = useState<PracticePanel>(null);
+  const [episodePanel, setEpisodePanel] = useState<EpisodePanel>("sources");
   const [special, setSpecial] = useState(false);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -144,7 +151,7 @@ export default function MobileApp() {
                   ? "边看边学"
                   : page === "reviews"
                     ? "复习"
-                    : "我的"}
+                    : page === "learning" ? "学习" : "我的"}
             </h1>
           </div>
           <div className="actions">
@@ -225,6 +232,14 @@ export default function MobileApp() {
               />
             </>
           )}
+          {page === "learning" && info && <section className="mobile-learning-hub">
+            <label>学习功能<select aria-label="学习功能" value={learning} onChange={e=>setLearning(e.target.value)}>
+              <option value="practice">听读与逐句输入</option><option value="preview">按词预习</option><option value="assessment">高频水平测试</option>
+            </select></label>
+            {learning === "practice" && <><button onClick={()=>setPracticePanel("import")}>导入阅读或课程</button><PracticeView dataDirectory={info.dataDirectory} collect={collect} review={()=>setPage("reviews")} panel={practicePanel} onPanelChange={setPracticePanel}/></>}
+            {learning === "preview" && <EpisodesView sourceCount={info.sourceCount} refreshKey={refreshKey} collect={collect} report={e=>setError(message(e))} notify={setError} panel={episodePanel} onPanelChange={setEpisodePanel}/>}
+            {learning === "assessment" && <AssessmentView dataDirectory={info.dataDirectory} tasks={tasks} showTasks={()=>setPage("account")}/>}
+          </section>}
           {page === "account" && (
             <>
               <section className="mobile-card">
@@ -275,6 +290,7 @@ export default function MobileApp() {
                   autoNotice={automaticSync.notice}
                 />
               )}
+              <SubtitleServiceSettings />
               <TasksView
                 tasks={tasks}
                 refreshKey={refreshKey}
@@ -312,6 +328,7 @@ export default function MobileApp() {
           >
             复习
           </button>
+          <button aria-current={page === "learning" ? "page" : undefined} onClick={()=>setPage("learning")}>学习</button>
           <button
             aria-current={page === "account" ? "page" : undefined}
             onClick={() => setPage("account")}

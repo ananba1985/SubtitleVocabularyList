@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-ANDROID-001 |
-| 文档版本 | 0.6 |
+| 文档版本 | 0.7 |
 | 更新日期 | 2026-10-23 |
-| 状态 | P0 开发收尾；0.25.0 独立剧集资料共享及已有手动词库／本机正常流程有证据；未正式发布 |
+| 状态 | P0 与 0.26.0 P1 已接入，必要 Windows／Android 构建与真机正常流程通过；外部服务和发布边界另记 |
 | 依据 | [Android PRD](../requirements/android-PRD.md)、[架构与开发设计](../design/android-architecture.md)、[开发计划](../planning/android-development-plan.md) |
 
 ## 1 开发原则
@@ -135,7 +135,15 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 
 资源及临时图管理必须先持久化待恢复草稿再释放已结束图，不删除具名原素材和业务媒体。新的 PRD 对照及本轮证据分别见 [审查](../testing/android-prd-review.md)、[验证](../testing/android-results.md#28-prd-对照补齐0230)。
 
-## 9 修订记录
+## 9 P1 维护入口（0.26.0）
+
+学习功能复用桌面 PracticeView、EpisodesView、AssessmentView 与所有原 hook／Store；新增行为优先在共享模块改动。语音统一调用 speech 分派，字幕命令集中 `host/commands/subtitle_commands.rs`，不要改回整块 Windows cfg 或复制手机题库／判分逻辑。React 的 `audio_open` 原生分支只适配媒体，原练习状态、输入比对和完成逻辑保持唯一。
+
+`practice_audio_save` 两端统一使用 `{bytes:Array.from(bytes)}`，不再使用手机不支持的二进制 Raw IPC。新增／修改命令后仍从 Rust 生成 `src/generated/ipc.ts`。系统文件读取、目录授权及容器章节分别维护在 MediaDocuments／MobilePlatformPlugin／MediaChapters；目录和单文件复用 `index_video`。改动平台样本范围须同时更新 Android 架构及实际结果，不能把未实测解析器写成兼容矩阵通过。
+
+本轮开发验证及网络条件见 [P1 结果](../testing/android-p1-results.md)。具名素材在 `.local/android-p1` 和手机 `Download/SVL-P1` 保留；不提交媒体、账号标识或凭据。SubDL 仅保留免费基础服务的可选自填 key，未配置时不要求开发者索取密钥或替用户注册／付费。
+
+## 10 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -145,3 +153,5 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 | 0.4 | 2026-10-23 | 补查询／密钥、共享历史、全字幕偏移、音轨缓存和临时图维护入口，索引 PRD 对照结果 |
 | 0.5 | 2026-10-23 | 补真实同步正常证据和隔离资料位置，区分单次网络授权、自动同步及剧集共享 |
 | 0.6 | 2026-10-23 | 补剧集资料共用维护入口、真实服务器部署和具名验证位置 |
+
+| 0.7 | 2026-10-23 | 补 P1 共享页面／命令及原生适配维护入口、统一音频 IPC 与具名证据边界 |

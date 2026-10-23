@@ -9,6 +9,7 @@ export type AudioPlayerProps = {
   playbackKey?: number;
   onPlayed?: () => void;
   onFailed?: () => void;
+  onPlaybackEvent?: (event: string, seconds: number, error?: string) => void;
 };
 
 export function AudioPlayer(props: AudioPlayerProps) {

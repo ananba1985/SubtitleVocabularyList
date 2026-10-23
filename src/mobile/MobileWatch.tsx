@@ -6,6 +6,7 @@ import { AudioPlayer } from "../components/AudioPlayer";
 import { useVideoLearning } from "./useVideoLearning";
 import { MobileWordQuery } from "./MobileWordQuery";
 import { MobileQuery } from "./MobileQuery";
+import { OnlineSubtitlePanel } from "../components/OnlineSubtitlePanel";
 import { PreparedEpisodeSharing } from "../components/PreparedEpisodeSharing";
 
 type VideoState = CommandResult<"video_state">;
@@ -25,6 +26,10 @@ export function MobileWatch({
   saved: (value: Settings) => void;
   openRequest?: { uri: string; nonce: string };
 }) {
+  const [folderFiles,setFolderFiles]=useState<CommandResult<"video_folder_pick">>([]);
+  const [folderTask,setFolderTask]=useState("");
+  async function pickFolder(){try{setFolderFiles(await call("video_folder_pick"));}catch(e){setError(message(e));}}
+  async function indexFolder(){setBusy(true);setError("");try{const task=await call("video_folder_index",{files:folderFiles,operationId:uid()});setFolderTask(task.id);await waitTask(task);setFolderFiles([]);setLibrary(await call("video_library"));setNotice("目录字幕已索引，可在学习 → 按词预习中查看。");}catch(e){setError(message(e));}finally{setFolderTask("");setBusy(false);}}
   const [library, setLibrary] = useState<CommandResult<"video_library"> | null>(
     null,
   );
@@ -378,6 +383,10 @@ export function MobileWatch({
   const title = library?.playlist.find((i) => i.path === state?.uri)?.title;
   return (
     <section className="mobile-watch">
+      <details className="mobile-learning-options"><summary>同剧目录批量索引</summary><p>仅读取授权目录直接包含的视频，最多 100 个；不递归子目录，不运行整季翻译。</p><button disabled={busy} onClick={pickFolder}>选择视频目录并预览</button>
+      {folderFiles.length>0 && <><p>已选择 {folderFiles.length} 个视频，确认后才索引。</p><ul>{folderFiles.map(f=><li key={f.uri}>{f.title}</li>)}</ul><button disabled={busy} onClick={indexFolder}>确认索引这些视频</button><button disabled={busy} onClick={()=>setFolderFiles([])}>取消目录选择</button></>}
+      {folderTask && <button onClick={()=>call("task_cancel",{taskId:folderTask})}>取消目录索引</button>}</details>
+
       <div className="toolbar">
         <button disabled={busy} onClick={pick}>
           打开本地视频
@@ -537,8 +546,16 @@ export function MobileWatch({
               }}
             />
           )}
+          {study && <details className="mobile-learning-options"><summary>查找在线字幕</summary><OnlineSubtitlePanel key={study.sourceId} sourceId={study.sourceId} onImported={async()=>{if(state){setStudy(await call("video_study",{uri:state.uri}));setState(await call("video_state"));}}}/></details>}
           <details className="mobile-learning-options">
             <summary>播放设置</summary>
+            <label className="check-label"><input type="checkbox" checked={state.dualSubtitles} onChange={e=>control("dual_subtitles",e.target.checked?1:0)}/>画面同时显示已选中文字幕</label>
+            <label>字幕字号<input type="number" aria-label="字幕字号" min={14} max={48} value={state.subtitleFontSize} onChange={e=>control("subtitle_font",Number(e.target.value))}/></label>
+            <label className="check-label"><input type="checkbox" checked={state.subtitleBackground} onChange={e=>control("subtitle_background",e.target.checked?1:0)}/>字幕黑色背景</label>
+            <div className="actions"><button onClick={()=>control("loop_a")}>设为循环 A 点</button><button disabled={state.loopStartMs===null || state.positionMs<=state.loopStartMs} onClick={()=>control("loop_b")}>设为循环 B 点</button><button onClick={()=>control("loop_clear")}>清除循环</button></div>
+            <p>循环：{state.loopStartMs===null?"未设 A 点":time(state.loopStartMs)} → {state.loopEndMs===null?"未设 B 点":time(state.loopEndMs)}</p>
+            <label>章节<select aria-label="视频章节" value="" onChange={e=>control("seek",Number(e.target.value))}><option value="">{state.chapters.length?"选择章节跳转":"当前文件没有可读取的章节"}</option>{state.chapters.map((c,i)=><option key={i} value={c.positionMs}>{c.title} · {time(c.positionMs)}</option>)}</select></label>
+
             <label>
               画面字幕整体偏移（秒）
               <input

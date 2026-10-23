@@ -43,7 +43,7 @@ export function AssessmentHistoryAudio({
       {path && (
         <AudioPlayer
           path={path}
-          label={kind === "original" ? "真实原声" : "Windows 本地英语语音"}
+          label={kind === "original" ? "真实原声" : "本机离线英语语音"}
         />
       )}{" "}
       {error && (

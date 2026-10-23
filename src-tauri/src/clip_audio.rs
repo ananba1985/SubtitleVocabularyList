@@ -20,13 +20,17 @@ pub struct ClipAudioState {
 #[serde(rename_all = "snake_case")]
 pub enum ClipAudioAction { Play, Pause, Seek, Close }
 
-pub(crate) fn open(store: &Store, path: &str) -> Result<ClipAudioState, AppError> {
+pub(crate) fn open(store: &Store, path: &str, start_ms: Option<u64>, end_ms: Option<u64>, speed: Option<f64>) -> Result<ClipAudioState, AppError> {
+    let start = start_ms.unwrap_or(0); let speed = speed.unwrap_or(1.0);
+    if !speed.is_finite() || !(0.25..=3.0).contains(&speed) || end_ms.is_some_and(|end|end<=start) {
+        return Err(AppError::new("invalid_input","播放速度或原声区间无效。"));
+    }
     let path = std::path::Path::new(path).canonicalize()?;
     let root = store.root().canonicalize()?;
     if !path.is_file() || !(path.starts_with(root.join("media")) || path.starts_with(root.join("jobs"))) {
         return Err(AppError::new("invalid_input", "只能播放本机已保存的原声或生成语音。"));
     }
-    invoke("audioOpen", serde_json::json!({ "path": path, "sessionId": uuid::Uuid::new_v4().to_string() }))
+    invoke("audioOpen", serde_json::json!({ "path": path, "sessionId": uuid::Uuid::new_v4().to_string(), "positionMs": start, "endMs":end_ms, "speed":speed }))
 }
 
 pub(crate) fn state(session_id: &str) -> Result<ClipAudioState, AppError> {

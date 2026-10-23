@@ -1,8 +1,9 @@
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 pub(crate) mod assessment;
 #[cfg(all(windows, feature = "desktop"))]
 pub(crate) mod capture;
 pub(crate) mod corpus;
+pub(crate) mod subtitle_commands;
 #[cfg(any(all(windows,feature="desktop"),all(target_os="android",feature="mobile")))]
 pub(crate) mod episode_sharing;
 pub(crate) mod learning;
@@ -70,6 +71,8 @@ svl_ipc_macros::catalog! {
         mobile_media::video_learning_visible,
         mobile_media::video_learning_skip,
         mobile_media::video_pick,
+        mobile_media::video_folder_pick,
+        mobile_media::video_folder_index,
         mobile_media::video_open,
         mobile_media::video_state,
         mobile_media::video_context,
@@ -106,73 +109,73 @@ svl_ipc_macros::catalog! {
         watch::watch_progress_get,
         #[cfg(all(windows, feature = "desktop"))]
         watch::watch_collection_prepare,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_info_get,
         #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_info_get,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_prepare_start,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_chinese_select,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_service_get,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_service_set,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_search_context,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_search_get,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_search_start,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_download_start,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_download_preview,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_download_commit_start,
-        #[cfg(all(windows, feature = "desktop"))]
-        watch::subtitle_alignment_set,
-        #[cfg(all(windows, feature = "desktop"))]
+        subtitle_commands::subtitle_prepare_start,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_chinese_select,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_service_get,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_service_set,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_search_context,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_search_get,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_search_start,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_download_start,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_download_preview,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_download_commit_start,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        subtitle_commands::subtitle_alignment_set,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_preview,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_start,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_session_get,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_session_list,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_answer_submit,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_session_transition,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_audio_start,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_audio_event,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_result_correct,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_report_get,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_report_items,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_history_list,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_compare,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_collection_prepare,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_collection_commit,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_catalog_get,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_settings_get,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_settings_update,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_bank_prepare,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_bank_review,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_bank_items,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_bank_audio_prepare,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::assessment_sync_status,
@@ -180,26 +183,22 @@ svl_ipc_macros::catalog! {
         synchronization::assessment_sync_conflicts,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::assessment_sync_keep_both,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         assessment::assessment_audio_prepare,
         corpus::sources_list,
         #[cfg(all(windows, feature = "desktop"))]
         corpus::import_start,
         #[cfg(all(windows, feature = "desktop"))]
         corpus::media_inspect,
-        #[cfg(all(windows, feature = "desktop"))]
         corpus::candidates_list,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         corpus::known_target_get,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         corpus::known_target_set,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         corpus::known_targets_list,
-        #[cfg(all(windows, feature = "desktop"))]
         corpus::candidate_examples,
-        #[cfg(all(windows, feature = "desktop"))]
         corpus::candidate_decide,
-        #[cfg(all(windows, feature = "desktop"))]
         corpus::source_example_update,
         vocabulary::entries_list,
         vocabulary::entry_get,
@@ -221,15 +220,16 @@ svl_ipc_macros::catalog! {
         learning::review_history,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::review_audio_start,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::practice_get,
-        #[cfg(all(windows, feature = "desktop"))]
+        learning::practice_file_pick,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::practice_import,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::practice_progress_save,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::practice_audio_save,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::practice_example,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::speech_voices,

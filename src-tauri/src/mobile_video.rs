@@ -17,9 +17,17 @@ pub struct VideoTrack { pub id: String, pub format_id: String, pub kind: String,
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
+pub struct VideoChapter { pub title:String, pub position_ms:u64 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
 pub struct VideoState { pub session_id: String, pub uri: String, pub position_ms: u64, pub duration_ms: u64, pub playing: bool, pub paused: bool,
     pub revision: u64, pub user_paused: bool, pub foreground: bool, pub window_focused: bool, pub fullscreen: bool,
     pub media_revision: u64, pub subtitle_delay_ms:i64,
+    #[serde(default)] pub chapters:Vec<VideoChapter>,
+    pub dual_subtitles:bool, pub subtitle_font_size:f64, pub subtitle_background:bool,
+    pub loop_start_ms:Option<u64>, pub loop_end_ms:Option<u64>,
     pub ended: bool, pub speed: f64, pub tracks: Vec<VideoTrack>, pub error: Option<String> }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -48,7 +56,7 @@ struct IndexedSubtitle { id: String, language: String, title: String, mime: Stri
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct MediaIndex { sha256: String, duration_ms: i64, subtitles: Vec<IndexedSubtitle> }
+struct MediaIndex { sha256: String, duration_ms: i64, subtitles: Vec<IndexedSubtitle>, #[serde(default)] chapters:Vec<VideoChapter> }
 
 pub(crate) fn invoke<T: serde::de::DeserializeOwned>(command: &str, args: serde_json::Value) -> Result<T, AppError> {
     #[cfg(all(target_os = "android", feature = "mobile"))]
@@ -112,9 +120,11 @@ pub(crate) fn open(store: &Store, uri: &str) -> Result<VideoState, AppError> {
     let mut playback = store.playback_state()?;
     let progress = store.watch_progress_for(uri)?;
     let tracks = setting::<std::collections::HashMap<String,String>>(store,&key("tracks",uri))?.unwrap_or_default();
+    let options=setting::<serde_json::Value>(store,&key("advanced",uri))?.unwrap_or_default();
     let state: VideoState = invoke("videoOpen", serde_json::json!({"uri":uri,"sessionId":uuid::Uuid::new_v4().to_string(),
         "positionMs":progress.map(|p| (p.position * 1000.0) as u64).unwrap_or(0),"speed":playback.preferences.speed,
         "volume":if playback.preferences.muted {0.0}else{playback.preferences.volume/100.0},
+        "advanced":options,
         "audioKey":tracks.get("audio").cloned().unwrap_or_default(),"subtitleKey":tracks.get("subtitle").cloned().unwrap_or_default()}))?;
     playback.current_path = Some(uri.into());
     save(store,&key("verified",uri),&String::new())?;
@@ -128,13 +138,20 @@ pub(crate) fn open(store: &Store, uri: &str) -> Result<VideoState, AppError> {
 }
 pub(crate) fn state(store: &Store) -> Result<VideoState, AppError> {
     static LAST_SAVE: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
-    let state: VideoState = invoke("videoState", serde_json::json!({}))?;
+    let mut state: VideoState = invoke("videoState", serde_json::json!({}))?;
     let mut last = LAST_SAVE.lock().map_err(|_|AppError::new("internal_error","播放进度暂不可用。"))?;
     if last.is_none_or(|t|t.elapsed().as_secs() >= 5) { persist_progress(store,&state)?; *last = Some(std::time::Instant::now()); }
+    if !state.uri.is_empty(){
+        state.chapters=setting::<MediaIndex>(store,&key("index",&state.uri))?.map(|i|i.chapters).unwrap_or_default();
+        if state.dual_subtitles {
+            let text=context(store,&state)?.filter(|c|state.position_ms as i64>=c.start_ms && (state.position_ms as i64)<c.end_ms).map(|c|c.translation).unwrap_or_default();
+            invoke::<VideoState>("videoControl",serde_json::json!({"sessionId":state.session_id,"action":"secondary_text","text":text}))?;
+        }
+    }
     Ok(state)
 }
 pub(crate) fn control(store: &Store, control: VideoControl) -> Result<VideoState, AppError> {
-    if !matches!(control.action.as_str(), "play"|"pause"|"pause_internal"|"stop"|"seek"|"speed"|"volume"|"auto_next"|"subtitle_delay"|"learning_offset"|"track"|"hide"|"fullscreen") || control.value.is_some_and(|v| !v.is_finite() || (v < 0.0 && !matches!(control.action.as_str(),"learning_offset"|"subtitle_delay"))) {
+    if !matches!(control.action.as_str(), "play"|"pause"|"pause_internal"|"stop"|"seek"|"speed"|"volume"|"auto_next"|"subtitle_delay"|"learning_offset"|"track"|"hide"|"fullscreen"|"dual_subtitles"|"subtitle_font"|"subtitle_background"|"loop_a"|"loop_b"|"loop_clear") || control.value.is_some_and(|v| !v.is_finite() || (v < 0.0 && !matches!(control.action.as_str(),"learning_offset"|"subtitle_delay"))) {
         return Err(AppError::new("invalid_input", "视频操作参数无效。"));
     }
     if control.action=="subtitle_delay" {
@@ -151,6 +168,9 @@ pub(crate) fn control(store: &Store, control: VideoControl) -> Result<VideoState
     }
     let state: VideoState = invoke("videoControl", serde_json::to_value(&control)?)?;
     persist_progress(store, &state)?;
+    if matches!(control.action.as_str(),"dual_subtitles"|"subtitle_font"|"subtitle_background"|"loop_a"|"loop_b"|"loop_clear"){
+        save(store,&key("advanced",&state.uri),&serde_json::json!({"dual":state.dual_subtitles,"font":state.subtitle_font_size,"background":state.subtitle_background,"loopA":state.loop_start_ms,"loopB":state.loop_end_ms}))?;
+    }
     if control.action == "speed" {
         let mut playback = store.playback_state()?; playback.preferences.speed = state.speed; store.save_playback_state(&playback)?;
     }
@@ -238,6 +258,35 @@ pub(crate) fn apply_prepared_episode(store:&Store,source_id:&str,document:&crate
         render_delayed_track(store,current,Some(&id))?;
     }
     Ok(result.source_id)
+}
+
+#[cfg(all(target_os="android",feature="mobile"))]
+pub(crate) fn apply_online_subtitle(store:&Store, source_id:&str, asset_id:&str, selected:bool)->Result<crate::subtitles::SubtitleInfo,AppError>{
+    let uri:String=store.connection()?.query_row("SELECT path_hint FROM sources WHERE id=?",[source_id],|r|r.get(0))?;
+    let bundle=store.subtitle_bundle(source_id)?.ok_or_else(||AppError::new("not_found","字幕资料已变化。"))?;
+    let asset=bundle.assets.iter().find(|a|a.id==asset_id).ok_or_else(||AppError::new("not_found","下载字幕不存在。"))?;
+    let mut index:MediaIndex=setting(store,&key("index",&uri))?.ok_or_else(||AppError::new("not_found","视频索引不存在。"))?;
+    let cues=asset.cues.iter().map(|c|Segment{start_ms:(c.start_ms+asset.time_offset_ms).max(0),end_ms:c.end_ms+asset.time_offset_ms,text:c.text.clone(),location_key:c.location_key.clone()}).filter(|c|c.end_ms>c.start_ms).collect::<Vec<_>>();
+    let english=asset.language=="en";
+    let path=store.root().join("subtitles").join(&index.sha256).join(format!("svl-prepared-online-{}.vtt",asset.sha256));
+    std::fs::write(&path,vtt_text(&cues,0))?;
+    let id=reqwest::Url::from_file_path(&path).map_err(|_|AppError::new("invalid_data","字幕路径无效。"))?.to_string();
+    index.subtitles.retain(|s|s.id!=id);
+    let track=IndexedSubtitle{id:id.clone(),language:asset.language.clone(),title:asset.title.clone(),mime:"text/vtt".into(),cues};
+    if english{index.subtitles.insert(0,track)}else{index.subtitles.push(track)}
+    let result=install(store,&reference(store,&uri)?,&index)?;
+    // Keep original online provenance and user confirmation with the playable adapter asset.
+    let mut installed=store.subtitle_bundle(&result.source_id)?.unwrap();
+    installed.assets.retain(|a|a.id!=asset.id);installed.assets.push(asset.clone());
+    if selected{installed.selected_chinese_id=Some(asset.id.clone());}
+    let mut info=store.save_subtitle_bundle(&result.source_id,&installed)?;
+    if selected {info=store.select_chinese_subtitle(&result.source_id,Some(asset_id.into()))?;}
+    if english {
+        let mut tracks=setting::<std::collections::HashMap<String,String>>(store,&key("tracks",&uri))?.unwrap_or_default();tracks.insert("subtitle".into(),format!("raw:{id}"));save(store,&key("tracks",&uri),&tracks)?;
+        let current=state(store)?;
+        if current.uri==uri{let next=invoke("videoSubtitle",serde_json::json!({"uri":uri,"subtitleUri":id,"mime":"text/vtt","language":"en","title":asset.title}))?;render_delayed_track(store,next,Some(&id))?;}
+    }
+    Ok(info)
 }
 
 fn render_delayed(store:&Store,state:VideoState)->Result<VideoState,AppError> {
@@ -330,30 +379,49 @@ pub(crate) fn export_audio(store: &Store, uri: &str, path: &std::path::Path, sta
     Ok(result.duration_ms)
 }
 
+fn index_video(store:&Store,media:&MediaRef,uri:&str,opened:&str,context:&crate::tasks::TaskContext)->Result<VideoStudy,AppError>{
+    context.subject(&media.title); context.progress("subtitle_index",0,1,"正在读取本地视频指纹与文本字幕，视频可继续播放"); context.check_cancelled()?;
+    let mut index: MediaIndex = invoke("mediaIndex",serde_json::json!({"uri":uri}))?; context.check_cancelled()?;
+    if let Some(old) = setting::<MediaIndex>(&store,&key("index",&uri))?.filter(|old|old.sha256 == index.sha256) {
+        let shared=old.subtitles.iter().filter(|s|s.id.starts_with("file://")||s.id.starts_with("prepared:")).cloned().collect::<Vec<_>>();
+        for external in old.subtitles.into_iter().filter(|s|s.id.starts_with("content://")) {
+            let mut refreshed: IndexedSubtitle = invoke("subtitleRead",serde_json::json!({"uri":external.id,"title":external.title}))?;
+            refreshed.language = external.language;
+            index.subtitles.insert(0,refreshed);
+        }
+        index.subtitles.splice(0..0,shared);
+    }
+    let current=state(&store)?;
+    if current.uri==uri && let Some(selected)=current.tracks.iter().find(|t|t.kind=="subtitle"&&t.selected) {
+        if let Some(p)=index.subtitles.iter().position(|s|(s.id==selected.format_id||selected.format_id.ends_with(&format!(":{}",s.id))) && s.cues.iter().any(|c|crate::subtitles::english_text(&c.text).is_some())) {let track=index.subtitles.remove(p);index.subtitles.insert(0,track);}
+    }
+    let result = install(&store,&media,&index)?;
+    let current = state(&store)?;
+    if current.uri == uri && current.session_id == opened { save(&store,&key("verified",&uri),&opened)?; render_delayed(&store,current)?; }
+    Ok(result)
+}
+
 impl Application {
+    pub(crate) fn video_folder_index(&self,files:Vec<MediaRef>,operation_id:String)->Result<TaskHandle<Vec<VideoStudy>>,AppError>{
+        if files.is_empty() || files.len()>100{return Err(AppError::new("invalid_input","请选择 1 至 100 个目录内视频。"));}
+        let store=Arc::clone(&self.store);let hash=vocabulary::digest(&serde_json::to_vec(&files)?);
+        self.tasks.start_typed("video_batch",&operation_id,&hash,move|context|{
+            let mut output=Vec::new();let total=files.len();
+            for (i,file) in files.iter().enumerate(){
+                context.check_cancelled()?;context.subject(&file.title);context.progress("subtitle_index",i,total,"正在按已确认目录顺序建立本机字幕索引");
+                let media=register_shared(&store,&file.uri)?;
+                let result=index_video(&store,&media,&media.uri,"",&context)?;output.push(result);
+                context.partial_result(serde_json::to_value(&output)?);
+            }
+            context.progress("done",total,total,"目录视频已索引，可按词预习；没有运行整季 AI");Ok(output)
+        })
+    }
+
     pub(crate) fn video_index_start(&self, uri: String, operation_id: String) -> Result<TaskHandle<VideoStudy>, AppError> {
         let media = reference(&self.store, &uri)?; let store = Arc::clone(&self.store); let hash = vocabulary::digest(uri.as_bytes());
         let opened = state(&store)?.session_id;
         self.tasks.start_typed("video_index",&operation_id,&hash,move |context| {
-            context.subject(&media.title); context.progress("subtitle_index",0,1,"正在读取本地视频指纹与文本字幕，视频可继续播放"); context.check_cancelled()?;
-            let mut index: MediaIndex = invoke("mediaIndex",serde_json::json!({"uri":uri}))?; context.check_cancelled()?;
-            if let Some(old) = setting::<MediaIndex>(&store,&key("index",&uri))?.filter(|old|old.sha256 == index.sha256) {
-                let shared=old.subtitles.iter().filter(|s|s.id.starts_with("file://")||s.id.starts_with("prepared:")).cloned().collect::<Vec<_>>();
-                for external in old.subtitles.into_iter().filter(|s|s.id.starts_with("content://")) {
-                    let mut refreshed: IndexedSubtitle = invoke("subtitleRead",serde_json::json!({"uri":external.id,"title":external.title}))?;
-                    refreshed.language = external.language;
-                    index.subtitles.insert(0,refreshed);
-                }
-                index.subtitles.splice(0..0,shared);
-            }
-            let current=state(&store)?;
-            if current.uri==uri && let Some(selected)=current.tracks.iter().find(|t|t.kind=="subtitle"&&t.selected) {
-                if let Some(p)=index.subtitles.iter().position(|s|(s.id==selected.format_id||selected.format_id.ends_with(&format!(":{}",s.id))) && s.cues.iter().any(|c|crate::subtitles::english_text(&c.text).is_some())) {let track=index.subtitles.remove(p);index.subtitles.insert(0,track);}
-            }
-            let result = install(&store,&media,&index)?;
-            let current = state(&store)?;
-            if current.uri == uri && current.session_id == opened { save(&store,&key("verified",&uri),&opened)?; render_delayed(&store,current)?; }
-            Ok(result)
+            index_video(&store,&media,&uri,&opened,&context)
         })
     }
     pub(crate) fn video_subtitle_add(&self, uri: String, language: String, operation_id: String) -> Result<TaskHandle<VideoStudy>, AppError> {

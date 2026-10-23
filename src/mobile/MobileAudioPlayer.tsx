@@ -5,21 +5,22 @@ import type { AudioPlayerProps } from "../components/AudioPlayer";
 
 const time = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 
-export function MobileAudioPlayer({ path, label = "原声", playbackKey, onPlayed, onFailed }: AudioPlayerProps) {
+export function MobileAudioPlayer({ path, label = "原声", playbackKey, onPlayed, onFailed, onPlaybackEvent }: AudioPlayerProps) {
   const [state, setState] = useState<CommandResult<"audio_state"> | null>(null);
   const [error, setError] = useState("");
   const [replay, setReplay] = useState(0);
-  const callbacks = useRef({ onPlayed, onFailed });
-  callbacks.current = { onPlayed, onFailed };
+  const callbacks = useRef({ onPlayed, onFailed, onPlaybackEvent });
+  callbacks.current = { onPlayed, onFailed, onPlaybackEvent };
   const id = useRef("");
   useEffect(() => {
-    let disposed = false, session = "", polling = false, reported = false;
+    let disposed = false, session = "", polling = false, reported = false, ended = false;
     setError(""); setState(null);
     const update = (value: CommandResult<"audio_state">) => {
       if (disposed) return;
       setState(value);
-      if (value.error) { setError(value.error); callbacks.current.onFailed?.(); }
-      if (value.played && !reported) { reported = true; callbacks.current.onPlayed?.(); }
+      if (value.error) { setError(value.error); callbacks.current.onFailed?.(); callbacks.current.onPlaybackEvent?.("error", value.positionMs/1000, value.error); }
+      if (value.played && !reported) { reported = true; callbacks.current.onPlayed?.(); callbacks.current.onPlaybackEvent?.("started",value.positionMs/1000); }
+      if(value.active && value.ended && value.played && !ended){ended=true;callbacks.current.onPlaybackEvent?.("ended",value.positionMs/1000);}
     };
     call("audio_open", { path }).then((value) => {
       session = value.sessionId;

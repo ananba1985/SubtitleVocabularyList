@@ -21,6 +21,8 @@ class AudioArgs {
     var sessionId: String = ""
     var action: String = ""
     var positionMs: Long? = null
+    var endMs: Long? = null
+    var speed: Float = 1f
 }
 
 /** One foreground player, with Media3 audio focus and headphone handling. */
@@ -29,6 +31,13 @@ class ClipAudio(private val activity: Activity) {
     private var sessionId = ""
     private var error: String? = null
     private var played = false
+    private var endMs: Long? = null
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val boundary = object: Runnable { override fun run() {
+        val current=player ?: return
+        if (endMs?.let { current.currentPosition>=it }==true) current.pause()
+        handler.postDelayed(this,40)
+    }}
 
     private fun snapshot(id: String): JSObject {
         val current = if (id == sessionId) player else null
@@ -38,7 +47,7 @@ class ClipAudio(private val activity: Activity) {
             .put("durationMs", current?.duration?.coerceAtLeast(0) ?: 0)
             .put("playing", current?.isPlaying == true)
             .put("played", current != null && played)
-            .put("ended", current == null || current.playbackState == Player.STATE_ENDED)
+            .put("ended", current == null || current.playbackState == Player.STATE_ENDED || endMs?.let { current.currentPosition>=it }==true)
             .put("error", if (id == sessionId) error ?: JSONObject.NULL else JSONObject.NULL)
     }
 
@@ -48,7 +57,7 @@ class ClipAudio(private val activity: Activity) {
         val root = activity.filesDir.canonicalFile
         require(file.isFile && (file.path.startsWith(File(root, "media").path + File.separator) ||
             file.path.startsWith(File(root, "jobs").path + File.separator)))
-        player?.release()
+        handler.removeCallbacks(boundary); player?.release(); endMs=args.endMs
         sessionId = args.sessionId; error = null; played = false
         player = ExoPlayer.Builder(activity).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
@@ -66,10 +75,12 @@ class ClipAudio(private val activity: Activity) {
                     if (reason != Player.PLAYBACK_SUPPRESSION_REASON_NONE && sessionId == args.sessionId) pause()
                 }
             })
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+            setMediaItem(MediaItem.fromUri(Uri.fromFile(file)),args.positionMs ?: 0)
+            setPlaybackSpeed(args.speed.coerceIn(0.25f,3f))
             prepare()
             if (foreground) play()
         }
+        handler.post(boundary)
         invoke.resolve(snapshot(args.sessionId))
     }
 
@@ -87,5 +98,5 @@ class ClipAudio(private val activity: Activity) {
     }
 
     fun pause() { player?.pause() }
-    fun destroy() { player?.release(); player = null }
+    fun destroy() { handler.removeCallbacks(boundary); player?.release(); player = null }
 }

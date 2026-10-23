@@ -804,9 +804,9 @@ impl crate::application::Application {
             let mut receipts=Vec::new();let total=input.items.len();
             for (index,selection) in input.items.iter().enumerate() {
                 context.check_cancelled()?;
-                #[cfg(all(windows,feature="desktop"))]
+                #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
                 let audio=if selection.save_audio{app.prepare_assessment_audio_cached_from_draft(&input.draft_id,&selection.session_item_id,&context).map(|_|())}else{Ok(())};
-                #[cfg(not(all(windows,feature="desktop")))]
+                #[cfg(not(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))))]
                 let audio:Result<(),AppError>={let _=&app;Ok(())};
                 let result=audio.and_then(|()|store.assessment_collect_item(&input.draft_id,selection));
                 receipts.push(match result {

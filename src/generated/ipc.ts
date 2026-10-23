@@ -204,6 +204,8 @@ export type PracticeChapter = { title: string, sentences: Array<PracticeSentence
 
 export type PracticeDocument = { id: string, title: string, kind: string, chapters: Array<PracticeChapter>, audioFile: string | null, };
 
+export type PracticeFile = { name: string, data: string, };
+
 export type PracticeProgress = { chapterIndex: number, sentenceIndex: number, copy: string, speed: number, audioMode: string, voiceId: string, };
 
 export type PracticeSentence = { text: string, startMs: number | null, endMs: number | null, };
@@ -342,11 +344,13 @@ export type TransitionAssessment = { sessionId: string, expectedRevision: number
 
 export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "watch" | "practice" | "reviews" | "leech" | "sync" | "tasks" | "settings";
 
+export type VideoChapter = { title: string, positionMs: number, };
+
 export type VideoControl = { sessionId: string, action: string, value: number | null, text: string | null, kind: string | null, };
 
 export type VideoLearning = { sessionId: string, context: WatchContext | null, eligible: boolean, remainingSeconds: number | null, collected: boolean, skipped: boolean, task: TaskSnapshot | null, };
 
-export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, paused: boolean, revision: number, userPaused: boolean, foreground: boolean, windowFocused: boolean, fullscreen: boolean, mediaRevision: number, subtitleDelayMs: number, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
+export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, paused: boolean, revision: number, userPaused: boolean, foreground: boolean, windowFocused: boolean, fullscreen: boolean, mediaRevision: number, subtitleDelayMs: number, chapters: Array<VideoChapter>, dualSubtitles: boolean, subtitleFontSize: number, subtitleBackground: boolean, loopStartMs: number | null, loopEndMs: number | null, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
 
 export type VideoStudy = { sourceId: string, sha256: string, subtitles: SubtitleInfo, };
 
@@ -404,7 +408,7 @@ export interface CommandMap {
   assessment_sync_keep_both: { args: { input: KeepAssessmentBoth }; result: AssessmentKeepBothReply };
   assessment_sync_status: { args: undefined; result: AssessmentSyncStatus };
   audio_control: { args: { sessionId: string; action: ClipAudioAction; positionMs?: number | null }; result: ClipAudioState };
-  audio_open: { args: { path: string }; result: ClipAudioState };
+  audio_open: { args: { path: string; startMs?: number | null; endMs?: number | null; speed?: number | null }; result: ClipAudioState };
   audio_state: { args: { sessionId: string }; result: ClipAudioState };
   autostart_get: { args: undefined; result: boolean };
   autostart_set: { args: { enabled: boolean }; result: boolean };
@@ -466,8 +470,9 @@ export interface CommandMap {
   online_query_start: { args: { text: string; provider?: string | null; operationId: string }; result: TaskHandle<LookupResult> };
   plugin_install: { args: { path: string }; result: Provider };
   plugin_remove: { args: { pluginId: string }; result: Array<Provider> };
-  practice_audio_save: { args: Uint8Array; result: string };
+  practice_audio_save: { args: { bytes: Array<number> }; result: string };
   practice_example: { args: { documentId: string; chapter: number; sentence: number }; result: CandidateExample };
+  practice_file_pick: { args: undefined; result: PracticeFile };
   practice_get: { args: undefined; result: PracticeState | null };
   practice_import: { args: { document: PracticeDocument }; result: PracticeState };
   practice_progress_save: { args: { documentId: string; progress: PracticeProgress }; result: void };
@@ -530,6 +535,8 @@ export interface CommandMap {
   video_collection_draft: { args: { revision: number; text: string; kind: string; meaning: string }; result: FrameDraft };
   video_context: { args: undefined; result: WatchContext | null };
   video_control: { args: { control: VideoControl }; result: VideoState };
+  video_folder_index: { args: { files: Array<MediaRef>; operationId: string }; result: TaskHandle<Array<VideoStudy>> };
+  video_folder_pick: { args: undefined; result: Array<MediaRef> };
   video_index_start: { args: { uri: string; operationId: string }; result: TaskHandle<VideoStudy> };
   video_learning_get: { args: undefined; result: VideoLearning };
   video_learning_skip: { args: { revision: number }; result: void };

@@ -87,12 +87,17 @@ class MediaIndex(private val activity: Activity) {
         } finally { extractor?.release(); source.close() }
         val assets = JSONArray()
         tracks.values.forEach { track -> assets.put(asset(track.format, track.id.toString(), track.cues)) }
-        return JSObject().put("sha256", hash).put("durationMs", if (durationUs > 0) durationUs / 1000 else 0)
+        return JSObject().put("sha256", hash).put("chapters",MediaChapters.read(activity,uri)).put("durationMs", if (durationUs > 0) durationUs / 1000 else 0)
             .put("subtitles", assets)
     }
 
     fun subtitle(uri: Uri, title: String): JSObject {
-        val bytes = activity.contentResolver.openInputStream(uri)!!.use { stream ->
+        val stream = if(uri.scheme=="file") {
+            val file=java.io.File(uri.path!!).canonicalFile
+            require(file.toPath().startsWith(activity.filesDir.canonicalFile.toPath()))
+            file.inputStream()
+        } else activity.contentResolver.openInputStream(uri)!!
+        val bytes = stream.use { stream ->
             val output = ByteArrayOutputStream(); val buffer = ByteArray(8192)
             while (true) { val n = stream.read(buffer); if (n < 0) break; require(output.size() + n <= 16 * 1024 * 1024); output.write(buffer, 0, n) }
             output.toByteArray()
@@ -113,11 +118,15 @@ class MediaIndex(private val activity: Activity) {
 
     private fun asset(format: Format, id: String, values: List<CuesWithTiming>): JSObject {
         val segments = JSONArray()
-        for (value in values.sortedBy { it.startTimeUs }) {
+        val sorted=values.sortedBy{it.startTimeUs}
+        for ((index,value) in sorted.withIndex()) {
+            // MP4 timed text can clear its previous cue with the next empty sample.
+            val endUs=if(value.durationUs>0)value.endTimeUs else sorted.drop(index+1).firstOrNull{it.startTimeUs>value.startTimeUs}?.startTimeUs ?: C.TIME_UNSET
+
             val text = value.cues.mapNotNull { it.text?.toString() }.joinToString("\n").trim()
-            if (text.isNotEmpty() && value.startTimeUs >= 0 && value.durationUs > 0) {
+            if (text.isNotEmpty() && value.startTimeUs >= 0 && endUs > value.startTimeUs) {
                 segments.put(JSObject().put("locationKey", "cue:${segments.length()}").put("text", text)
-                    .put("startMs", value.startTimeUs / 1000).put("endMs", value.endTimeUs / 1000))
+                    .put("startMs", value.startTimeUs / 1000).put("endMs", endUs / 1000))
             }
         }
         return JSObject().put("id", format.id ?: id).put("language", format.language ?: "und")

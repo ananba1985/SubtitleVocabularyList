@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocalExplanation } from "../localExplanations";
 import { call } from "../api";
 import type { Candidate } from "../types";
+import { useRuntimeFeatures } from "../runtimeFeatures";
 
 export function CandidateMeaning({
   candidate,
@@ -16,6 +17,7 @@ export function CandidateMeaning({
   selected: boolean;
   meaning?: string;
 }) {
+  const { mobile } = useRuntimeFeatures();
   const element = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   const [context, setContext] = useState<{
@@ -71,7 +73,7 @@ export function CandidateMeaning({
       title={value}
     >
       {value ||
-        (result.state === "error" ? "暂无中文释义" : "等待后台准备中文释义…")}
+        (result.state === "error" || mobile ? "暂无中文释义" : "等待后台准备中文释义…")}
     </span>
   );
 }

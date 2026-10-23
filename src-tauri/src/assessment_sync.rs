@@ -631,7 +631,7 @@ impl Store {
     }
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 impl crate::application::Application {
     pub(crate) fn prepare_assessment_audio_cached(
         &self,

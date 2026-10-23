@@ -1,4 +1,5 @@
-import { message } from "../api";
+import { useRuntimeFeatures } from "../runtimeFeatures";
+import { call, message } from "../api";
 import {
   adjacentSentence,
   highlightCopy,
@@ -33,6 +34,7 @@ export function PracticeView({
   panel: PracticePanel;
   onPanelChange: (panel: PracticePanel) => void;
 }) {
+  const { mobile } = useRuntimeFeatures();
   const {
     error,
     state,
@@ -383,7 +385,10 @@ export function PracticeView({
               }
             }}
           >
-            <label>
+            {mobile && <button type="button" disabled={importing} onClick={async()=>{
+              setImporting(true);setError("");try{const picked=await call("practice_file_pick");const raw=Uint8Array.from(atob(picked.data),c=>c.charCodeAt(0));await importFile(new File([raw],picked.name));}catch(e){setError(message(e));}finally{setImporting(false);}
+            }}>选择 TXT、EPUB 或课程包</button>}
+            <label hidden={mobile}>
               打开本地文件
               <input
                 type="file"
@@ -530,7 +535,7 @@ export function PracticeView({
                   }}
                 >
                   <option value="original">课程原声</option>
-                  <option value="voice">Windows 本地语音</option>
+                  <option value="voice">本机离线语音</option>
                 </select>
               </label>
             )}
@@ -558,7 +563,7 @@ export function PracticeView({
               </label>
             )}
             <p className="muted">
-              朗读使用本机 Windows 英语声音；有课程原声时可以切换音频来源。
+              朗读使用本机 离线英语声音；有课程原声时可以切换音频来源。
             </p>
           </div>
         )}

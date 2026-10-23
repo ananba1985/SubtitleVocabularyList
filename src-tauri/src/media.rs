@@ -588,6 +588,14 @@ pub(crate) fn external_segments(
     directory: &Path,
     cancelled: &AtomicBool,
 ) -> Result<Vec<Segment>, AppError> {
+    #[cfg(all(target_os="android",feature="mobile"))]
+    {
+        #[derive(serde::Deserialize)] struct Parsed { cues:Vec<Segment> }
+        let uri=reqwest::Url::from_file_path(input.canonicalize()?).map_err(|_|AppError::new("invalid_input","字幕路径无效。"))?;
+        let parsed:Parsed=crate::mobile_video::invoke("subtitleRead",serde_json::json!({"uri":uri.to_string(),"title":input.file_name().unwrap_or_default().to_string_lossy()}))?;
+        if cancelled.load(std::sync::atomic::Ordering::Relaxed){return Err(AppError::new("cancelled","字幕读取已取消。"));}
+        return Ok(parsed.cues);
+    }
     let mut bytes = Vec::new();
     std::fs::File::open(input)?
         .take(16 * 1024 * 1024 + 1)

@@ -1,3 +1,5 @@
+import { useRuntimeFeatures } from "../runtimeFeatures";
+import type { ClipAudioState } from "../generated/ipc";
 import { useEffect, useRef, useState } from "react";
 import { audioUrl, call, message, uid, waitTask } from "../api";
 import type {
@@ -28,6 +30,9 @@ export function usePracticeSession({
   panel: PracticePanel;
   onPanelChange: (panel: PracticePanel) => void;
 }) {
+  const { mobile } = useRuntimeFeatures();
+  const nativeAudio = useRef("");
+  const nativeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [state, setState] = useState<PracticeState | null>(null);
   const current = useRef<PracticeState | null>(null);
   const [error, setError] = useState("");
@@ -83,6 +88,8 @@ export function usePracticeSession({
   }
   function stopPlayback() {
     generation.current++;
+    if(nativeTimer.current){clearInterval(nativeTimer.current);nativeTimer.current=null;}
+    if(nativeAudio.current){void call("audio_control",{sessionId:nativeAudio.current,action:"close"}).catch(()=>{});nativeAudio.current="";}
     audio.current?.pause();
     if (speechTask.current) {
       call("task_cancel", { taskId: speechTask.current }).catch(() => {});
@@ -125,7 +132,7 @@ export function usePracticeSession({
       ) {
         path = dataDirectory + "/" + value.document.audioFile;
       } else {
-        setStatus("正在准备 Windows 本地英语语音…");
+        setStatus("正在准备 本机离线英语语音…");
         const task = await call("speech_start", {
           text: line.text,
           operationId: uid(),
@@ -142,6 +149,26 @@ export function usePracticeSession({
       if (!mounted.current || request !== generation.current || !audio.current)
         return;
       speechTask.current = null;
+      if (mobile) {
+        const original=value.audioMode === "original" && !!value.document.audioFile;
+        const native=await call("audio_open",{path,startMs:original?line.startMs ?? 0:0,endMs:original?line.endMs:null,speed:value.speed});
+        if(request!==generation.current){void call("audio_control",{sessionId:native.sessionId,action:"close"});return;}
+        nativeAudio.current=native.sessionId;
+        let polling=false;
+        nativeTimer.current=setInterval(async()=>{
+          if(polling || request!==generation.current)return;polling=true;
+          try {
+            const next:ClipAudioState=await call("audio_state",{sessionId:native.sessionId});
+            if(request!==generation.current)return;
+            if(next.error)throw Error(next.error);
+            if(next.active && next.ended && next.played)finishPlayback();
+            else if(!next.active || (!next.playing && next.played)){stopWatching(false,"播放已暂停，可继续当前句。");}
+          }catch(e){if(request===generation.current){stopPlayback();setError(message(e));}}
+          finally{polling=false;}
+        },100);
+        setStatus(original?"正在播放课程原声。":"正在播放本机离线英语语音。");
+        return;
+      }
       audio.current.src = audioUrl(path);
       audio.current.playbackRate = value.speed;
       audio.current.currentTime =
@@ -155,7 +182,7 @@ export function usePracticeSession({
           ? "连续听读中，当前句会随播放前进。"
           : value.audioMode === "original"
             ? "正在播放课程原声。"
-            : "正在播放 Windows 本地英语语音。",
+            : "正在播放 本机离线英语语音。",
       );
     } catch (error) {
       if (mounted.current && request === generation.current) {
@@ -306,7 +333,7 @@ export function usePracticeSession({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (current.current) save(current.current);
     await saveQueue.current;
-    if (bytes) document.audioFile = await call("practice_audio_save", bytes);
+    if (bytes) document.audioFile = await call("practice_audio_save", {bytes:Array.from(bytes)});
     const value = await call("practice_import", { document });
     update(value, false);
     onPanelChange(null);

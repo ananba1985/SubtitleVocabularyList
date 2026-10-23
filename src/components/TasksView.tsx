@@ -11,6 +11,7 @@ const kinds: Record<string, string> = {
   subtitle_download: "字幕候选下载",
   collection: "词条收录",
   preview: "原声准备",
+  video_batch: "目录字幕批量索引",
   video_index: "视频字幕索引",
   video_subtitle: "外置字幕取得",
   watch_collect: "暂停对白收录",

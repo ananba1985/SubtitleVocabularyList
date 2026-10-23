@@ -788,7 +788,7 @@ impl GeneratedTarget {
 }
 
 impl Application {
-    #[cfg(all(windows, feature = "desktop"))]
+    #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     pub fn assessment_bank_audio_prepare(
         self: &Arc<Self>,
         content: QuestionDraft,
@@ -1122,13 +1122,13 @@ impl Application {
         items: &mut [(String, QuestionDraft)],
         context: &TaskContext,
     ) -> Result<(), AppError> {
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         {
             for (kind, item) in items {
                 if kind != "listening" {
                     continue;
                 }
-                let voice = crate::windows_native::system_voices()?
+                let voice = crate::speech::voices()?
                     .into_iter()
                     .find(|v| {
                         self.settings()
@@ -1137,7 +1137,7 @@ impl Application {
                     .ok_or_else(|| {
                         AppError::new(
                             "assessment_audio_unavailable",
-                            "请先安装或选择 Windows 本地英语声音。",
+                            "请先安装或选择 本机离线英语声音。",
                         )
                     })?;
                 let spoken = format!("{}. {}", item.target, item.sentence);
@@ -1151,11 +1151,11 @@ impl Application {
                         .root()
                         .join("jobs")
                         .join(format!("assessment-{}.wav", Uuid::new_v4()));
-                    let result = crate::windows_native::synthesize(
+                    let result = crate::speech::synthesize(
                         &spoken,
                         &voice.id,
                         &temporary,
-                        &context.cancelled,
+                        context,
                     );
                     if let Err(error) = result {
                         let _ = std::fs::remove_file(&temporary);
@@ -1185,7 +1185,7 @@ impl Application {
                 });
             }
         }
-        #[cfg(not(all(windows, feature = "desktop")))]
+        #[cfg(not(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))))]
         {
             let _ = (items, context);
         }

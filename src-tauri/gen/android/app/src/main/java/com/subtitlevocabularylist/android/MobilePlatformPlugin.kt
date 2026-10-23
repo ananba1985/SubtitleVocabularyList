@@ -84,6 +84,19 @@ class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
         io.execute { try { invoke.resolve(MediaDocuments.describe(activity,Uri.parse(args.uri))) } catch (_:Exception) { invoke.reject("文件授权已失效，请通过文件选择器重新选择。","resource_missing") } }
     }
 
+    @Command fun readPracticeFile(invoke:Invoke){
+        val args=invoke.parseArgs(VideoArgs::class.java)
+        io.execute{try{
+            val uri=Uri.parse(args.uri);require(uri.scheme=="content")
+            val data=activity.contentResolver.openInputStream(uri)!!.use{source->
+                val output=java.io.ByteArrayOutputStream();val buffer=ByteArray(65536)
+                while(true){val n=source.read(buffer);if(n<0)break;require(output.size()+n<=32*1024*1024);output.write(buffer,0,n)}
+                output.toByteArray()
+            }
+            require(data.size<=32*1024*1024){"阅读文件超过 32 MiB"}
+            invoke.resolve(JSObject().put("name",args.title).put("data",android.util.Base64.encodeToString(data,android.util.Base64.NO_WRAP)))
+        }catch(_:Exception){invoke.reject("阅读文件无法读取，或超过 32 MiB。","resource_missing")}}
+    }
     @Command fun pickDocuments(invoke: Invoke) {
         val args = invoke.parseArgs(VideoArgs::class.java)
         startActivityForResult(invoke, MediaDocuments.intent(args.kind), "documentsPicked")

@@ -270,7 +270,7 @@ pub fn identify(file_name: &str) -> SubtitleQuery {
 }
 pub fn hint(store: &Store, source_id: &str) -> Result<SubtitleQuery, AppError> {
     let path: String = store.connection()?.query_row(
-        "SELECT path_hint FROM sources WHERE id=? AND kind='video'",
+        "SELECT title FROM sources WHERE id=? AND kind='video'",
         [source_id],
         |r| r.get(0),
     )?;
@@ -926,10 +926,13 @@ pub fn commit(
     store.save_subtitle_bundle(&download.source_id, &bundle)?;
     store.set_subtitle_offset(&download.source_id, &asset_id, offset_ms)?;
     if selected {
-        store.select_chinese_subtitle(&download.source_id, Some(asset_id))?;
+        store.select_chinese_subtitle(&download.source_id, Some(asset_id.clone()))?;
     }
     let bundle = store.subtitle_bundle(&download.source_id)?.unwrap();
-    store.save_subtitle_bundle(&download.source_id, &bundle)
+    let info=store.save_subtitle_bundle(&download.source_id, &bundle)?;
+    #[cfg(all(target_os="android",feature="mobile"))]
+    return crate::mobile_video::apply_online_subtitle(store,&download.source_id,&asset_id,selected);
+    #[allow(unreachable_code)] Ok(info)
 }
 
 pub fn maybe_search_on_import(

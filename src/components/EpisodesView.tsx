@@ -1,3 +1,4 @@
+import { useRuntimeFeatures } from "../runtimeFeatures";
 import { time } from "../api";
 import {
   useEpisodePreview,
@@ -29,6 +30,7 @@ export function EpisodesView({
   panel: EpisodePanel;
   onPanelChange: (panel: EpisodePanel) => void;
 }) {
+  const { mobile } = useRuntimeFeatures();
   const {
     sources,
     currentSource,
@@ -132,7 +134,7 @@ export function EpisodesView({
       <div
         id="episode-import"
         className="import-box preview-options"
-        hidden={panel !== "import"}
+        hidden={mobile || panel !== "import"}
       >
         <div>
           <h3>导入视频或目录</h3>
@@ -288,6 +290,7 @@ export function EpisodesView({
                 <button
                   className="secondary"
                   disabled={busy || !sourceId}
+                  hidden={mobile}
                   onClick={prepareCurrent}
                   title="优先准备当前集的词义和译文，进度在后台任务中查看"
                 >
@@ -295,7 +298,7 @@ export function EpisodesView({
                 </button>
               }
             />
-            {sourceId && (
+            {sourceId && !mobile && (
               <details>
                 <summary>字幕资料</summary>
                 <SubtitleSettings
@@ -487,7 +490,7 @@ export function EpisodesView({
                       </div>
                     ) : (
                       <p className="muted">
-                        等待后台准备中文解释，可在后台任务查看进度。
+                        {mobile ? "尚未准备中文解释，可按需查询或人工补充。" : "等待后台准备中文解释，可在后台任务查看进度。"}
                       </p>
                     )}
                   </section>
@@ -523,7 +526,7 @@ export function EpisodesView({
                       {explanation.value?.translation ||
                         (explanation.state === "error"
                           ? "暂未获得原句翻译"
-                          : "等待后台准备原句翻译…")}
+                          : mobile ? "尚未准备原句翻译，可按需查询或人工补充。" : "等待后台准备原句翻译…")}
                     </p>
                     <span className="muted">
                       {example.decision === "familiar"
@@ -656,7 +659,7 @@ export function EpisodesView({
               ) : (
                 <div className="empty">
                   <h3>按词判断，按需看对白</h3>
-                  <p>选择左侧候选，展开它的语境和原声。</p>
+                  <p>选择候选，展开它的语境和原声。</p>
                 </div>
               )}
             </section>

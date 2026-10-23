@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-ANDROID-001 |
-| 文档版本 | 0.11 |
+| 文档版本 | 0.12 |
 | 更新日期 | 2026-10-23 |
-| 状态 | 独立运行与共享核心架构已确认；0.24.0 手动词库同步、0.25.0 独立剧集共享正常流程通过；P0 代码已接入，发布与未测条件另列 |
+| 状态 | 独立运行与共享核心架构已确认；P0 与 0.26.0 P1 已接入，正常结果见专项记录；服务及未测条件另列 |
 | 依据 | [Android PRD](../requirements/android-PRD.md)、[Windows 架构](architecture.md)、[数据模型](data-model.md)、[同步设计](synchronization.md) |
 | 配套 | [开发指南](../development/android-development.md)、[开发计划](../planning/android-development-plan.md) |
 | 源码基线 | 0.16.10，`85977d5`；下面“现状”来自源码检查，“目标”与拟增路径属于后续实现 |
@@ -25,7 +25,7 @@ Android 和 Windows 共用同一仓库、Rust 业务核心、数据库迁移、�
 | AND-ADR-07 | OCR 优先复用桌面固定 Tesseract／Leptonica 源码及英语数据，Android 以 NDK 库调用 | 复用资源、文字处理和许可清单；不运行桌面 EXE，不引入另一套云 OCR；Android 固定源码构建与正常图片／暂停帧识别已验证，见验证记录 |
 | AND-ADR-08 | 凭据使用 Android Keystore 密钥加密后保存在应用私有目录；Windows DPAPI 保持 | 共享凭据结构与账号边界，平台只负责安全保存，不把令牌交给 React |
 | AND-ADR-09 | 首期工程目标 Android 10／API 29 及以上、arm64；本地开发优先连接一台真实设备 | 是实施起点，未声称已兼容。模拟器 ABI 只在实际需要时增加，不自动做兼容矩阵 |
-| AND-ADR-10 | 不新增手机服务器；P1 模块保持候选，首期不拆分复习／同步协议 | 控制维护面；版本、测试和手动发布仍按项目规则执行 |
+| AND-ADR-10 | 不新增手机服务器；已授权 P1 继续使用现有复习／独立测试历史协议 | 控制维护面；版本、测试和手动发布仍按项目规则执行 |
 
 Tauri 官方提供 Rust 与 Kotlin 的移动插件桥接；Android SDK 的文件、媒体及系统语音由插件封装。上述组合为本项目选型，尚不是当前工程已经可运行的事实。[Tauri 移动插件文档](https://v2.tauri.app/develop/plugins/develop-mobile/)
 
@@ -262,7 +262,25 @@ Android 在首次连接和换账号后都须明确确认当前手机全部资料
 
 重点工程风险为 Cargo／类型生成仍耦合 Windows、URI 与旧路径混用、原生视频遮挡学习面板、内封字幕时间精度、Tesseract NDK 构建，以及真实授权／媒体传输。分别在对应阶段先完成一条必要正常路径；不因文档里已有接口就把风险写为已解决。Native 库还需采用支持 16 KiB 页的构建设置与依赖；在首次链接及人工请求的发布流程核对产物，不自动扩展设备测试矩阵。[Android 页大小说明](https://developer.android.com/guide/practices/page-sizes)
 
-## 9 修订记录
+## 9 P1 复用实现（0.26.0）
+
+| 需求 | 共享来源 | Android 仅有适配 |
+| --- | --- | --- |
+| AND-FR-17 | PracticeView／usePracticeSession、原 TXT／EPUB／课程解析、Store 进度／草稿与统一收录 | SAF 单文件读取（32 MiB）、Media3 原声区间／倍速与原生播放完成状态 |
+| AND-FR-18 | EpisodesView／useEpisodePreview、候选／已掌握／本地解释与原声缓存 | 手机布局和平台 AudioPlayer；未准备内容明确提示可按需查询／人工补充 |
+| AND-FR-19 | AssessmentView／题库管理／抽样判分／报告／确认收录、assessment-1 | 本机离线 TTS 代替 Windows 专用调用；实际推进和结束才发送共享听音事件 |
+| AND-FR-20 | 从 watch.rs 原样抽取 subtitle_commands.rs；同一 SubDL、预览／核对／合并规则 | Media3 解析私有下载文本，已确认资料转私有 VTT 并更新同一 Store |
+| AND-FR-21 | 同一字幕对齐、播放偏好／进度、查询会话与明确采用 | 双字幕 TextView／字号背景、章节元数据、原生 A/B 控制、SAF 目录枚举 |
+
+学习页通过 selector 复用三个既有页面；独立练习正文、草稿、候选已掌握和播放偏好留本机。测试通过原 speech 平台分派准备录音，生成声音继续标为 system。历史交换保留题目及作答事实，语音缓存可在接收设备重建，不把 Android 声音路径当 Windows 路径。
+
+共享 IPC `practice_audio_save` 改为 `{ bytes: number[] }`，Rust `Vec<u8>` 接收，修复 Android 不支持原二进制 Raw 入参的问题；Windows 和手机使用同一个签名及 Store 校验／保存，唯一生成类型相应更新。`audio_open` 增加可选 `startMs`／`endMs`／`speed`，原复习／预习默认播放整段。新增 `practice_file_pick`、`video_folder_pick`、`video_folder_index` 只封装平台入口与同一任务／索引路径。
+
+目录只列已授权目录直接包含的最多 100 个视频，先预览后确认，逐个调用同一索引函数，保留已完成结果，不递归或执行整季 AI。播放器读取 MP4 chpl／Matroska Chapters；未识别的容器不推断章节。已实测 MP4 chpl，Matroska 章节解析尚无真机样本证明。主字幕交 Media3，第二字幕来自共享 Store 的当前对齐中文；14–48sp、背景和 A/B 按本地文件保存。MP4 timed text 缺 duration 时用同轨后续时间戳确定结束，避免有效 cue 被紧接空样本丢弃。
+
+多服务仅在用户勾选并点击后，将当前目标／可选语境交已启用内置服务，同一 QuerySession 分别展示状态并按 providerId 明确采用。输入／服务改变沿用原撤销与版本核对，不引入 Kotlin 查询业务或桌面插件。免费 SubDL 设置默认关闭，自填 key 留手机加密存储，不新增付费流程。实现与真实证据分列于 [P1 结果](../testing/android-p1-results.md)。
+
+## 10 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
@@ -281,3 +299,5 @@ Android 在首次连接和换账号后都须明确确认当前手机全部资料
 | 0.9 | 2026-10-23 | 记录共享查询／历史、手机服务密钥、全字幕偏移、稳定音轨编号、旧计时中断和活跃图片清理 |
 | 0.10 | 2026-10-23 | 记录同账号真实同步、单任务计费原声额度与完整完成时间条件，保留剧集共享未实施边界 |
 | 0.11 | 2026-10-23 | 记录独立剧集资料契约、共用导出／传输／缓存及 Android 私有字幕应用与实际结果 |
+
+| 0.12 | 2026-10-23 | 记录五项 P1 的共享来源、唯一 IPC、原生媒体／文件适配及实际支持边界 |

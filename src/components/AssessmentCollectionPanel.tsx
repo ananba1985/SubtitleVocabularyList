@@ -145,7 +145,7 @@ export function AssessmentCollectionPanel({
                 保留
                 {item.audioKind === "original"
                   ? "真实原声"
-                  : "Windows 本地英语语音"}
+                  : "本机离线英语语音"}
               </label>
             )}
             {receipt && (

@@ -1,3 +1,5 @@
+import { useRuntimeFeatures } from "../runtimeFeatures";
+import { MobileAudioPlayer } from "../mobile/MobileAudioPlayer";
 import { useEffect, useRef, useState } from "react";
 import { audioUrl, call, message, uid, waitTask } from "../api";
 
@@ -127,6 +129,7 @@ export function AssessmentQuestionPanel({
   onChanged: (value: AssessmentSession) => void;
   onExit: () => void;
 }) {
+  const { mobile } = useRuntimeFeatures();
   const question = session.question;
   const [text, setText] = useState(question?.draftText ?? ""),
     [option, setOption] = useState<string | null>(
@@ -380,11 +383,11 @@ export function AssessmentQuestionPanel({
                 <span className="muted">
                   {question.audioKind === "original"
                     ? "真实原声"
-                    : "Windows 本地英语语音"}
+                    : "本机离线英语语音"}
                   {played ? " · 已播放完成" : ""}
                 </span>
               </div>
-              {playback?.path && (
+              {playback?.path && (mobile ? <MobileAudioPlayer key={playback.playbackId} path={playback.path} label="英语录音" onPlaybackEvent={audioEvent}/> :
                 <audio
                   key={playback.playbackId}
                   ref={audio}

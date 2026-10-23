@@ -62,7 +62,7 @@ export function SubtitleServiceSettings() {
       <summary>在线字幕服务 · SubDL</summary>
       <p className="muted">
         用于查找已有中英字幕，不使用云端翻译。先在 SubDL 账户取得 API
-        key，再在此保存；凭据加密保存在当前 Data 中。
+        key，再在此保存；凭据加密保存在本机。只使用免费基础检索与普通下载，不提供付费 AI 翻译或订阅操作。免费额度及限制以服务方说明为准。
       </p>
       {config && (
         <fieldset disabled={busy}>

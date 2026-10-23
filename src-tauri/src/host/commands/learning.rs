@@ -17,9 +17,9 @@ pub(crate) async fn speech_settings_open() -> Result<(), AppError> {
 }
 
 #[svl_ipc_macros::command]
-pub(crate) async fn audio_open(app: AppState<'_>, path: String) -> Result<crate::clip_audio::ClipAudioState, AppError> {
+pub(crate) async fn audio_open(app: AppState<'_>, path: String, start_ms: Option<u64>, end_ms: Option<u64>, speed: Option<f64>) -> Result<crate::clip_audio::ClipAudioState, AppError> {
     let app = Arc::clone(app.inner());
-    background(move || crate::clip_audio::open(&app.store, &path)).await
+    background(move || crate::clip_audio::open(&app.store, &path, start_ms, end_ms, speed)).await
 }
 
 #[svl_ipc_macros::command]
@@ -103,7 +103,7 @@ pub(crate) async fn review_audio_start(
     background(move || app.review_audio_start(question_id, operation_id)).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_get(
     app: AppState<'_>,
@@ -112,7 +112,7 @@ pub(crate) async fn practice_get(
     background(move || app.store.practice_get()).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_import(
     app: AppState<'_>,
@@ -122,7 +122,7 @@ pub(crate) async fn practice_import(
     background(move || app.store.practice_import(document)).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_progress_save(
     app: AppState<'_>,
@@ -133,21 +133,17 @@ pub(crate) async fn practice_progress_save(
     background(move || app.store.practice_progress_save(&document_id, progress)).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_audio_save(
     app: AppState<'_>,
-    request: tauri::ipc::Request<'_>,
+    bytes: Vec<u8>,
 ) -> Result<String, AppError> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err(AppError::new("invalid_input", "请提供课程原声音频。"));
-    };
-    let bytes = bytes.clone();
     let app = app.inner().clone();
     background(move || app.store.practice_audio_save(&bytes)).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_example(
     app: AppState<'_>,
@@ -175,4 +171,18 @@ pub(crate) async fn speech_start(
 ) -> Result<crate::tasks::TaskHandle<crate::tasks::results::SpeechAudio>, AppError> {
     let app = Arc::clone(app.inner());
     background(move || app.speech_start(text, operation_id, voice_id)).await
+}
+
+#[derive(serde::Serialize,serde::Deserialize)]
+#[cfg_attr(feature="ipc-types",derive(ts_rs::TS))]
+#[serde(rename_all="camelCase")]
+pub(crate) struct PracticeFile {name:String,data:String}
+#[svl_ipc_macros::command]
+pub(crate) async fn practice_file_pick()->Result<PracticeFile,AppError>{
+    background(||{
+        #[derive(serde::Deserialize)]struct Picked{files:Vec<crate::mobile_video::MediaRef>}
+        let picked:Picked=crate::mobile_video::invoke("pickDocuments",serde_json::json!({"kind":"course"}))?;
+        let file=picked.files.into_iter().next().ok_or_else(||AppError::new("cancelled","已取消选择阅读文件。"))?;
+        crate::mobile_video::invoke("readPracticeFile",serde_json::json!({"uri":file.uri,"title":file.title}))
+    }).await
 }

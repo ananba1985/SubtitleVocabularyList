@@ -53,6 +53,7 @@ class VideoArgs {
     var renderSubtitlePath: String = ""
     var originalSubtitleKey: String = ""
     var subtitleDelayMs: Long = 0
+    var advanced: JSObject? = null
 }
 
 /** Rendering and track selection only. Learning state is owned by Rust. */
@@ -71,6 +72,14 @@ class VideoPlayer(private val activity: Activity) {
     private var lastViewport: VideoArgs? = null
     private var revision = 0L
     private var mediaRevision = 0L
+    private var dual = false
+    private var font = 22f
+    private var background = true
+    private var loopA:Long?=null
+    private var loopB:Long?=null
+    private var secondary:android.widget.TextView?=null
+    private val loopHandler=Handler(Looper.getMainLooper())
+    private val loopTick=object:Runnable{override fun run(){val p=player?:return;if(p.isPlaying && loopA!=null && loopB?.let{p.currentPosition>=it}==true)p.seekTo(loopA!!);loopHandler.postDelayed(this,40)}}
     private var userPaused = false
     private var pendingPause = ""
     private val back = object : OnBackPressedCallback(false) {
@@ -84,6 +93,9 @@ class VideoPlayer(private val activity: Activity) {
         destroy()
         uri = args.uri; sessionId = args.sessionId; error = null
         revision++; mediaRevision++; userPaused = false; pendingPause = "";originalSubtitleKey="";subtitleDelayMs=0
+        val prefs=args.advanced
+        dual=prefs?.optBoolean("dual",false) ?: false;font=(prefs?.optDouble("font",22.0) ?: 22.0).toFloat();background=prefs?.optBoolean("background",true) ?: true
+        loopA=prefs?.let{if(it.isNull("loopA"))null else it.optLong("loopA")};loopB=prefs?.let{if(it.isNull("loopB"))null else it.optLong("loopB")}
         audioKey = args.audioKey; subtitleKey = args.subtitleKey; selectionApplied = false
         player = ExoPlayer.Builder(activity).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
@@ -125,7 +137,18 @@ class VideoPlayer(private val activity: Activity) {
         }
         val content = activity.findViewById<ViewGroup>(android.R.id.content)
         content.addView(view, FrameLayout.LayoutParams(1, 1))
+        secondary=android.widget.TextView(activity).apply{
+            setTextColor(android.graphics.Color.YELLOW);gravity=android.view.Gravity.CENTER;setPadding(4,2,4,2)
+            view?.overlayFrameLayout?.addView(this,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT,android.view.Gravity.TOP))
+        }
+        style();loopHandler.post(loopTick)
         invoke.resolve(snapshot())
+    }
+    private fun style(){
+        val color=if(background)android.graphics.Color.BLACK else android.graphics.Color.TRANSPARENT
+        view?.subtitleView?.setStyle(androidx.media3.ui.CaptionStyleCompat(android.graphics.Color.WHITE,color,android.graphics.Color.TRANSPARENT,androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,android.graphics.Color.BLACK,null))
+        view?.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,font)
+        secondary?.textSize=font;secondary?.setBackgroundColor(color);secondary?.visibility=if(dual)View.VISIBLE else View.GONE
     }
 
     private fun trackKey(type: Int, group: TrackGroup, index: Int): String {
@@ -147,7 +170,9 @@ class VideoPlayer(private val activity: Activity) {
                 }
             }
         }
-        return JSObject().put("sessionId", sessionId).put("uri", uri)
+        return JSObject().put("dualSubtitles",dual).put("subtitleFontSize",font).put("subtitleBackground",background)
+            .put("loopStartMs",loopA ?: JSONObject.NULL).put("loopEndMs",loopB ?: JSONObject.NULL)
+            .put("sessionId", sessionId).put("uri", uri)
             .put("revision", revision).put("userPaused", userPaused).put("paused", player?.playWhenReady != true)
             .put("mediaRevision",mediaRevision)
             .put("subtitleDelayMs",subtitleDelayMs)
@@ -182,6 +207,14 @@ class VideoPlayer(private val activity: Activity) {
         val args = invoke.parseArgs(VideoArgs::class.java)
         if (args.sessionId != sessionId) { invoke.reject("当前视频已切换，请重新操作。", "conflict"); return }
         when (args.action) {
+            "dual_subtitles" -> {dual=args.value!=0.0;secondary?.text="";style()}
+            "subtitle_font" -> {font=args.value.toFloat().coerceIn(14f,48f);style()}
+            "subtitle_background" -> {background=args.value!=0.0;style()}
+            "secondary_text" -> secondary?.text=args.text
+            "loop_a" -> {loopA=player?.currentPosition;loopB=null}
+            "loop_b" -> {val p=player?.currentPosition ?: 0;require(loopA!=null && p>loopA!!);loopB=p}
+            "loop_clear" -> {loopA=null;loopB=null}
+
             "play" -> if (foreground) player?.apply { if (playbackState == Player.STATE_ENDED) seekTo(0); play() }
             "pause" -> pause(true)
             "stop" -> { pause(); val ending=snapshot(); destroy(); uri="";sessionId="";revision++;invoke.resolve(ending);return }
@@ -308,5 +341,5 @@ class VideoPlayer(private val activity: Activity) {
     }
     fun pause(user: Boolean = false) { revision++; pendingPause = if (user) "user" else "internal"; userPaused = user; player?.pause() }
     fun interruptLearning() {revision++;userPaused=false}
-    fun destroy() { if (fullscreen) setFullscreen(false); (view?.parent as? ViewGroup)?.removeView(view); view?.player = null; view = null; player?.release(); player = null }
+    fun destroy() { loopHandler.removeCallbacks(loopTick);secondary=null; if (fullscreen) setFullscreen(false); (view?.parent as? ViewGroup)?.removeView(view); view?.player = null; view = null; player?.release(); player = null }
 }

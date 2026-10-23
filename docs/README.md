@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.94 |
+| 文档版本 | 0.95 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -15,7 +15,10 @@
 | 类型 | 当前或后续位置 | 必须包含 | 职责边界 |
 | --- | --- | --- | --- |
 | 产品需求 PRD | [requirements/PRD.md](requirements/PRD.md) | 背景、目标、范围、流程、需求编号、业务规则、验收标准、待确认项 | 描述需要满足的行为和结果；具体框架、代码结构和数据库实现属于设计文档 |
-| Android 客户端需求 | [requirements/android-PRD.md](requirements/android-PRD.md) | 现有功能清单、Android 适用性、首版／后续建议、采集学习流程、完整同步及验收标准 | 初版待评审；明确单词本、边看边学、服务器同步，其他范围为评估建议，未表示 Android 已实现 |
+| Android 客户端需求 | [requirements/android-PRD.md](requirements/android-PRD.md) | 现有功能清单、Android 适用性、首版／后续边界、采集学习流程、完整同步及验收标准 | 用户已认可 P0 规划基线，P1 保持候选；未表示 Android 已实现 |
+| Android 架构与复用设计 | [design/android-architecture.md](design/android-architecture.md) | 源码复用清单、共用 Rust／React、平台接口、数据／媒体／同步、工程风险 | 初版待评审，区分已查源码与待实施方案；Windows 现有架构保持 |
+| Android 开发指南 | [development/android-development.md](development/android-development.md) | 本机 Studio／SDK／JDK 盘点、环境准备、开发入口、类型与维护规则 | 已做只读盘点；新工程和脚本待实施，不把安装 Studio 当作已能构建 |
+| Android 开发计划 | [planning/android-development-plan.md](planning/android-development-plan.md) | AND-M-00 至 AND-M-09、依赖、改动位置、交付门槛与需求验收追溯 | 计划形成，尚未编码；发布为用户明确要求时的条件阶段，最低验证规则保持 |
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、已准备译文、显示后 5 秒整句收录、OCR 保底及手动收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
@@ -259,3 +262,4 @@
 | 0.92 | 2026-10-22 | 索引用户请求的 0.16.9 安装包、必要交付核对和实际操作验证步骤 |
 | 0.93 | 2026-10-22 | 索引 0.16.10 默认英文及逐文件手动字幕选择恢复的最小后台证据 |
 | 0.94 | 2026-10-22 | 索引 Android 客户端 PRD，明确功能盘点、平台适用性、拟议范围与未实施状态 |
+| 0.95 | 2026-10-22 | 记录 Android P0 认可状态，索引架构与复用设计、已核实环境的开发指南及分阶段开发计划 |

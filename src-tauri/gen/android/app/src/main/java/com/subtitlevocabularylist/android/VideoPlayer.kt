@@ -104,8 +104,11 @@ class VideoPlayer(private val activity: Activity) {
                     mediaRevision++
                     if (!selectionApplied && tracks.groups.isNotEmpty()) {
                         selectionApplied = true
-                        if (audioKey.isNotEmpty()) select(C.TRACK_TYPE_AUDIO, audioKey)
-                        if (subtitleKey.isNotEmpty()) select(C.TRACK_TYPE_TEXT, subtitleKey)
+                        val audioApplied = audioKey.isEmpty() || select(C.TRACK_TYPE_AUDIO, audioKey)
+                        val subtitleApplied = subtitleKey.isEmpty() || select(C.TRACK_TYPE_TEXT, subtitleKey)
+                        // A rebuilt item can report its old tracks before the sidecar is ready.
+                        // Retry on the next track event until the requested tracks exist.
+                        selectionApplied = audioApplied && subtitleApplied
                     }
                 }
             })
@@ -286,10 +289,14 @@ class VideoPlayer(private val activity: Activity) {
     }
     fun subtitle(invoke: Invoke) {
         val args = invoke.parseArgs(VideoArgs::class.java)
-        require(args.uri == uri && Uri.parse(args.subtitleUri).scheme == "content")
+        val subtitleUri=Uri.parse(args.subtitleUri)
+        val privatePrepared=subtitleUri.scheme=="file" && java.io.File(subtitleUri.path ?: "").canonicalFile.let {
+            it.isFile && it.toPath().startsWith(java.io.File(activity.filesDir,"subtitles").canonicalFile.toPath()) && it.name.startsWith("svl-prepared-") && it.extension=="vtt"
+        }
+        require(args.uri == uri && (subtitleUri.scheme=="content" || privatePrepared))
         val current = player ?: throw IllegalArgumentException("请先打开视频。")
         val item = current.currentMediaItem ?: throw IllegalArgumentException("视频尚未就绪。")
-        val configs = item.localConfiguration!!.subtitleConfigurations.filter { it.id != args.subtitleUri && it.id?.startsWith("svl-delay:")!=true }.toMutableList()
+        val configs = item.localConfiguration!!.subtitleConfigurations.filter { it.id != args.subtitleUri && it.id?.startsWith("svl-delay:")!=true && !(privatePrepared && it.id?.startsWith("file://")==true && it.id?.contains("/svl-prepared-")==true) }.toMutableList()
         configs.add(MediaItem.SubtitleConfiguration.Builder(Uri.parse(args.subtitleUri)).setId(args.subtitleUri)
             .setMimeType(args.mime).setLanguage(args.language).setLabel(args.title).build())
         val position = current.currentPosition; val playing = current.playWhenReady

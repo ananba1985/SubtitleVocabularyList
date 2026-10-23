@@ -3,6 +3,8 @@ pub(crate) mod assessment;
 #[cfg(all(windows, feature = "desktop"))]
 pub(crate) mod capture;
 pub(crate) mod corpus;
+#[cfg(any(all(windows,feature="desktop"),all(target_os="android",feature="mobile")))]
+pub(crate) mod episode_sharing;
 pub(crate) mod learning;
 pub(crate) mod mobile_media;
 pub(crate) mod mobile_capture;
@@ -297,6 +299,14 @@ svl_ipc_macros::catalog! {
         synchronization::sync_start,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_metered_start,
+        #[cfg(any(all(windows,feature="desktop"),all(target_os="android",feature="mobile")))]
+        episode_sharing::prepared_episode_local,
+        #[cfg(any(all(windows,feature="desktop"),all(target_os="android",feature="mobile")))]
+        episode_sharing::prepared_episode_check,
+        #[cfg(any(all(windows,feature="desktop"),all(target_os="android",feature="mobile")))]
+        episode_sharing::prepared_episode_publish,
+        #[cfg(any(all(windows,feature="desktop"),all(target_os="android",feature="mobile")))]
+        episode_sharing::prepared_episode_download,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_resolve,
         #[cfg(all(windows, feature = "desktop"))]

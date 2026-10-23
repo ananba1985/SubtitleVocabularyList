@@ -120,7 +120,7 @@ pub(crate) fn open(store: &Store, uri: &str) -> Result<VideoState, AppError> {
     save(store,&key("verified",uri),&String::new())?;
     store.save_playback_state(&playback)?;
     if let Some(index) = setting::<MediaIndex>(store,&key("index",uri))? {
-        for subtitle in index.subtitles.iter().filter(|s|s.id.starts_with("content://")) {
+        for subtitle in index.subtitles.iter().filter(|s|s.id.starts_with("content://")||s.id.starts_with("file://")) {
             invoke::<VideoState>("videoSubtitle",serde_json::json!({"uri":uri,"subtitleUri":subtitle.id,"mime":subtitle.mime,"language":subtitle.language,"title":subtitle.title,"select":false}))?;
         }
     }
@@ -202,6 +202,44 @@ pub(crate) fn study(store: &Store, uri: &str) -> Result<Option<VideoStudy>, AppE
     Ok(study)
 }
 
+fn vtt_text(cues:&[Segment],delay:i64)->String {
+    let stamp=|ms:i64|format!("{:02}:{:02}:{:02}.{:03}",ms/3600000,ms/60000%60,ms/1000%60,ms%1000);
+    let mut vtt=String::from("WEBVTT\n\n");
+    for cue in cues {let end=cue.end_ms+delay;if end<=0 {continue}let text=cue.text.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;");
+        vtt.push_str(&format!("{} --> {}\n{}\n\n",stamp((cue.start_ms+delay).max(0)),stamp(end),text));}
+    vtt
+}
+
+#[cfg(all(target_os="android",feature="mobile"))]
+pub(crate) fn apply_prepared_episode(store:&Store,source_id:&str,document:&crate::episode_sharing::PreparedDocument)->Result<String,AppError> {
+    let uri:String=store.connection()?.query_row("SELECT path_hint FROM sources WHERE id=?",[source_id],|r|r.get(0))?;
+    let media=reference(store,&uri)?;
+    let mut index:MediaIndex=setting(store,&key("index",&uri))?.ok_or_else(||AppError::new("resource_missing","请先完成此视频的本机索引。"))?;
+    if index.sha256!=document.package.media_sha256 {return Err(AppError::new("conflict","共享资料与当前本地视频内容不匹配，请重新核对视频版本。"));}
+    let packet=&document.package;
+    let english=packet.cues.iter().map(|c|Segment{location_key:format!("shared:{}:{}:{}",vocabulary::digest(c.text.as_bytes()),c.start_ms,c.end_ms),text:c.text.clone(),start_ms:c.start_ms,end_ms:c.end_ms}).collect::<Vec<_>>();
+    let directory=store.root().join("subtitles").join(&index.sha256);std::fs::create_dir_all(&directory)?;
+    let text=vtt_text(&english,0);let path=directory.join(format!("svl-prepared-{}.vtt",vocabulary::digest(text.as_bytes())));std::fs::write(&path,text)?;
+    let id=reqwest::Url::from_file_path(path).map_err(|_|AppError::new("invalid_data","本机共享字幕路径无效。"))?.to_string();
+    index.subtitles.retain(|s|!s.id.starts_with("prepared:")&&!(s.id.starts_with("file://")&&s.id.contains("/svl-prepared-")));
+    let mut shared=vec![IndexedSubtitle{id:id.clone(),language:"en".into(),title:format!("共享英文 v{}",document.metadata.revision),mime:"text/vtt".into(),cues:english}];
+    let chinese=packet.cues.iter().filter(|c|!c.translation.trim().is_empty()).map(|c|Segment{location_key:format!("shared-cn:{}:{}:{}",vocabulary::digest(c.text.as_bytes()),c.start_ms,c.end_ms),text:c.translation.clone(),start_ms:c.start_ms,end_ms:c.end_ms}).collect::<Vec<_>>();
+    if !chinese.is_empty(){shared.push(IndexedSubtitle{id:format!("prepared:{}:zh",document.metadata.digest),language:"zh".into(),title:format!("共享中文 v{}",document.metadata.revision),mime:"text/vtt".into(),cues:chinese});}
+    index.subtitles.splice(0..0,shared);
+    save(store,&key("subtitle_delay",&uri),&packet.subtitle_delay_ms)?;
+    let result=install(store,&media,&index)?;
+    if let Some(asset)=result.subtitles.assets.iter().find(|a|a.language=="zh"&&a.title.starts_with("共享中文")){store.select_chinese_subtitle(&result.source_id,Some(asset.id.clone()))?;}
+    let mut tracks=setting::<std::collections::HashMap<String,String>>(store,&key("tracks",&uri))?.unwrap_or_default();tracks.insert("subtitle".into(),format!("raw:{id}"));save(store,&key("tracks",&uri),&tracks)?;
+    let current=state(store)?;
+    if current.uri==uri {
+        invoke::<VideoState>("videoControl",serde_json::json!({"sessionId":current.session_id,"action":"pause_internal"}))?;
+        let current:VideoState=invoke("videoSubtitle",serde_json::json!({"uri":uri,"subtitleUri":id,"mime":"text/vtt","language":"en","title":format!("共享英文 v{}",document.metadata.revision)}))?;
+        save(store,&key("verified",&uri),&current.session_id)?;
+        render_delayed_track(store,current,Some(&id))?;
+    }
+    Ok(result.source_id)
+}
+
 fn render_delayed(store:&Store,state:VideoState)->Result<VideoState,AppError> {
     render_delayed_track(store,state,None)
 }
@@ -212,10 +250,7 @@ fn render_delayed_track(store:&Store,state:VideoState,selected_id:Option<&str>)-
     if delay!=0 && (selected.is_some()||selected_id.is_some()) {
         let index=setting::<MediaIndex>(store,&key("index",&state.uri))?;
         if let Some(track)=index.as_ref().and_then(|i|i.subtitles.iter().find(|s|selected_id==Some(s.id.as_str()) || selected.is_some_and(|t|s.id==t.format_id || t.format_id.ends_with(&format!(":{}",s.id))))) {
-            let stamp=|ms:i64|format!("{:02}:{:02}:{:02}.{:03}",ms/3600000,ms/60000%60,ms/1000%60,ms%1000);
-            let mut vtt=String::from("WEBVTT\n\n");
-            for cue in &track.cues {let end=cue.end_ms+delay;if end<=0 {continue} let text=cue.text.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;");
-                vtt.push_str(&format!("{} --> {}\n{}\n\n",stamp((cue.start_ms+delay).max(0)),stamp(end),text));}
+            let vtt=vtt_text(&track.cues,delay);
             let file=store.root().join("jobs").join(format!("svl-shift-{}.vtt",vocabulary::digest(vtt.as_bytes())));std::fs::write(&file,vtt)?;path=file.display().to_string();
         } else {return Err(AppError::new("resource_missing","本轨没有可校正的文本索引，请添加文本字幕或继续观看。"));}
     }
@@ -303,11 +338,13 @@ impl Application {
             context.subject(&media.title); context.progress("subtitle_index",0,1,"正在读取本地视频指纹与文本字幕，视频可继续播放"); context.check_cancelled()?;
             let mut index: MediaIndex = invoke("mediaIndex",serde_json::json!({"uri":uri}))?; context.check_cancelled()?;
             if let Some(old) = setting::<MediaIndex>(&store,&key("index",&uri))?.filter(|old|old.sha256 == index.sha256) {
+                let shared=old.subtitles.iter().filter(|s|s.id.starts_with("file://")||s.id.starts_with("prepared:")).cloned().collect::<Vec<_>>();
                 for external in old.subtitles.into_iter().filter(|s|s.id.starts_with("content://")) {
                     let mut refreshed: IndexedSubtitle = invoke("subtitleRead",serde_json::json!({"uri":external.id,"title":external.title}))?;
                     refreshed.language = external.language;
                     index.subtitles.insert(0,refreshed);
                 }
+                index.subtitles.splice(0..0,shared);
             }
             let current=state(&store)?;
             if current.uri==uri && let Some(selected)=current.tracks.iter().find(|t|t.kind=="subtitle"&&t.selected) {

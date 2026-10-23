@@ -21,7 +21,7 @@ use std::{
     },
 };
 
-struct HttpRemote {
+pub(crate) struct HttpRemote {
     app: Arc<Application>,
     site: String,
     credential: SiteCredential,
@@ -30,6 +30,7 @@ struct HttpRemote {
     supports_assessments: bool,
     supports_delta: bool,
     supports_delta_download: bool,
+    supports_prepared_episodes: bool,
     cancelled: Option<Arc<AtomicBool>>,
     confirmed_media: BTreeSet<(String, String)>,
     #[cfg(target_os = "android")]
@@ -49,7 +50,7 @@ fn mime(format: &str) -> &'static str {
     }
 }
 impl HttpRemote {
-    fn new(app: Arc<Application>) -> Result<Self, AppError> {
+    pub(crate) fn new(app: Arc<Application>) -> Result<Self, AppError> {
         let settings = app.settings()?;
         if settings.offline_mode {
             return Err(failure(
@@ -75,6 +76,7 @@ impl HttpRemote {
             supports_assessments: false,
             supports_delta: false,
             supports_delta_download: false,
+            supports_prepared_episodes: false,
             cancelled: None,
             #[cfg(target_os = "android")]
             metered_audio_remaining: None,
@@ -91,7 +93,7 @@ impl HttpRemote {
         }
         Ok(())
     }
-    fn scope(&self) -> String {
+    pub(crate) fn scope(&self) -> String {
         format!(
             "{}|{}",
             self.site,
@@ -130,7 +132,7 @@ impl HttpRemote {
         }
         Ok(())
     }
-    fn account(&mut self) -> Result<(), AppError> {
+    pub(crate) fn account(&mut self) -> Result<(), AppError> {
         self.check()?;
         let (_, v) = read_json(
             self.client
@@ -154,10 +156,34 @@ impl HttpRemote {
         self.supports_assessments = v["assessmentSync"].as_str() == Some("assessment-1");
         self.supports_delta = v["bundleDelta"].as_str() == Some(crate::sync_delta::PROTOCOL);
         self.supports_delta_download = v["bundleDeltaDownload"].as_str() == Some(crate::sync_delta::PROTOCOL) && self.supports_chunks;
+        self.supports_prepared_episodes=v["preparedEpisodes"].as_str()==Some(crate::episode_sharing::PROTOCOL);
         self.app
             .store
             .assessment_sync_capability(&self.scope(), v["assessmentSync"].as_str())?;
         Ok(())
+    }
+    pub(crate) fn follow_cancellation(&mut self,context:&crate::tasks::TaskContext) {self.cancelled=Some(Arc::clone(&context.cancelled));}
+    fn require_prepared(&self)->Result<(),AppError> {self.check()?;if !self.supports_prepared_episodes{return Err(failure("capability_missing","当前站点尚不支持剧集准备资料，请完成服务器更新后重试。"));}Ok(())}
+    pub(crate) fn prepared_info(&mut self,hash:&str)->Result<Option<crate::episode_sharing::PreparedEpisodeMeta>,AppError> {
+        self.require_prepared()?;
+        let response=self.client.get(format!("{}/api/svl/v1/prepared-episodes/{hash}/info",self.site)).bearer_auth(&self.credential.token).send().map_err(|_|failure("network_unavailable","无法检查同账号的剧集准备资料。"))?;
+        self.check()?;if response.status().as_u16()==404{return Ok(None);}
+        let (_,value)=read_json(response)?;let meta:crate::episode_sharing::PreparedEpisodeMeta=serde_json::from_value(value)?;meta.validate(hash)?;Ok(Some(meta))
+    }
+    pub(crate) fn prepared_publish(&mut self,packet:&crate::episode_sharing::PreparedEpisode,base_revision:i64)->Result<crate::episode_sharing::PreparedEpisodeMeta,AppError> {
+        self.require_prepared()?;packet.validate()?;
+        let (status,value)=read_json(self.client.put(format!("{}/api/svl/v1/prepared-episodes/{}",self.site,packet.media_sha256)).bearer_auth(&self.credential.token).json(&json!({"baseRevision":base_revision,"package":packet})).send().map_err(|_|failure("network_unavailable","准备资料发布中断，本机原资料保留。"))?)?;
+        self.check()?;if status==409{return Err(failure("conflict","服务器准备资料已变化，请检查服务器版本并核对后再发布。"));}
+        let metadata:crate::episode_sharing::PreparedEpisodeMeta=serde_json::from_value(value)?;
+        crate::episode_sharing::PreparedDocument{metadata:metadata.clone(),package:packet.clone()}.validate(&packet.media_sha256)?;Ok(metadata)
+    }
+    pub(crate) fn prepared_download(&mut self,hash:&str)->Result<crate::episode_sharing::PreparedDocument,AppError> {
+        self.require_prepared()?;
+        let response=self.client.get(format!("{}/api/svl/v1/prepared-episodes/{hash}",self.site)).bearer_auth(&self.credential.token).send().map_err(|_|failure("network_unavailable","剧集准备资料下载中断，本机内容保留。"))?;
+        if !response.status().is_success(){read_json(response)?;return Err(failure("resource_missing","同账号尚无此视频的完整准备资料。"));}
+        let mut bytes=Vec::new();response.take((MAX_PACKET_BYTES+1) as u64).read_to_end(&mut bytes).map_err(|_|failure("network_unavailable","准备资料下载中断，请重试。"))?;
+        self.check()?;if bytes.len()>MAX_PACKET_BYTES{return Err(failure("capacity_exceeded","完整剧集准备资料超过容量，本机原资料保持。"));}
+        let document:crate::episode_sharing::PreparedDocument=serde_json::from_slice(&bytes)?;document.validate(hash)?;Ok(document)
     }
     fn get(&mut self, path: &str) -> Result<Value, AppError> {
         Transport::new(&self.client, &self.site, &self.credential.token)

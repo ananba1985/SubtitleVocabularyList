@@ -14,6 +14,7 @@ pub mod corpus;
 pub mod desktop_layout;
 pub mod error;
 pub mod explanations;
+mod episode_sharing;
 pub mod known_targets;
 #[cfg(any(feature = "app-host", test))]
 mod ipc_dto;

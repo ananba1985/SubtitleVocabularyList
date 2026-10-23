@@ -27,6 +27,9 @@ const kinds: Record<string, string> = {
   online_query: "在线查询",
   sync: "站点同步",
   sync_resolve: "同步冲突处理",
+  prepared_episode_check: "检查剧集共享资料",
+  prepared_episode_publish: "发布剧集准备资料",
+  prepared_episode_download: "下载剧集准备资料",
 };
 const states: Record<string, string> = {
   queued: "等待",

@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-ANDROID-001 |
-| 文档版本 | 0.5 |
+| 文档版本 | 0.6 |
 | 更新日期 | 2026-10-23 |
-| 状态 | 0.24.0 非同步功能及真实手动词库往返正常链路已验证；剧集资料共享待实施，见 Android 验证记录 |
+| 状态 | P0 开发收尾；0.25.0 独立剧集资料共享及已有手动词库／本机正常流程有证据；未正式发布 |
 | 依据 | [Android PRD](../requirements/android-PRD.md)、[架构与开发设计](../design/android-architecture.md)、[开发计划](../planning/android-development-plan.md) |
 
 ## 1 开发原则
@@ -123,6 +123,8 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 
 资源准备现在包含 12 个词库、模型、许可和源清单文件。英语模型是 tessdata_best 4.1.0 的 eng，摘要在脚本固定。`android:dev` 只为开发连接 Vite；内嵌页面的 debug 构建用于本机正常离线检查，不是签名发布。个人原声、词库、截图、测试素材和模型均不进入公开源码。
 
+0.25.0 的 `episode_sharing.rs` 统一导出、完整校验、账号缓存和资料任务，命令／DTO 仍从 Rust 生成；手机 `mobile_video.rs` 仅将资料装入现有 Store 与私有 VTT，`VideoPlayer.kt` 负责 Media3 选轨。协议、站点源码版本及部署身份见 [共享设计](../design/prepared-episodes.md)／[实际验证](../testing/prepared-episode-results.md)。具名合成资料与截图保留在 `.local/episode-sharing-acceptance`，没有额外常驻服务。
+
 日常使用见 [Android 使用说明](android-user-guide.md)。本机验收具名素材在 `.local/android-acceptance`，手机对应 Download/SVL-Android；共享账号凭据保留，不为检查离线而断开或重置。0.24.0 用户恢复真实同步测试后，手动离线已关闭、自动同步仍关闭；私有检查点和网络证据在 `.local/android-sync-20261023`，隔离桌面资料在 `.local/android-sync-desktop/Data`。不复制手机 Keystore 凭据给其他设备，不直接操作日常 Data。
 
 ## 8 查询与媒体维护入口（0.23.0）
@@ -142,3 +144,4 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 | 0.3 | 2026-10-22 | 补固定 Android OCR 构建、资源与运行入口，索引使用说明，更新实际开发状态 |
 | 0.4 | 2026-10-23 | 补查询／密钥、共享历史、全字幕偏移、音轨缓存和临时图维护入口，索引 PRD 对照结果 |
 | 0.5 | 2026-10-23 | 补真实同步正常证据和隔离资料位置，区分单次网络授权、自动同步及剧集共享 |
+| 0.6 | 2026-10-23 | 补剧集资料共用维护入口、真实服务器部署和具名验证位置 |

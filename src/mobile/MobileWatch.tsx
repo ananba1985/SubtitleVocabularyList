@@ -6,6 +6,7 @@ import { AudioPlayer } from "../components/AudioPlayer";
 import { useVideoLearning } from "./useVideoLearning";
 import { MobileWordQuery } from "./MobileWordQuery";
 import { MobileQuery } from "./MobileQuery";
+import { PreparedEpisodeSharing } from "../components/PreparedEpisodeSharing";
 
 type VideoState = CommandResult<"video_state">;
 const time = (ms: number) =>
@@ -524,6 +525,17 @@ export function MobileWatch({
             <button disabled={busy} onClick={() => open(state.uri)}>
               重试字幕准备
             </button>
+          )}
+          {study && (
+            <PreparedEpisodeSharing
+              key={`shared:${study.sourceId}`}
+              sourceId={study.sourceId}
+              onApplied={async () => {
+                if (!state) return;
+                setStudy(await call("video_study", { uri: state.uri }));
+                setState(await call("video_state"));
+              }}
+            />
           )}
           <details className="mobile-learning-options">
             <summary>播放设置</summary>

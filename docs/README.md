@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.102 |
+| 文档版本 | 0.103 |
 | 更新日期 | 2026-10-23 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -15,14 +15,15 @@
 | 类型 | 当前或后续位置 | 必须包含 | 职责边界 |
 | --- | --- | --- | --- |
 | 产品需求 PRD | [requirements/PRD.md](requirements/PRD.md) | 背景、目标、范围、流程、需求编号、业务规则、验收标准、待确认项 | 描述需要满足的行为和结果；具体框架、代码结构和数据库实现属于设计文档 |
-| Android 客户端需求 | [requirements/android-PRD.md](requirements/android-PRD.md) | 功能清单、P0／P1 边界、学习／同步及验收标准 | 非同步审查及 0.24.0 手动词库同步已有正常证据，剧集共享待实施，P1 边界保留 |
+| Android 客户端需求 | [requirements/android-PRD.md](requirements/android-PRD.md) | 功能清单、P0／P1 边界、学习／同步及验收标准 | 非同步、手动词库及 0.25.0 独立剧集共享已有正常证据，P0 实现收尾，P1／未测条件单列 |
 | Android 架构与复用设计 | [design/android-architecture.md](design/android-architecture.md) | 源码复用清单、共用 Rust／React、平台接口、数据／媒体／同步、工程风险 | 独立运行与共享核心方案已确认，分列实际接入和待实施方案；Windows 现有架构保持 |
 | Android 开发指南 | [development/android-development.md](development/android-development.md) | 本机 Studio／SDK／JDK 盘点、环境准备、开发入口、类型与维护规则 | 工程和脚本已接入，固定工具链检查与原生编译通过；设备运行单独记录 |
-| Android 使用说明 | [development/android-user-guide.md](development/android-user-guide.md) | 本机学习、真实词库同步、单次计费授权和冲突处理 | 对应 0.24.0，剧集共享仍待实现 |
+| Android 使用说明 | [development/android-user-guide.md](development/android-user-guide.md) | 本机学习、真实词库同步、单次计费授权和冲突处理 | 对应 0.25.0，含剧集资料发布／下载与离线复用 |
 | Android 开发计划 | [planning/android-development-plan.md](planning/android-development-plan.md) | AND-M-00 至 AND-M-09、依赖、改动位置、交付门槛与需求验收追溯 | 已开始实施，逐阶段核对实际证据；发布仍为用户明确要求时的条件阶段 |
 | Android 增量验证 | [testing/android-results.md](testing/android-results.md) | 实际工具链、共享宿主编译、类型检查与设备／服务结果 | 分阶段正常证据及 0.23.0 PRD 补齐、不同音轨内容／独立冷启动；同步和真实远端服务边界分别保留 |
 | Android PRD 对照审查 | [testing/android-prd-review.md](testing/android-prd-review.md) | 非同步 P0 逐项实现、原缺口、补齐证据、同步／P1 和未验收边界 | 本轮发现缺口已补，未宣称完整 P0、全部设备兼容或正式发布 |
-| Android 真实同步验证 | [testing/android-sync-results.md](testing/android-sync-results.md) | 同账号手机／服务器／隔离桌面正常往返、原声播放、历史、冲突和重复交换 | 0.24.0 手动完整词库链路通过；单次计费网络额度已接入，自动触发／异常矩阵未扩大测试，剧集共享待实施 |
+| 同账号剧集准备资料 | [design/prepared-episodes.md](design/prepared-episodes.md)、[testing/prepared-episode-results.md](testing/prepared-episode-results.md) | FR-38／AND-FR-22／AND-AC-12 独立契约、版本与真实结果 | 0.25.0 站点版本 32、电脑退出后手机取得、离线解释及更新快照保持通过 |
+| Android 真实同步验证 | [testing/android-sync-results.md](testing/android-sync-results.md) | 同账号手机／服务器／隔离桌面正常往返、原声播放、历史、冲突和重复交换 | 0.24.0 手动词库链路通过；自动触发／异常矩阵未扩大测试，0.25.0 剧集共享另有独立证据 |
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、已准备译文、显示后 5 秒整句收录、OCR 保底及手动收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
@@ -278,3 +279,4 @@
 | 0.100 | 2026-10-22 | 索引 Android 0.22.0 系统分享／离线 OCR／本机恢复与独立运行，增加使用说明，保留后置同步范围 |
 | 0.101 | 2026-10-23 | 索引 Android 0.23.0 PRD 对照补齐、查询／历史／字幕偏移／音轨内容证据，更新相关文档状态 |
 | 0.102 | 2026-10-23 | 索引 0.24.0 真实手动词库双向同步、原声／历史／冲突正常证据及单次计费授权，保留剧集共享边界 |
+| 0.103 | 2026-10-23 | 索引独立剧集准备资料设计与真实验证，记录 P0 实现清单收尾及 P1／自动触发未测／发布边界 |

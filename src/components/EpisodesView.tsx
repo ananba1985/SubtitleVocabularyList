@@ -9,6 +9,7 @@ import { CandidateMeaning } from "./CandidateMeaning";
 import { OnlineLookup } from "./OnlineLookup";
 import { SourcePicker } from "./SourcePicker";
 import { SubtitleSettings } from "./SubtitleSettings";
+import { PreparedEpisodeSharing } from "./PreparedEpisodeSharing";
 export type { EpisodePanel } from "../episodes/useEpisodePreview";
 
 export function EpisodesView({
@@ -304,6 +305,10 @@ export function EpisodesView({
                   onChanged={async () => {
                     notify("字幕资料已更新，已有个人词库与学习记录保持。");
                   }}
+                />
+                <PreparedEpisodeSharing
+                  key={`shared:${sourceId}`}
+                  sourceId={sourceId}
                 />
               </details>
             )}

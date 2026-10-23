@@ -3,13 +3,13 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-001 |
-| 文档版本 | 0.57 |
+| 文档版本 | 0.58 |
 | 对应产品版本 | 0.1 基线；0.4.0 听读、0.5.0 Pot 替代、0.6.0 写作翻译及 0.7.0 底库增量 |
-| 更新日期 | 2026-10-22 |
+| 更新日期 | 2026-10-23 |
 | 状态 | 初版待评审；技术栈与已确认约束已确定，其余设计待验证 |
 | 需求依据 | [产品需求文档](../requirements/PRD.md) |
 | 管理规范 | [文档管理规范](../README.md) |
-| 详细设计 | [数据模型](data-model.md)、[应用流程](application-flows.md)、[接口契约](interfaces.md)、[高频水平测试设计](vocabulary-assessment.md)、[边看边学设计](watch-and-learn.md) |
+| 详细设计 | [同账号剧集资料共享](prepared-episodes.md)、[数据模型](data-model.md)、[应用流程](application-flows.md)、[接口契约](interfaces.md)、[高频水平测试设计](vocabulary-assessment.md)、[边看边学设计](watch-and-learn.md) |
 | 实施与验证 | [开发计划](../planning/development-plan.md)、[测试计划](../testing/test-plan.md) |
 
 本设计定义 Windows 桌面应用的技术栈、系统边界、模块职责、数据关系及集成约束。需求范围和验收标准以 PRD 为准。系统以本地词库为日常使用基础，采集、剧集导入和在线同步通过统一收录与合并逻辑连接学习核心。
@@ -449,3 +449,4 @@ TECH-04 的逻辑模型与命令、TECH-05 的测验状态、TECH-06 的同步�
 | 0.56 | 2026-10-22 | 按卡顿反馈移除自建 render API 绘制，改用完整 mpv 的原生 D3D11 输出与独立渲染线程；保留后台静音验证及实际窗口待确认边界 |
 
 | 0.57 | 2026-10-22 | 对齐 host/commands 共用目录与 Android 独立宿主，保留唯一业务核心和平台条件；当前实施证据见 Android 专项记录 |
+| 0.58 | 2026-10-23 | 索引独立剧集资料共享设计；共用 Rust 导出与传输，手机只适配原生字幕文件 |

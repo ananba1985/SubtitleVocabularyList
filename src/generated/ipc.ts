@@ -224,6 +224,12 @@ export type PrepareBank = { bankId: string | null, ranges: { [key in string]: nu
 
 export type PreparedCollection = { draftId: string, matches: Array<Entry>, input: CollectionInput, };
 
+export type PreparedEpisodeApplied = { metadata: PreparedEpisodeMeta, sourceId: string, };
+
+export type PreparedEpisodeLocal = { mediaSha256: string, title: string, cueCount: number, applied: PreparedEpisodeMeta | null, };
+
+export type PreparedEpisodeMeta = { mediaSha256: string, revision: number, digest: string, bytes: number, title: string, cueCount: number, translatedCount: number, explanationCount: number, preparedAt: number, updatedAt: number, };
+
 export type PreparedExplanation = { meaningScope: string, meaning: string, translation: string, notes: string, };
 
 export type PreviewAudio = { path: string, asset: AudioAsset, };
@@ -465,6 +471,10 @@ export interface CommandMap {
   practice_get: { args: undefined; result: PracticeState | null };
   practice_import: { args: { document: PracticeDocument }; result: PracticeState };
   practice_progress_save: { args: { documentId: string; progress: PracticeProgress }; result: void };
+  prepared_episode_check: { args: { sourceId: string; operationId: string }; result: TaskHandle<PreparedEpisodeMeta | null> };
+  prepared_episode_download: { args: { sourceId: string; expectedRevision: number; operationId: string }; result: TaskHandle<PreparedEpisodeApplied> };
+  prepared_episode_local: { args: { sourceId: string }; result: PreparedEpisodeLocal };
+  prepared_episode_publish: { args: { sourceId: string; expectedRevision: number; operationId: string }; result: TaskHandle<PreparedEpisodeMeta> };
   preview_start: { args: { sourceId: string; exampleId: string; operationId: string }; result: TaskHandle<PreviewAudio> };
   providers_list: { args: undefined; result: Array<Provider> };
   providers_update: { args: { update: ProviderUpdate }; result: Array<Provider> };

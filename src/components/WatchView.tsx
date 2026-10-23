@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { call, message, time } from "../api";
 import { SubtitleSettings } from "./SubtitleSettings";
+import { PreparedEpisodeSharing } from "./PreparedEpisodeSharing";
 import { WatchQuery, type WatchRequest } from "./WatchQuery";
 import { WatchOcr } from "./WatchOcr";
 import { WatchClip } from "./WatchClip";
@@ -643,6 +644,10 @@ export function WatchView({
             onChanged={async () => {
               await control("refresh_subtitles");
             }}
+          />
+          <PreparedEpisodeSharing
+            key={`shared:${state?.loaded ? (state.sourceId ?? "") : selected}`}
+            sourceId={state?.loaded ? (state.sourceId ?? "") : selected}
           />
           <label className="check-label">
             <input

@@ -29,6 +29,7 @@ OCR 核对原文后可选择原声区间、手动试听并用于确认收录；�
 | 文档 | 职责 |
 | --- | --- |
 | [产品需求文档](docs/requirements/PRD.md) | 产品目标、0.1 范围、用户流程、需求和验收标准 |
+| [Android 客户端 PRD](docs/requirements/android-PRD.md) | 现有功能盘点、Android 适用性、拟议首版与后续范围、移动采集及完整同步；当前为需求规划，尚未实现 |
 | [需求审查记录](docs/requirements/review.md) | 文档层审查与开放事项的推进方式 |
 | [架构设计文档](docs/design/architecture.md) | 已确认的技术栈、系统边界、模块职责、数据与集成设计 |
 | [高频水平测试设计](docs/design/vocabulary-assessment.md) | 题库、离线作答、报告、确认收录和完整历史同步已接入；本轮人工验收按用户确认结束，未复核边界见验证记录 |

@@ -19,7 +19,7 @@
 | Android 架构与复用设计 | [design/android-architecture.md](design/android-architecture.md) | 源码复用清单、共用 Rust／React、平台接口、数据／媒体／同步、工程风险 | 独立运行与共享核心方案已确认，分列实际接入和待实施方案；Windows 现有架构保持 |
 | Android 开发指南 | [development/android-development.md](development/android-development.md) | 本机 Studio／SDK／JDK 盘点、环境准备、开发入口、类型与维护规则 | 工程和脚本已接入，固定工具链检查与原生编译通过；设备运行单独记录 |
 | Android 开发计划 | [planning/android-development-plan.md](planning/android-development-plan.md) | AND-M-00 至 AND-M-09、依赖、改动位置、交付门槛与需求验收追溯 | 已开始实施，逐阶段核对实际证据；发布仍为用户明确要求时的条件阶段 |
-| Android 增量验证 | [testing/android-results.md](testing/android-results.md) | 实际工具链、共享宿主编译、类型检查与设备／服务结果 | 开发中，Android debug 构建与离线资源入包通过；手机安装／功能结果单独记录，不能据此宣称 P0 完成 |
+| Android 增量验证 | [testing/android-results.md](testing/android-results.md) | 实际工具链、共享宿主编译、类型检查与设备／服务结果 | 手机离线查询、收录／合并／编辑已验证；0.18.0 共享账号／完整同步已接入，设备与真实服务结果单独记录，不能据此宣称 P0 完成 |
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、已准备译文、显示后 5 秒整句收录、OCR 保底及手动收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |

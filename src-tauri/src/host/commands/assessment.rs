@@ -241,35 +241,6 @@ pub(crate) async fn assessment_bank_audio_prepare(
 }
 
 #[svl_ipc_macros::command]
-pub(crate) async fn assessment_sync_status(
-    app: AppState<'_>,
-) -> Result<crate::assessment_sync::AssessmentSyncStatus, AppError> {
-    let app = Arc::clone(app.inner());
-    background(move || app.assessment_sync_status()).await
-}
-
-#[svl_ipc_macros::command]
-pub(crate) async fn assessment_sync_conflicts(
-    app: AppState<'_>,
-) -> Result<Vec<crate::ipc_dto::AssessmentSyncConflict>, AppError> {
-    let app = Arc::clone(app.inner());
-    background_project(move || app.assessment_sync_conflicts()).await
-}
-
-#[svl_ipc_macros::command]
-pub(crate) async fn assessment_sync_keep_both(
-    app: AppState<'_>,
-    input: crate::assessment_sync::KeepAssessmentBoth,
-) -> Result<crate::ipc_dto::AssessmentKeepBothReply, AppError> {
-    let app = Arc::clone(app.inner());
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::ipc_dto::project(app.assessment_sync_keep_both(&input)?)
-    })
-    .await
-    .map_err(|_| AppError::new("internal_error", "冲突处理未完成，请刷新记录。"))?
-}
-
-#[svl_ipc_macros::command]
 pub(crate) async fn assessment_audio_prepare(
     app: AppState<'_>,
     session_id: String,

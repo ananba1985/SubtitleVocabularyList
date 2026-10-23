@@ -8,6 +8,8 @@ import { CollectionModal } from "../components/CollectionModal";
 import { LibraryView } from "../components/LibraryView";
 import { TasksView } from "../components/TasksView";
 import { RuntimeFeatures } from "../runtimeFeatures";
+import { MobileAccount } from "./MobileAccount";
+import { useAutomaticSync } from "./useAutomaticSync";
 import "./mobile.css";
 
 export default function MobileApp() {
@@ -27,6 +29,11 @@ export default function MobileApp() {
     setInfo(nextInfo); setSettings(nextSettings); setCapabilities(nextCapabilities); setTasks(nextTasks);
   }, []);
   useEffect(() => { refresh().catch((e) => setError(message(e))); }, [refresh]);
+  const changed = useCallback(() => {
+    setRefreshKey((value) => value + 1);
+    refresh().catch((e) => setError(message(e)));
+  }, [refresh]);
+  const automaticSync = useAutomaticSync(!!info, changed);
   useEffect(() => {
     let disposed = false;
     const stop = listen<TaskSnapshot>("task_updated", ({ payload }) => {
@@ -56,13 +63,16 @@ export default function MobileApp() {
         <main>
           {error && <div className="error banner" role="alert">{error}<button onClick={() => { setError(""); refresh().catch((e) => setError(message(e))); }}>重试</button></div>}
           {!info && !error && <p role="status">正在打开手机本地词库…</p>}
-          {page === "library" && info && <LibraryView compact info={info} refreshKey={refreshKey} collect={collect} report={(e) => setError(message(e))} />}
+          {page === "library" && info && <LibraryView compact info={info} refreshKey={refreshKey} collect={collect}
+            onChanged={() => { changed(); automaticSync.request(); }} report={(e) => setError(message(e))} />}
           {page === "account" && <>
             <section className="mobile-card"><h2>本机学习</h2><p>{info?.entryCount ?? 0} 个词条 · v{info?.version ?? ""}</p>
               <label className="check-label"><input type="checkbox" checked={settings?.offlineMode ?? false} onChange={(e) => setOffline(e.target.checked)} />手动离线</label>
               <p className="muted">词库和学习记录保存在手机上，与桌面客户端独立运行。</p>
               {!!info?.dictionaryWarnings.length && <p className="notice">{info.dictionaryWarnings.join(" ")}</p>}
             </section>
+            {info && settings && capabilities?.synchronization && <MobileAccount settings={settings} refreshKey={refreshKey}
+              changed={changed} requestSync={automaticSync.request} autoNotice={automaticSync.notice} />}
             <TasksView tasks={tasks} refreshKey={refreshKey} sourceCount={info?.sourceCount ?? 0}
               cancel={(taskId) => { call("task_cancel", { taskId }).then(refresh).catch((e) => setError(message(e))); }} />
           </>}

@@ -338,18 +338,18 @@ pub fn load_secrets(root: &Path, id: &str) -> Result<HashMap<String, String>, Ap
     if !path.exists() {
         return Ok(HashMap::new());
     }
-    #[cfg(all(windows, feature = "desktop"))]
+    #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     {
         let bytes = std::fs::read(path)?;
         return Ok(serde_json::from_slice(&crate::credentials::transform(
             &bytes, false,
         )?)?);
     }
-    #[cfg(not(all(windows, feature = "desktop")))]
+    #[cfg(not(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))))]
     {
         Err(AppError::new(
             "credentials_unavailable",
-            "服务凭据需要 Windows 本机运行环境。",
+            "服务凭据需要受支持的本机运行环境。",
         ))
     }
 }
@@ -361,7 +361,7 @@ pub(crate) fn save_secrets(root: &Path, id: &str, secrets: &HashMap<String, Stri
         }
         return Ok(());
     }
-    #[cfg(all(windows, feature = "desktop"))]
+    #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     {
         let path = secret_path(root, id);
         std::fs::create_dir_all(path.parent().unwrap())?;
@@ -374,11 +374,11 @@ pub(crate) fn save_secrets(root: &Path, id: &str, secrets: &HashMap<String, Stri
         }
         Ok(())
     }
-    #[cfg(not(all(windows, feature = "desktop")))]
+    #[cfg(not(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))))]
     {
         Err(AppError::new(
             "credentials_unavailable",
-            "服务凭据需要 Windows 本机运行环境。",
+            "服务凭据需要受支持的本机运行环境。",
         ))
     }
 }

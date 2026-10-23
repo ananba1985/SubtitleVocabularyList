@@ -35,7 +35,7 @@ pub(crate) fn app_capabilities() -> AppCapabilities {
         platform: std::env::consts::OS.into(),
         offline_core: true,
         independent_runtime: true,
-        synchronization: cfg!(all(windows, feature = "desktop")),
+        synchronization: cfg!(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))),
         native_playback: cfg!(all(windows, feature = "desktop")),
         screen_capture: cfg!(all(windows, feature = "desktop")),
         system_speech: cfg!(all(windows, feature = "desktop")),

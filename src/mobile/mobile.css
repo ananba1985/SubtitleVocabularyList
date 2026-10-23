@@ -24,3 +24,8 @@
 .mobile-app .field-row .grow { min-width:180px; }
 .mobile-app .check-label input { width:auto; }
 .mobile-app .entry-row { width:100%; }
+.mobile-app .mobile-card label:not(.check-label) { display:block; margin-bottom:12px; }
+.mobile-app .mobile-card label:not(.check-label) input { display:block; width:100%; margin-top:6px; }
+.mobile-app .settings-panel { padding:16px; margin-bottom:16px; min-width:0; overflow-wrap:anywhere; }
+.mobile-app .sync-comparison { grid-template-columns:1fr; }
+.mobile-app .actions { flex-wrap:wrap; }

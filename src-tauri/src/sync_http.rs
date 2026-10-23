@@ -61,12 +61,14 @@ impl HttpRemote {
                 c.account_scope.is_some() && c.expires_at > chrono::Utc::now().timestamp_millis()
             })
             .ok_or_else(|| failure("auth_required", "请先由浏览器批准本机的站点账号连接。"))?;
+        #[cfg(target_os = "android")]
+        crate::device_sync::require_bound(&app.store, &format!("{site}|{}", credential.account_scope.as_deref().unwrap()))?;
         Ok(Self {
             confirmed_media: BTreeSet::new(),
             app,
             site,
             credential,
-            client: crate::site_connection::desktop_client()?,
+            client: crate::site_connection::host_client()?,
             supports_chunks: false,
             supports_assessments: false,
             supports_delta: false,
@@ -355,6 +357,8 @@ impl Remote for HttpRemote {
             read_json(head)?;
             return Err(failure("network_error", "站点原声状态无效。"));
         }
+        #[cfg(target_os = "android")]
+        crate::device_sync::require_audio_network()?;
         let size = bytes.len();
         let (_, v) = read_json(
             self.client
@@ -377,6 +381,8 @@ impl Remote for HttpRemote {
     }
     fn download(&mut self, hash: &str, format: &str) -> Result<Vec<u8>, AppError> {
         self.check()?;
+        #[cfg(target_os = "android")]
+        crate::device_sync::require_audio_network()?;
         let response = self
             .client
             .get(format!("{}/api/svl/v1/media/{hash}", self.site))
@@ -510,6 +516,8 @@ impl Application {
                     )
                 })?;
             let assessment = remote.sync_assessments(&scope, &context)?;
+            #[cfg(target_os = "android")]
+            crate::device_sync::completed(&store, &scope)?;
             Ok(SyncTaskResult { entries: result, assessment })
         })
     }

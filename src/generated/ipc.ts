@@ -118,6 +118,12 @@ export type Counts = { planned: number, processed: number, unscored: number, val
 
 export type Definition = { text: string, partOfSpeech: string, example: string, };
 
+export type DeviceNetwork = { connected: boolean, metered: boolean, foreground: boolean, };
+
+export type DeviceSyncPreferences = { deviceName: string, autoSync: boolean, };
+
+export type DeviceSyncState = { preferences: DeviceSyncPreferences, boundAccount: string | null, currentAccount: string | null, bindingRequired: boolean, network: DeviceNetwork, lastCompletedAt: number | null, readyAudio: number, missingAudio: number, };
+
 export type Entry = { id: string, kind: string, text: string, matchKey: string, revision: number, createdAt: number, updatedAt: number, collectionCount: number, occurrenceCount: number, meanings: Array<Meaning>, examples: Array<Example>, };
 
 export type EntryUpdate = { id: string, expectedRevision: number, text: string, meanings: Array<MeaningUpdate>, };
@@ -375,9 +381,13 @@ export interface CommandMap {
   collection_from_example: { args: { sourceId: string; exampleId: string; text: string; kind: string; meaning: string; operationId: string }; result: PreparedCollection };
   collection_prepare: { args: { input: CollectionInput }; result: PreparedCollection };
   connection_check: { args: { operationId: string }; result: TaskHandle<ConnectionStatus> };
+  connection_disconnect: { args: undefined; result: void };
   connection_open: { args: undefined; result: void };
   connection_start: { args: { operationId: string; replace: boolean }; result: TaskHandle<ConnectionStatus> };
   connection_status: { args: undefined; result: ConnectionStatus };
+  device_sync_bind: { args: { expectedAccount: string }; result: DeviceSyncState };
+  device_sync_get: { args: undefined; result: DeviceSyncState };
+  device_sync_update: { args: { input: DeviceSyncPreferences }; result: DeviceSyncPreferences };
   entries_list: { args: { search?: string | null; offset?: number | null; limit?: number | null }; result: Array<Entry> };
   entry_get: { args: { entryId: string }; result: Entry };
   entry_update: { args: { input: EntryUpdate }; result: Entry };

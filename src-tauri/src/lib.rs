@@ -33,6 +33,8 @@ mod query_stream;
 pub mod review_policy;
 pub mod reviews;
 pub mod site_connection;
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+mod device_sync;
 pub mod store;
 pub mod sync_data;
 mod sync_delta;
@@ -53,7 +55,7 @@ pub mod subtitles;
 #[cfg(all(windows, feature = "desktop"))]
 mod player;
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 pub mod credentials;
 #[cfg(all(windows, feature = "desktop"))]
 mod app_paths;
@@ -69,9 +71,9 @@ mod desktop_query;
 mod desktop_replacement;
 #[cfg(all(windows, feature = "desktop"))]
 mod replacement_target;
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 mod sync_http;
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 mod sync_transport;
 #[cfg(all(windows, feature = "desktop"))]
 pub mod windows_native;

@@ -11,12 +11,14 @@ export function LibraryView({
   collect,
   report,
   compact = false,
+  onChanged,
 }: {
   info: AppInfo | null;
   refreshKey: number;
   collect: (seed: CollectionSeed) => void;
   report: (error: unknown) => void;
   compact?: boolean;
+  onChanged?: () => void;
 }) {
   const [search, setSearch] = useState(""),
     [offset, setOffset] = useState(0),
@@ -81,6 +83,7 @@ export function LibraryView({
               ),
             );
             setEditing(false);
+            onChanged?.();
           }}
         />
       )}

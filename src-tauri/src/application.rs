@@ -91,9 +91,9 @@ pub struct Application {
     pub(crate) preparation_retry_epoch: AtomicU64,
     pub(crate) preparation_shutdown: AtomicBool,
     pub(crate) preparation_priority: Mutex<Option<String>>,
-    #[cfg(all(windows, feature = "desktop"))]
+    #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     pub(crate) connection_guard: Arc<Mutex<()>>,
-    #[cfg(all(windows, feature = "desktop"))]
+    #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     pub(crate) sync_guard: Arc<Mutex<()>>,
 }
 
@@ -250,9 +250,9 @@ impl Application {
             preparation_retry_epoch: AtomicU64::new(0),
             preparation_shutdown: AtomicBool::new(false),
             preparation_priority: Mutex::new(None),
-            #[cfg(all(windows, feature = "desktop"))]
+            #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
             connection_guard: Arc::new(Mutex::new(())),
-            #[cfg(all(windows, feature = "desktop"))]
+            #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
             sync_guard: Arc::new(Mutex::new(())),
         };
         if let Ok(settings) = app.settings() {

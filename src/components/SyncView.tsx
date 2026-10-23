@@ -5,6 +5,7 @@ import type {
   AssessmentSyncConflict,
 } from "../assessmentTypes";
 import { assessmentStateNames } from "../assessmentTypes";
+import { useRuntimeFeatures } from "../runtimeFeatures";
 import type {
   ConnectionStatus,
   SyncStatus,
@@ -23,7 +24,8 @@ const conflictFields: Record<string, string> = {
   "sources.title": "来源名称",
 };
 
-export function SyncView({ onChanged }: { onChanged: () => void }) {
+export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void; refreshKey?: number }) {
+  const { mobile } = useRuntimeFeatures();
   const [connection, setConnection] = useState<ConnectionStatus | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -55,7 +57,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
   }, []);
   useEffect(() => {
     refresh().catch((e) => setError(message(e)));
-  }, [refresh]);
+  }, [refresh, refreshKey]);
   async function run(
     command: "connection_start" | "connection_check",
     replace = false,
@@ -71,6 +73,7 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
       setTaskId(task.id);
       await waitTask(task);
       await refresh();
+      onChanged();
     } catch (e) {
       setError(message(e));
     } finally {
@@ -422,11 +425,10 @@ export function SyncView({ onChanged }: { onChanged: () => void }) {
             </article>
           ))}
           <p className="muted">
-            连接凭据由 Windows
-            当前用户保护，保存于独立位置。可以在站点连接页撤销设备访问。
+            {mobile ? "连接凭据由 Android Keystore 保护。" : "连接凭据由 Windows 当前用户保护。"}可以在站点连接页撤销设备访问。
           </p>
           <p className="muted">
-            浏览器批准后返回此页检查连接；所有同步都由你主动发起。
+            浏览器批准后返回此页检查连接；{mobile ? "自动同步可在上方自主开启。" : "所有同步都由你主动发起。"}
           </p>
         </>
       )}

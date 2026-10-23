@@ -1,6 +1,6 @@
 [package]
 name = "subtitle-vocabulary-list"
-version = "0.17.1"
+version = "0.18.0"
 description = "Offline Windows vocabulary notebook with original dialogue audio"
 edition = "2024"
 rust-version = "1.90"
@@ -18,7 +18,7 @@ required-features = ["desktop"]
 [features]
 default = ["app-host"]
 app-host = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog"]
-mobile = ["app-host"]
+mobile = ["app-host", "dep:base64"]
 ipc-types = ["desktop", "dep:ts-rs"]
 desktop = ["app-host", "tauri/tray-icon", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-global-shortcut", "dep:windows", "dep:windows-core", "dep:libloading"]
 
@@ -27,6 +27,7 @@ tauri-build = { version = "=2.7.1", optional = true , features = [] }
 
 [dependencies]
 svl-ipc-macros = { path = "ipc-macros" }
+base64 = { version = "=0.22.1", optional = true }
 ts-rs = { version = "=12.0.1", optional = true, features = ["serde-json-impl"] }
 tauri = { version = "=2.12.1", optional = true, features = ["protocol-asset"] }
 tauri-plugin-dialog = { version = "2", optional = true }

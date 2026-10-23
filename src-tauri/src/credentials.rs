@@ -1,6 +1,7 @@
 use crate::{error::AppError, vocabulary::digest};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use windows::{
     Win32::{
         Foundation::{HLOCAL, LocalFree},
@@ -36,6 +37,7 @@ fn credential_path(root: &Path, site: &str) -> PathBuf {
         .join(format!("site-{}.bin", digest(site.as_bytes())))
 }
 
+#[cfg(windows)]
 pub(crate) fn transform(bytes: &[u8], protect: bool) -> Result<Vec<u8>, AppError> {
     if bytes.is_empty() || bytes.len() > 65536 {
         return Err(AppError::new("invalid_input", "连接凭据大小无效。"));
@@ -91,6 +93,11 @@ pub(crate) fn transform(bytes: &[u8], protect: bool) -> Result<Vec<u8>, AppError
     result
 }
 
+#[cfg(target_os = "android")]
+pub(crate) fn transform(bytes: &[u8], protect: bool) -> Result<Vec<u8>, AppError> {
+    crate::mobile_platform::credential_transform(bytes, protect)
+}
+
 pub fn load(root: &Path, site: &str) -> Result<Option<SiteCredential>, AppError> {
     let path = credential_path(root, site);
     if !path.exists() {
@@ -123,6 +130,14 @@ pub fn save(root: &Path, site: &str, credential: &SiteCredential) -> Result<(), 
     Ok(())
 }
 
+pub(crate) fn remove(root: &Path, site: &str) -> Result<(), AppError> {
+    match std::fs::remove_file(credential_path(root, site)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub fn open_authorization(site: &str, request_id: &str) -> Result<(), AppError> {
     if uuid::Uuid::parse_str(request_id).is_err() {
         return Err(AppError::new("invalid_input", "连接请求标识无效。"));
@@ -139,6 +154,16 @@ pub fn open_authorization(site: &str, request_id: &str) -> Result<(), AppError> 
         "{}/desktop-connect?request={request_id}",
         origin.origin().ascii_serialization()
     );
+    open_browser(&url)
+}
+
+#[cfg(target_os = "android")]
+fn open_browser(url: &str) -> Result<(), AppError> {
+    crate::mobile_platform::open_browser(url)
+}
+
+#[cfg(windows)]
+fn open_browser(url: &str) -> Result<(), AppError> {
     let wide: Vec<u16> = url.encode_utf16().chain([0]).collect();
     let result = unsafe {
         ShellExecuteW(
@@ -159,7 +184,7 @@ pub fn open_authorization(site: &str, request_id: &str) -> Result<(), AppError> 
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     #[test]

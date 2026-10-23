@@ -115,6 +115,8 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 
 每次开发启动／debug 构建先由 `scripts/prepare-android-assets.mjs` 从共用 `.tools/release-dictionaries` 清单校验并暂存通用词库及许可，不读取个人 Data。Gradle 将 `.local/android-assets` 编入 APK；Android 在后台线程校验并原子安装资源到私有 files 目录，准备后再提供离线查询。实际设备结果以 [Android 验证记录](../testing/android-results.md) 为准。
 
+0.18.0 的手机账号页复用 `SyncView`，HTTP、分片、差量和完整学习历史均走原 Rust 实现；只在 `MobilePlatformPlugin` 适配 Keystore、浏览器及网络状态。开发时在“我的”保存站点／设备名，发起请求、打开系统浏览器核对连接码，批准后返回检查连接，再确认本机资料归属。自动同步默认关闭；原声当前只在不计费网络传输。断开连接保留本地资料，测试资料和真实账号批准结果分别记录；未连接真机时不能以本地合成凭据代替实际授权证据。
+
 ## 7 修订记录
 
 | 版本 | 日期 | 内容 |

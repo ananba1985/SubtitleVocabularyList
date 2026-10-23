@@ -5,7 +5,7 @@ pub(crate) mod capture;
 pub(crate) mod corpus;
 pub(crate) mod learning;
 pub(crate) mod query;
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 pub(crate) mod synchronization;
 pub(crate) mod system;
 pub(crate) mod vocabulary;
@@ -39,6 +39,14 @@ where
 // One command catalog for both hosts; platform dependencies stay explicitly scoped.
 svl_ipc_macros::catalog! {
         system::app_ready,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::device_sync_get,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::device_sync_update,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::device_sync_bind,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::connection_disconnect,
         #[cfg(all(windows, feature = "desktop"))]
         watch::watch_open,
         #[cfg(all(windows, feature = "desktop"))]
@@ -127,12 +135,12 @@ svl_ipc_macros::catalog! {
         assessment::assessment_bank_items,
         #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_bank_audio_prepare,
-        #[cfg(all(windows, feature = "desktop"))]
-        assessment::assessment_sync_status,
-        #[cfg(all(windows, feature = "desktop"))]
-        assessment::assessment_sync_conflicts,
-        #[cfg(all(windows, feature = "desktop"))]
-        assessment::assessment_sync_keep_both,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::assessment_sync_status,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::assessment_sync_conflicts,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::assessment_sync_keep_both,
         #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_audio_prepare,
         corpus::sources_list,
@@ -233,21 +241,21 @@ svl_ipc_macros::catalog! {
         system::tray_action_get,
         #[cfg(all(windows, feature = "desktop"))]
         system::app_quit,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::connection_status,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::connection_start,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::connection_check,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::connection_open,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_status,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_conflicts,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_start,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_resolve,
         #[cfg(all(windows, feature = "desktop"))]
         capture::native_status,

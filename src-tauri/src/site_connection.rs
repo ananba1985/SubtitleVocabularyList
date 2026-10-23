@@ -19,8 +19,8 @@ pub fn site_origin(value: &str) -> Result<String, AppError> {
     Ok(url.origin().ascii_serialization())
 }
 
-#[cfg(all(windows, feature = "desktop"))]
-mod desktop {
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+mod connected_host {
     use super::*;
     use crate::{
         application::Application,
@@ -168,15 +168,14 @@ mod desktop {
             }
             let credential = previous
                 .filter(|c| c.expires_at > Utc::now().timestamp_millis())
-                .unwrap_or_else(|| SiteCredential {
+                .map(Ok).unwrap_or_else(|| Ok::<_, AppError>(SiteCredential {
                     request_id: Uuid::new_v4().to_string(),
                     token: format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
-                    device_name: std::env::var("COMPUTERNAME")
-                        .unwrap_or_else(|_| "Windows desktop".into()),
+                    device_name: crate::device_sync::device_name(self)?,
                     account_scope: None,
                     display_code: None,
                     expires_at: Utc::now().timestamp_millis() + 600_000,
-                });
+                }))?;
             // Save before the request so a lost response can retry the same request and secret.
             credentials::save(self.store.root(), &site, &credential)?;
             let hash = digest(format!("{site}:{}", credential.request_id).as_bytes());
@@ -329,10 +328,10 @@ mod desktop {
         }
     }
 }
-#[cfg(all(windows, feature = "desktop"))]
-pub use desktop::ConnectionStatus;
-#[cfg(all(windows, feature = "desktop"))]
-pub(crate) use desktop::client as desktop_client;
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+pub use connected_host::ConnectionStatus;
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+pub(crate) use connected_host::client as host_client;
 
 #[cfg(test)]
 mod tests {

@@ -98,7 +98,7 @@ pub struct Application {
 }
 
 impl Application {
-    #[cfg(all(windows, feature = "desktop"))]
+    #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     pub fn review_audio_start(
         &self,
         question_id: String,
@@ -116,7 +116,7 @@ impl Application {
                     store.media_file(asset_id)?
                 } else {
                     context.progress("speech", 0, 1, "正在准备听力题的本地英语语音");
-                    let voice = crate::windows_native::system_voices()?
+                    let voice = crate::speech::voices()?
                         .into_iter()
                         .find(|voice| {
                             settings.system_voice.is_empty() || voice.id == settings.system_voice
@@ -135,11 +135,11 @@ impl Application {
                             .root()
                             .join("jobs")
                             .join(format!("review-{}.wav", Uuid::new_v4()));
-                        let result = crate::windows_native::synthesize(
+                        let result = crate::speech::synthesize(
                             &question.target,
                             &voice.id,
                             &temporary,
-                            &context.cancelled,
+                            &context,
                         );
                         if let Err(error) = result {
                             let _ = std::fs::remove_file(&temporary);
@@ -161,7 +161,7 @@ impl Application {
                 Ok(crate::tasks::results::ReviewAudio { path, kind: question.audio_kind })
             })
     }
-    #[cfg(all(windows, feature = "desktop"))]
+    #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     pub fn speech_start(
         &self,
         text: String,
@@ -183,9 +183,9 @@ impl Application {
         self.tasks
             .start_typed("speech", &operation_id, &hash, move |context| {
                 context.subject(&text);
-                context.progress("speech", 0, 1, "正在准备 Windows 本地英语语音");
+                context.progress("speech", 0, 1, "正在准备本地英语语音");
                 context.check_cancelled()?;
-                let voice = crate::windows_native::system_voices()?
+                let voice = crate::speech::voices()?
                     .into_iter()
                     .find(|voice| {
                         settings.system_voice.is_empty() || voice.id == settings.system_voice
@@ -204,11 +204,11 @@ impl Application {
                         .join("jobs")
                         .join(format!("system-{}.wav", Uuid::new_v4()));
                     let result = (|| {
-                        crate::windows_native::synthesize(
+                        crate::speech::synthesize(
                             &text,
                             &voice.id,
                             &temporary,
-                            &context.cancelled,
+                            &context,
                         )?;
                         context.check_cancelled()?;
                         if !valid_wave(&temporary) {
@@ -730,7 +730,7 @@ pub(crate) fn assessment_model_content(
     })
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 fn valid_wave(path: &Path) -> bool {
     use std::io::Read;
     if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 128) {

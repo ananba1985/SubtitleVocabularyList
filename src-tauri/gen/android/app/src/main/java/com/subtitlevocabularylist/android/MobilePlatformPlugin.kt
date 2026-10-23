@@ -24,10 +24,30 @@ class BrowserArgs { var url: String = "" }
 @TauriPlugin
 class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
     private val io = Executors.newSingleThreadExecutor()
+    private val speech = OfflineSpeech(activity)
+    private val audio = ClipAudio(activity)
     @Volatile private var foreground = true
 
     override fun onResume(activity: AppCompatActivity) { foreground = true }
-    override fun onPause(activity: AppCompatActivity) { foreground = false }
+    override fun onPause(activity: AppCompatActivity) { foreground = false; audio.pause() }
+
+    override fun onDestroy(activity: AppCompatActivity) { audio.destroy(); speech.destroy(); io.shutdown() }
+
+    private fun sound(invoke: Invoke, action: () -> Unit) = activity.runOnUiThread {
+        try { action() } catch (_: Exception) { invoke.reject("手机声音接口暂不可用，请检查离线语音或音频文件。", "audio_unavailable") }
+    }
+
+    @Command fun speechVoices(invoke: Invoke) = sound(invoke) { speech.list(invoke) }
+    @Command fun speechSynthesize(invoke: Invoke) = sound(invoke) { speech.synthesize(invoke) }
+    @Command fun speechCancel(invoke: Invoke) = sound(invoke) { speech.cancel(invoke) }
+    @Command fun speechSettingsOpen(invoke: Invoke) = sound(invoke) {
+        try { activity.startActivity(Intent("com.android.settings.TTS_SETTINGS")) }
+        catch (_: Exception) { activity.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        invoke.resolve()
+    }
+    @Command fun audioOpen(invoke: Invoke) = sound(invoke) { audio.open(invoke, foreground) }
+    @Command fun audioState(invoke: Invoke) = sound(invoke) { audio.state(invoke) }
+    @Command fun audioControl(invoke: Invoke) = sound(invoke) { audio.control(invoke) }
 
     @Command
     fun credentialTransform(invoke: Invoke) {

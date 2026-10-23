@@ -38,7 +38,7 @@ pub(crate) fn app_capabilities() -> AppCapabilities {
         synchronization: cfg!(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))),
         native_playback: cfg!(all(windows, feature = "desktop")),
         screen_capture: cfg!(all(windows, feature = "desktop")),
-        system_speech: cfg!(all(windows, feature = "desktop")),
+        system_speech: cfg!(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))),
         known_target_preferences: cfg!(all(windows, feature = "desktop")),
     }
 }
@@ -208,7 +208,12 @@ pub(crate) async fn task_cancel(
         if task.kind == "explanation_batch" && !task.terminal() {
             app.pause_preparation()?;
         }
-        app.tasks.cancel(&task_id)
+        let result = app.tasks.cancel(&task_id)?;
+        #[cfg(all(target_os = "android", feature = "mobile"))]
+        if matches!(task.kind.as_str(), "speech" | "review_audio") && !task.terminal() {
+            crate::mobile_platform::cancel_speech(&task_id);
+        }
+        Ok(result)
     })
     .await
 }

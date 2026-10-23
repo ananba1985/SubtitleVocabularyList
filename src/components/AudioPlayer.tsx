@@ -1,18 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { audioUrl } from "../api";
-export function AudioPlayer({
-  path,
-  label = "原声",
-  playbackKey,
-  onPlayed,
-  onFailed,
-}: {
+import { useRuntimeFeatures } from "../runtimeFeatures";
+import { MobileAudioPlayer } from "../mobile/MobileAudioPlayer";
+
+export type AudioPlayerProps = {
   path: string;
   label?: string;
   playbackKey?: number;
   onPlayed?: () => void;
   onFailed?: () => void;
-}) {
+};
+
+export function AudioPlayer(props: AudioPlayerProps) {
+  return useRuntimeFeatures().mobile ? <MobileAudioPlayer {...props} /> : <DesktopAudioPlayer {...props} />;
+}
+
+function DesktopAudioPlayer({
+  path,
+  label = "原声",
+  playbackKey,
+  onPlayed,
+  onFailed,
+}: AudioPlayerProps) {
   const audio = useRef<HTMLAudioElement>(null);
   const [notice, setNotice] = useState("");
   useEffect(() => {

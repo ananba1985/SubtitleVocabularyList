@@ -32,6 +32,8 @@ pub mod queries;
 mod query_stream;
 pub mod review_policy;
 pub mod reviews;
+pub mod speech;
+mod clip_audio;
 pub mod site_connection;
 #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 mod device_sync;

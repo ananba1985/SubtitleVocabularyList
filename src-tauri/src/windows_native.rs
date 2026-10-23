@@ -309,13 +309,7 @@ unsafe fn owned_string(value: PWSTR) -> String {
     result
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct SystemVoice {
-    pub id: String,
-    pub name: String,
-}
+pub use crate::speech::SystemVoice;
 
 fn english_tokens() -> Result<Vec<(SystemVoice, ISpObjectToken)>, AppError> {
     unsafe {

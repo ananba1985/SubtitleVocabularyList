@@ -171,13 +171,17 @@ svl_ipc_macros::catalog! {
         #[cfg(all(windows, feature = "desktop"))]
         vocabulary::preview_start,
         vocabulary::media_path,
+        learning::audio_open,
+        learning::audio_state,
+        learning::audio_control,
+        learning::speech_settings_open,
         learning::review_units,
         learning::review_question,
         learning::review_hint,
         learning::review_submit,
         learning::review_correct,
         learning::review_history,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::review_audio_start,
         #[cfg(all(windows, feature = "desktop"))]
         learning::practice_get,
@@ -189,9 +193,9 @@ svl_ipc_macros::catalog! {
         learning::practice_audio_save,
         #[cfg(all(windows, feature = "desktop"))]
         learning::practice_example,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::speech_voices,
-        #[cfg(all(windows, feature = "desktop"))]
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         learning::speech_start,
         query::translation_session_open,
         query::translation_session_get,

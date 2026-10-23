@@ -54,6 +54,34 @@ pub(crate) fn network() -> Result<crate::device_sync::DeviceNetwork, AppError> {
     run("networkState", serde_json::json!({}))
 }
 
+pub(crate) fn audio_invoke<T: serde::de::DeserializeOwned>(command: &str, args: serde_json::Value) -> Result<T, AppError> {
+    PLATFORM.get().ok_or_else(|| AppError::new("provider_unavailable", "手机声音接口尚未就绪。"))?
+        .run_mobile_plugin(command, args)
+        .map_err(|error| AppError::new("audio_unavailable", format!("手机声音操作未完成：{error}")))
+}
+
+pub(crate) fn speech_voices() -> Result<Vec<crate::speech::SystemVoice>, AppError> {
+    #[derive(serde::Deserialize)]
+    struct Voices { voices: Vec<crate::speech::SystemVoice> }
+    Ok(audio_invoke::<Voices>("speechVoices", serde_json::json!({}))?.voices)
+}
+
+pub(crate) fn speech_settings_open() -> Result<(), AppError> {
+    audio_invoke::<serde_json::Value>("speechSettingsOpen", serde_json::json!({}))?;
+    Ok(())
+}
+
+pub(crate) fn synthesize(text: &str, voice: &str, path: &std::path::Path, task_id: &str) -> Result<(), AppError> {
+    audio_invoke::<serde_json::Value>("speechSynthesize", serde_json::json!({
+        "text": text, "voiceId": voice, "path": path, "taskId": task_id,
+    }))?;
+    Ok(())
+}
+
+pub(crate) fn cancel_speech(task_id: &str) {
+    let _ = audio_invoke::<serde_json::Value>("speechCancel", serde_json::json!({"taskId": task_id}));
+}
+
 /// Called on an IPC worker, never on the Android UI thread or with a DB lock.
 pub(crate) fn prepare_resources(store: &Store) -> Result<(), AppError> {
     let mut ready = RESOURCES_READY.lock()

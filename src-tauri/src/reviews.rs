@@ -957,7 +957,7 @@ impl Store {
         Ok(snapshot)
     }
 
-    #[cfg(any(test, all(windows, feature = "desktop")))]
+    #[cfg(any(test, all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
     pub(crate) fn review_audio_prepared(&self, question_id: &str) -> Result<(), AppError> {
         self.connection()?.execute(
             "UPDATE review_questions SET audio_prepared=1 WHERE id=?",

@@ -4,9 +4,33 @@ use crate::{
     corpus::CandidateExample,
     reviews::{AnswerInput, Attempt, CorrectionInput, Question, ReviewUnit},
 };
-#[cfg(all(windows, feature = "desktop"))]
-use crate::windows_native::SystemVoice;
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+use crate::speech::SystemVoice;
 use std::sync::Arc;
+
+#[svl_ipc_macros::command]
+pub(crate) async fn speech_settings_open() -> Result<(), AppError> {
+    #[cfg(all(target_os = "android", feature = "mobile"))]
+    return background(crate::mobile_platform::speech_settings_open).await;
+    #[cfg(not(all(target_os = "android", feature = "mobile")))]
+    Err(AppError::new("provider_unavailable", "请在系统设置中管理本地英语声音。"))
+}
+
+#[svl_ipc_macros::command]
+pub(crate) async fn audio_open(app: AppState<'_>, path: String) -> Result<crate::clip_audio::ClipAudioState, AppError> {
+    let app = Arc::clone(app.inner());
+    background(move || crate::clip_audio::open(&app.store, &path)).await
+}
+
+#[svl_ipc_macros::command]
+pub(crate) async fn audio_state(session_id: String) -> Result<crate::clip_audio::ClipAudioState, AppError> {
+    background(move || crate::clip_audio::state(&session_id)).await
+}
+
+#[svl_ipc_macros::command]
+pub(crate) async fn audio_control(session_id: String, action: crate::clip_audio::ClipAudioAction, position_ms: Option<u64>) -> Result<crate::clip_audio::ClipAudioState, AppError> {
+    background(move || crate::clip_audio::control(&session_id, action, position_ms)).await
+}
 
 #[svl_ipc_macros::command]
 pub(crate) async fn review_units(
@@ -68,7 +92,7 @@ pub(crate) async fn review_history(
     background(move || app.store.review_history(unit_id.as_deref(), offset, limit)).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn review_audio_start(
     app: AppState<'_>,
@@ -135,13 +159,13 @@ pub(crate) async fn practice_example(
     background(move || app.store.practice_example(&document_id, chapter, sentence)).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn speech_voices() -> Result<Vec<SystemVoice>, AppError> {
-    background(crate::windows_native::system_voices).await
+    background(crate::speech::voices).await
 }
 
-#[cfg(all(windows, feature = "desktop"))]
+#[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 #[svl_ipc_macros::command]
 pub(crate) async fn speech_start(
     app: AppState<'_>,

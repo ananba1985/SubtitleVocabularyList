@@ -8,6 +8,7 @@ import type {
   ReviewUnit,
 } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
+import { useRuntimeFeatures } from "../runtimeFeatures";
 
 const outcomeNames: Record<ReviewOutcome, string> = {
   correct: "独立回忆正确",
@@ -23,10 +24,13 @@ const date = (value: number) =>
 export function ReviewView({
   special,
   refreshKey,
+  onChanged,
 }: {
   special: boolean;
   refreshKey: number;
+  onChanged?: () => void;
 }) {
+  const { mobile } = useRuntimeFeatures();
   const [mode, setMode] = useState("due"),
     [dimension, setDimension] = useState("");
   const [units, setUnits] = useState<ReviewUnit[]>([]),
@@ -151,6 +155,7 @@ export function ReviewView({
           },
         }),
       );
+      onChanged?.();
     } catch (e) {
       setError(message(e));
     } finally {
@@ -179,6 +184,7 @@ export function ReviewView({
         },
       });
       if (result?.id === next.id) setResult(next);
+      onChanged?.();
       await refresh();
     } catch (e) {
       setError(message(e));
@@ -348,7 +354,7 @@ export function ReviewView({
                   回答不正确
                 </button>
                 <button disabled={busy} onClick={() => explain(result)}>
-                  请本地模型解释用法
+                  {mobile ? "查看离线释义" : "请本地模型解释用法"}
                 </button>
               </div>
               {result.corrections.map((c, i) => (

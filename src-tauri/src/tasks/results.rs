@@ -22,13 +22,12 @@ pub struct ReviewAudio {
     pub kind: String,
 }
 
-#[cfg(all(windows, feature = "desktop"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
 pub struct SpeechAudio {
     pub path: PathBuf,
     pub kind: String,
-    pub voice: crate::windows_native::SystemVoice,
+    pub voice: crate::speech::SystemVoice,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

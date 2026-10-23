@@ -29,3 +29,10 @@
 .mobile-app .settings-panel { padding:16px; margin-bottom:16px; min-width:0; overflow-wrap:anywhere; }
 .mobile-app .sync-comparison { grid-template-columns:1fr; }
 .mobile-app .actions { flex-wrap:wrap; }
+.mobile-app .review-grid { grid-template-columns:1fr; }
+.mobile-app .review-card { padding:16px; }
+.mobile-app .review-card h2 { font-size:22px; overflow-wrap:anywhere; }
+.mobile-app .review-answer textarea { width:100%; }
+.mobile-app .mobile-audio { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.mobile-app .mobile-audio input[type=range] { flex:1; min-width:90px; width:100%; }
+.mobile-app .mobile-card select { max-width:100%; display:block; width:100%; margin-top:8px; }

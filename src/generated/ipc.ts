@@ -92,6 +92,10 @@ export type CatalogInventory = { policyVersion: string, catalogs: Array<Frequenc
 
 export type Choice = { id: string, text: string, };
 
+export type ClipAudioAction = "play" | "pause" | "seek" | "close";
+
+export type ClipAudioState = { sessionId: string, active: boolean, positionMs: number, durationMs: number, playing: boolean, played: boolean, ended: boolean, error: string | null, };
+
 export type ClipboardPreferences = { debounceMs: number, persistResults: boolean, };
 
 export type ClipboardStatus = { enabled: boolean, debounceMs: number, persistResults: boolean, error: string | null, };
@@ -365,6 +369,9 @@ export interface CommandMap {
   assessment_sync_conflicts: { args: undefined; result: Array<AssessmentSyncConflict> };
   assessment_sync_keep_both: { args: { input: KeepAssessmentBoth }; result: AssessmentKeepBothReply };
   assessment_sync_status: { args: undefined; result: AssessmentSyncStatus };
+  audio_control: { args: { sessionId: string; action: ClipAudioAction; positionMs?: number | null }; result: ClipAudioState };
+  audio_open: { args: { path: string }; result: ClipAudioState };
+  audio_state: { args: { sessionId: string }; result: ClipAudioState };
   autostart_get: { args: undefined; result: boolean };
   autostart_set: { args: { enabled: boolean }; result: boolean };
   candidate_decide: { args: { sourceId: string; key: string; exampleId: string; decision: string }; result: void };
@@ -430,6 +437,7 @@ export interface CommandMap {
   settings_update: { args: { settings: Settings }; result: Settings };
   source_example_update: { args: { sourceId: string; exampleId: string; revision: number; text: string; startMs: number; endMs: number }; result: CandidateExample };
   sources_list: { args: undefined; result: Array<SourceSummary> };
+  speech_settings_open: { args: undefined; result: void };
   speech_start: { args: { text: string; operationId: string; voiceId?: string | null }; result: TaskHandle<SpeechAudio> };
   speech_voices: { args: undefined; result: Array<SystemVoice> };
   subtitle_alignment_set: { args: { sourceId: string; assetId: string; offsetMs: number }; result: SubtitleInfo };

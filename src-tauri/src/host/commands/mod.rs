@@ -38,6 +38,7 @@ where
 
 // One command catalog for both hosts; platform dependencies stay explicitly scoped.
 svl_ipc_macros::catalog! {
+        system::app_ready,
         #[cfg(all(windows, feature = "desktop"))]
         watch::watch_open,
         #[cfg(all(windows, feature = "desktop"))]

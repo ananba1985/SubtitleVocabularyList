@@ -4,9 +4,10 @@
 .mobile-app main { padding:0 14px 18px; }
 .mobile-app button { min-height:44px; touch-action:manipulation; }
 .mobile-app input,.mobile-app textarea,.mobile-app select { font-size:16px; }
-.mobile-app .stats { margin-bottom:12px; }
+.mobile-app .stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+.mobile-app .stats > div { padding:12px 14px; }
 .mobile-app .toolbar { flex-wrap:wrap; }
-.mobile-app .toolbar input { min-width:0; width:100%; }
+.mobile-app .toolbar input { flex:1 0 100%; min-width:0; width:100%; }
 .mobile-app .split-view { display:block; min-height:0; }
 .mobile-app .list-panel { max-height:none; }
 .mobile-app .split-view:not(.compact-detail) .detail-panel { display:none; }

@@ -1,6 +1,6 @@
 [package]
 name = "subtitle-vocabulary-list"
-version = "0.17.0"
+version = "0.17.1"
 description = "Offline Windows vocabulary notebook with original dialogue audio"
 edition = "2024"
 rust-version = "1.90"
@@ -46,7 +46,7 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 scraper = { version = "=0.27.0", default-features = false }
 dunce = "1.0.5"
 libloading = { version = "=0.7.4", optional = true }
-tokio = { version = "1", features = ["rt", "time", "macros"] }
+tokio = { version = "1", features = ["rt", "time", "macros", "sync"] }
 
 [target.'cfg(windows)'.dependencies]
 tauri-plugin-single-instance = { version = "2", optional = true }

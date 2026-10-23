@@ -40,6 +40,7 @@ pub fn run() {
     let main_config = context.config_mut().app.windows.remove(0);
     let first_page = Arc::new(std::sync::atomic::AtomicBool::new(true));
     tauri::Builder::default()
+        .manage(crate::host::HostStartup::default())
         .manage(files)
         .on_page_load(move |webview, event| {
             if webview.label()=="translator" && event.event()==tauri::webview::PageLoadEvent::Finished {let _=webview.window().show();}
@@ -184,6 +185,7 @@ pub fn run() {
             }));
             let clipboard=crate::desktop_query::ClipboardWatcher::default();clipboard.initialize(&application)?;app.manage(clipboard);
             app.manage(application);
+            app.state::<crate::host::HostStartup>().ready();
             app.manage(NativeDesktop::default());
             app.manage(TrayAction::default());
             app.manage(crate::desktop_query::QueryWindowState::default());

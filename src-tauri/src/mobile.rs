@@ -6,6 +6,7 @@ use tauri::{Emitter, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(crate::host::HostStartup::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(crate::mobile_platform::init())
         .setup(|app| {
@@ -28,6 +29,7 @@ pub fn run() {
             }));
             // No desktop scheduler, clipboard watcher, tray or desktop model dependency.
             app.manage(application);
+            app.state::<crate::host::HostStartup>().ready();
             Ok(())
         })
         .invoke_handler(crate::host::commands::handler())

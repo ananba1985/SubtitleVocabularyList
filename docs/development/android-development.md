@@ -5,7 +5,7 @@
 | 文档编号 | DOC-DEV-ANDROID-001 |
 | 文档版本 | 0.2 |
 | 更新日期 | 2026-10-22 |
-| 状态 | 开发入口与 Android 工程已接入；工具链与首次 debug 构建通过，真机部署待手机允许 USB 安装；见 Android 验证记录 |
+| 状态 | 开发入口与 Android 工程已接入；工具链与首次 debug 构建通过，手机安装与基本单词本流程通过，重开修复继续核对；见 Android 验证记录 |
 | 依据 | [Android PRD](../requirements/android-PRD.md)、[架构与开发设计](../design/android-architecture.md)、[开发计划](../planning/android-development-plan.md) |
 
 ## 1 开发原则
@@ -30,7 +30,7 @@ Windows 和 Android 在同一仓库维护。词库、合并、复习、同步及
 | Gradle／AGP／Kotlin | wrapper 9.6.1、AGP 9.3.1、Kotlin 2.2.10 | 已完成首次 debug 构建；模板迁移警告保留，不顺带升级 |
 | Kotlin 增量缓存 | Cargo 插件源码在 C 盘，项目在 D 盘时触发跨盘根路径异常 | 本工程设置 `kotlin.incremental=false`；保留 Gradle 任务复用和 Rust 增量编译 |
 | Windows 开发者模式 | 用户开启后符号链接成功 | 是 Windows 开发机设置，与手机正式运行无关 |
-| 设备 | Mi 10 Pro，API 33，arm64 | ADB 已授权；安装被手机系统拒绝，等待用户允许 USB 安装 |
+| 设备 | Mi 10 Pro，API 33，arm64 | ADB 已授权，用户已解决 USB 安装限制；调试版已实装，功能证据见专项记录 |
 
 首次完整 debug 构建已经证明选定工具链可以协作；真机启动和功能验收仍须分别取得证据。本轮未生成发行包或发布材料。
 

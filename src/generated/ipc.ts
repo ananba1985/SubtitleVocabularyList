@@ -332,6 +332,7 @@ export interface CommandMap {
   app_capabilities: { args: undefined; result: AppCapabilities };
   app_info: { args: undefined; result: AppInfo };
   app_quit: { args: undefined; result: void };
+  app_ready: { args: undefined; result: void };
   assessment_answer_submit: { args: { input: AssessmentAnswerInput }; result: AssessmentSession };
   assessment_audio_event: { args: { input: AssessmentAudioEvent }; result: AssessmentAudioReply };
   assessment_audio_prepare: { args: { sessionId: string; itemId: string; operationId: string }; result: TaskHandle<AudioPath> };

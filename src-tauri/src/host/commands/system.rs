@@ -25,6 +25,11 @@ pub(crate) struct AppCapabilities {
 }
 
 #[svl_ipc_macros::command]
+pub(crate) async fn app_ready(startup: State<'_, crate::host::HostStartup>) -> Result<(), AppError> {
+    startup.wait().await
+}
+
+#[svl_ipc_macros::command]
 pub(crate) fn app_capabilities() -> AppCapabilities {
     AppCapabilities {
         platform: std::env::consts::OS.into(),

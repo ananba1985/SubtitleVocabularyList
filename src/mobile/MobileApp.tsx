@@ -20,6 +20,7 @@ export default function MobileApp() {
   const [error, setError] = useState("");
   const [queue, dispatch] = useReducer(collectionQueue, { current: null, pending: [] });
   const refresh = useCallback(async () => {
+    await call("app_ready");
     const [nextInfo, nextSettings, nextCapabilities, nextTasks] = await Promise.all([
       call("app_info"), call("settings_get"), call("app_capabilities"), call("tasks_list"),
     ]);

@@ -2,6 +2,7 @@ param([string]$DataDirectory = 'D:\SubtitleVocabularyList\Data', [string]$Output
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
 . (Join-Path $PSScriptRoot 'scripts/build-preflight.ps1')
+. (Join-Path $PSScriptRoot 'scripts/cargo-cache.ps1')
 $svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory $DataDirectory
 $svlOutput = if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) } else { [IO.Path]::GetFullPath((Join-Path $svlEnvironment.Workspace $OutputDirectory)) }
 $svlPreviousPath = $env:Path
@@ -15,7 +16,7 @@ try {
     if ($CheckOnly) {
         Write-Host 'Plan: prepare the pinned libmpv runtime if it is missing.'
         Write-Host 'Plan: verify no process is running from this Cargo build directory.'
-        Write-Host 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml'
+        Write-Host 'Plan: retire previous-version application caches; reuse current caches and dependencies.'
         Write-Host 'Plan: pnpm tauri build --debug --no-bundle --config src-tauri/tauri.development.conf.json'
         return
     }
@@ -23,9 +24,7 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '.tools/runtime/mpv/libmpv-2.dll'))) {
         & (Join-Path $PSScriptRoot 'scripts/setup-mpv-development.ps1')
     }
-    Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
-    & cargo clean --manifest-path (Join-Path $svlEnvironment.Workspace 'src-tauri/Cargo.toml')
-    if ($LASTEXITCODE -ne 0) { throw 'Cargo cleanup failed; local executable compilation was not started.' }
+    Invoke-SvlCargoCacheMaintenance
     & pnpm tauri build --debug --no-bundle --config $svlEnvironment.Config
     if ($LASTEXITCODE -ne 0) { throw "Local executable build failed ($LASTEXITCODE)." }
     $svlMetadata = (& cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 | ConvertFrom-Json)

@@ -14,6 +14,7 @@ $svlTranscriptStarted=$true
 Write-Host "打包执行记录：$svlLogPath"
 . (Join-Path $svlScripts 'development-environment.ps1')
 . (Join-Path $svlScripts 'build-preflight.ps1')
+. (Join-Path $svlScripts 'cargo-cache.ps1')
 . (Join-Path $svlScripts 'package-preflight.ps1')
 $svlEnvironment=Get-SvlDevelopmentEnvironment
 $env:Path=$svlEnvironment.Path
@@ -37,9 +38,7 @@ $svlDictionaryManifest=Get-Content -LiteralPath (Join-Path $svlDictionaries 'man
 $svlDictionaryFiles=@($svlDictionaryManifest.files)+@(@{path='manifest.json';sha256=(Get-FileHash -LiteralPath (Join-Path $svlDictionaries 'manifest.json')).Hash.ToLowerInvariant()})
 & python -X utf8 (Join-Path $svlScripts 'prepare-mpv-release.py') --resources-directory $svlResources
 if($LASTEXITCODE -ne 0){throw 'Player resource preparation failed; installer compilation was not started.'}
-Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
-& cargo clean --manifest-path (Join-Path $svlWorkspace 'src-tauri/Cargo.toml')
-if($LASTEXITCODE -ne 0){throw 'Cargo cleanup failed; installer compilation was not started.'}
+Invoke-SvlCargoCacheMaintenance
 if(-not $SkipToolBuild){
     & (Join-Path $svlScripts 'build-offline-ocr.ps1') -ResourcesDirectory $ResourcesDirectory
     & (Join-Path $svlScripts 'build-offline-whisper.ps1') -ResourcesDirectory $ResourcesDirectory

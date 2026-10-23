@@ -5,6 +5,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'android-environment.ps1')
+. (Join-Path $PSScriptRoot 'cargo-cache.ps1')
 $svlAndroid = Get-SvlAndroidEnvironment -ConfigPath $ConfigPath
 Show-SvlAndroidEnvironment $svlAndroid
 if ($Mode -eq 'Check') { exit 0 }
@@ -19,6 +20,7 @@ try {
     $env:NDK_HOME = $svlAndroid.NdkHome
     $env:RUSTUP_TOOLCHAIN = $svlAndroid.RustToolchain
     $env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
+    Invoke-SvlCargoCacheMaintenance
     if ($Mode -ne 'Init') {
         $svlOcrRoot = Join-Path $svlAndroid.Workspace '.local/android-ocr'
         if (-not (Test-Path -LiteralPath (Join-Path $svlOcrRoot 'install/lib/libtesseract.a'))) {

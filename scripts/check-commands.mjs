@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const write = process.argv.includes("--write");
+const maintenance = spawnSync("python", ["-X", "utf8", "scripts/cargo-cache.py"], {
+  cwd: root,
+  stdio: "inherit",
+});
+if (maintenance.error || maintenance.status !== 0)
+  console.warn("Cargo cache maintenance deferred; continuing IPC check.");
 const result = spawnSync(
   "cargo",
   [

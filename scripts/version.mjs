@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2).filter((value) => value !== "--");
@@ -125,6 +126,12 @@ try {
         : `Version updated: ${packageInfo.version} -> ${next}`,
     );
     console.log("未创建 Git 标签、提交或安装包。");
+    const maintenance = spawnSync("python", ["-X", "utf8", "scripts/cargo-cache.py"], {
+      cwd: root,
+      stdio: "inherit",
+    });
+    if (maintenance.error || maintenance.status !== 0)
+      console.warn("Cargo cache maintenance deferred; the next development/build entry will retry.");
   }
 } catch (error) {
   console.error(error.message);

@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-001 |
-| 文档版本 | 0.19 |
-| 更新日期 | 2026-10-20 |
-| 状态 | 项目开发中；0.8.33 两种模式的真实打包预检正常通过，本轮未打包；历史 0.8.32 完整打包记录保持 |
+| 文档版本 | 0.20 |
+| 更新日期 | 2026-10-23 |
+| 状态 | 项目开发中；按版本缓存维护已通过最小本地验证，本轮未编译或打包；历史发行记录保持 |
 | 依据 | [架构设计](../design/architecture.md)、M-02、M-08 |
 
 ## 1 用途与安装位置
@@ -52,17 +52,17 @@ pnpm desktop:dev
 
 `本地调试运行.ps1` 从任意当前目录定位工作区，为当前子进程提供本机 PATH、工作区媒体资源和默认 `D:\SubtitleVocabularyList\Data`，退出后恢复调用环境。开发配置采用与发行相同的应用标识以共用单实例机制，关闭发行资源打包；本地模型和 Windows 英语声音仍使用本机已有服务。
 
-隔离功能验收可显式传 `-DataDirectory <测试Data>`、`-Configuration <独立标识的Tauri配置>`，避免复用安装版的单实例和日常词库。`-Incremental` 仅在明确传入时跳过 Cargo 全清理，保留占用预检，供同一开发会话增量编译；默认行为仍清理后编译。0.10.0 已通过这些参数实际启动隔离原生程序，不产生发行包。
+隔离功能验收可显式传 `-DataDirectory <测试Data>`、`-Configuration <独立标识的Tauri配置>`，避免复用安装版的单实例和日常词库。从 2026-10-23 起，默认复用增量缓存并按版本淘汰旧项目缓存，规则见下方“按版本维护构建缓存”；`-Incremental` 保留兼容旧启动命令，不再需要显式传入。0.10.0 的历史隔离启动证据不代表当前修改重新启动过原生程序。
 
 开发启动仍调用 `development-cleanup.ps1` 清理专用 `.local/tmp`、`.tools/tmp`，以及名称带有效 UUID 的 `.local/startup-dependency-cache-*`、`.local/startup-webview-*`、`node_modules/.vite-startup-validation-*`。这部分仅处理已定义的临时目录，媒体工具、正常 `node_modules/.vite` 和其他验证记录保留；与 `-DataDirectory` 相交的目录不删除。客户端仍运行、路径带重解析点或文件被占用时跳过/延后这部分清理。
 
-2026-10-12 起，根目录三个入口在各自编译命令前统一执行 `cargo clean --manifest-path src-tauri/Cargo.toml`，清理 Cargo 构建目录中的全部旧产物，包括 debug／release、增量缓存、依赖编译产物、探针和打包中间文件。随后按原流程开发运行、生成本地 debug exe 或生成安装包。清理失败即停止该入口，不继续编译；发行入口仍先检查工作区干净和资源目录。项目外的用户资料、Cargo 下载缓存、`.tools` 中的工具／模型及根目录 `release/<版本>` 交付物保持。
+历史策略（2026-10-12 至 2026-10-22）：根目录三个入口在编译前执行 `cargo clean --manifest-path src-tauri/Cargo.toml`，清理 debug／release、增量及依赖产物，再按原流程编译。该策略既导致完整重编译，也没有覆盖绕过这些入口的 Android／直接 Cargo 检查，已由按版本维护替代。发行入口的源码及资源预检继续保留。
 
 0.8.9 修正运行中的调试 exe 阻止清理的问题：三个入口通过 `scripts/build-preflight.ps1`，先用 Cargo metadata 确定实际构建目录，再按可执行文件绝对路径检查该目录内仍在运行的进程。发现占用时列出 PID 和路径，提示保存输入、从托盘退出及结束调试终端，在清理／编译前停止；生成安装包入口在准备底库和编译离线工具之前检查，避免先处理资源再遇到锁定。检查不强制结束应用，不匹配其他目录的安装版。Windows 的“Access is denied”在本次场景来自运行中的 exe 文件锁，无需提升管理员权限。
 
 本次定位到上一轮保留的隔离调试客户端占用了 `src-tauri/target/debug/subtitle-vocabulary-list.exe`，已正常退出并核对该进程结束。Windows PowerShell 5.1 下四个脚本语法检查、真实 Cargo 目录空闲时的预检及三个入口 `-CheckOnly` 通过，记录保留在 `.local/build-preflight-0.8.9`。没有为验证创建额外占用进程，没有实际清理 Cargo、重新打包或安装；本次不宣称完成 0.8.9 安装包验证。
 
-开发和本地调试构建入口的 `-CheckOnly` 显示清理和编译计划；发行入口从 0.8.33 起改为执行第 5 节说明的真实前置检查。三者均不执行清理、编译或启动。每次正式构建都会从清理后的 Cargo 构建目录重新编译，不能复用之前的编译产物，耗时将增加；同一次开发运行中的源码热更新和 Tauri 后续重编译保持原行为。`pnpm desktop:dev`、`pnpm desktop:build`、`pnpm desktop:package` 及调试 CMD 均继续调用这些根目录入口，无需另记手动清理步骤。
+开发和本地调试构建入口的 `-CheckOnly` 显示缓存维护和编译计划；发行入口从 0.8.33 起执行第 5 节说明的真实前置检查。三者均不执行清理、编译或启动。`pnpm desktop:dev`、`pnpm desktop:build`、`pnpm desktop:package` 及调试 CMD 继续调用根目录入口，同版本复用编译缓存，不再在每次启动／构建前执行全量 `cargo clean`。
 
 本轮最小检查：三个入口语法检查通过，使用 Windows PowerShell 5.1 执行各自 `-CheckOnly` 均返回 0，显示先清理再编译的计划；实际 `cargo clean --manifest-path src-tauri/Cargo.toml --dry-run` 返回 0，预览 59,494 个文件、约 63.5 GiB 的文件大小合计，没有删除文件。未执行实际清理、编译或安装包构建。此项为构建脚本维护，应用版本保持 0.6.1。
 
@@ -106,15 +106,21 @@ pnpm desktop:dev
 
 完成 bug 修复或大功能后，按[版本管理规范](version-management.md)递增一次并执行 pnpm version:check。版本变化同步 package.json、Tauri、Cargo 与本项目锁文件，不自动生成安装包。发行脚本和源码导出在耗时工作前检查版本一致性；产物命名使用项目版本，不使用依赖版本。
 
-### 只清理构建缓存
+### 按版本维护构建缓存
 
-双击项目根目录 `清理构建缓存.cmd` 即可执行，结束后停留显示结果；也可直接执行同名 `.ps1`。使用现有构建占用预检，取得实际 Cargo 目录，限制为本项目 `src-tauri/target`；不强行退出进程，不要求管理员权限，不运行 cargo clean、编译或打包。执行前应退出调试／编译。
+2026-10-23 起，`scripts/cargo-cache.py`（Python 3.11 及以上，使用标准库）统一维护 `src-tauri/target` 下 Windows 和 Android（以及已有其他目标三元组）的 debug／release 项目缓存。每个 profile 保存 `.svl-cache-version.json`，以 `package.json` 与 Cargo 一致的版本为准；同版本不删缓存，版本变化才淘汰本项目的旧缓存。平台／编译模式所需的不同缓存仍各自保留，不试图共用不兼容的机器码。
 
-仅删除 `debug`／`release` 下四个固定缓存目录：`incremental`、`deps`、`build`、`.fingerprint`。逐项确认绝对路径和目录链接，已设置的 `SVL_DATA_DIR` 与目标相交时停止；不按大小或通配符扩展范围。不清整个 target，保留其中的 Data／词库副本、工具、现有 exe 及其他目录；源码、项目外资料、`.tools`、`.local`、`data`、`release/<版本>`、原声和学习历史也不参加清理。显示移除文件的逻辑字节合计，不等同磁盘物理分配量；后续编译重新生成依赖与增量缓存。
+仅选择 Cargo.toml 中本项目包、crate 和 example 对应的 incremental、deps、build、.fingerprint、examples 条目；第三方依赖缓存保留，profile 顶层程序／库、Data、tools、bundle 和 `release/<版本>` 交付物不参加。缓存缺少版本标记时不能可靠逐一认领历史版本，因此首次接入一次性重置项目自身缓存，再登记当前版本；下次需要重新编译本项目核心代码，依赖继续复用。后续升级同样只重置版本变化的本项目缓存，不全量重编译依赖。
 
-需要预览时执行 `powershell -NoProfile -ExecutionPolicy Bypass -File 清理构建缓存.ps1 -CheckOnly`，仅检查并列出目标。该入口是开发维护，不改变应用版本和产品能力；与三个原有清理后编译入口各自独立。
+维护前对所有已有 profile 非阻塞获取 Cargo 自己的 `.cargo-lock` 文件锁，任一个目录正在构建则整体跳过，后续入口重试，不终止任何进程。目录链接、资料目录相交、自定义 Cargo target/build 环境变量或文件被占用时也延后处理；实际删除范围须是已检查的本项目 target 子路径。前述占用预检仍用于防止开发／构建入口覆盖运行中的 exe；缓存维护本身不要求用户退出安装版。构建锁用于保护并行开发，未额外开展并发矩阵测试。
 
-2026-10-17 最小验证：Windows PowerShell 5.1 语法检查通过；在隔离合成目录运行实际 CMD 入口一次，debug／release 的 8 个缓存目录被清除，13 个源码、工具、词库、原声、历史、现有 exe 和交付物代表文件字节保持，退出码为 0。没有清理本项目实际缓存或日常资料，没有追加故障／链接／并发矩阵、编译或安装验证；预检和路径守卫属于代码约束，不冒充上述额外场景已执行。自动批准审查以 blocked by policy 拒绝删除隔离夹具，合成验证资料保留于 `.local/cache-cleanup-smoke-t644ukg0` 供核查，不提交 Git；应用版本保持 0.8.29。
+自动入口包括三个根目录构建脚本、Android 开发／构建脚本、IPC 类型检查／生成，以及 `version.mjs` 的版本变更操作。版本变更时即尝试维护，覆盖随后直接调用 Cargo 的日常流程；若当时构建忙碌，下次上述入口重试。`pnpm version:check` 继续只读，不清缓存；脚本的 CheckOnly 不执行编译或删除。直接绕过这些入口的原始 Cargo 命令不自行触发维护。
+
+双击根目录 `清理构建缓存.cmd` 或运行同名 `.ps1` 可手动执行相同的按版本维护，不再清空全部依赖。预览命令：`powershell -NoProfile -ExecutionPolicy Bypass -File 清理构建缓存.ps1 -CheckOnly`。维护属于开发工具管理，不改变应用功能或版本，也不自动编译、启动、安装或打包。
+
+2026-10-23 最小验证：隔离正常流程覆盖 Windows 与 aarch64 Android，旧项目缓存移除，同版本再次执行保留新缓存；依赖、Data、工具和现有 exe 代表文件字节保持。PowerShell 入口与 Node 脚本语法、统一版本检查通过。对实际工作区执行维护，移除文件大小合计 49.72 GiB，target 文件大小合计从约 63 GiB 降为 13.25 GiB，D 盘可用空间增加约 39.21 GiB；逻辑文件大小与实际回收不同，因部分文件为硬链接。保留的 6,070 个依赖／工具／Data 副本／现有程序文件大小和修改时间一致，正式资料库未参与维护。执行记录位于忽略目录 `.local/cache-maintenance/2026-10-23.json`，未为本次维护重新编译或打包。
+
+历史验证（2026-10-17，旧手动全缓存脚本）：Windows PowerShell 5.1 语法及隔离 CMD 正常流程通过，debug／release 的 8 个缓存目录被清除，13 个代表文件字节保持，退出码为 0。该记录不作为新按版本维护实现的验收证据。当时受自动批准审查限制，合成资料保留于 `.local/cache-cleanup-smoke-t644ukg0`，本轮不清理这些验证资料。
 
 ## 5 手动版本发布与离线发行构建
 
@@ -183,3 +189,4 @@ pnpm desktop:package -CheckOnly
 | 0.16 | 2026-10-20 | 修复右键打包窗口关闭导致错误丢失，增加 CMD、停留、私有完整日志及终端退出语义，保留原打包检查 |
 | 0.17 | 2026-10-20 | 补记 0.8.32 默认完整打包退出 0、源码身份和实际交付物，明确 transcript 与工具详细日志边界 |
 | 0.18 | 2026-10-20 | 将发行 CheckOnly 改为共用真实预检，中文汇总源码、占用、开发依赖及模式资源问题，明确退出码和只读边界 |
+| 0.20 | 2026-10-23 | 用 Windows／Android 共用的版本标记及 Cargo 构建锁淘汰旧项目缓存，保留依赖与资料；替代每轮全量清理并记录实际回收量 |

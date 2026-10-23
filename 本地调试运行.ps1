@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts/development-environment.ps1')
 . (Join-Path $PSScriptRoot 'scripts/development-cleanup.ps1')
 . (Join-Path $PSScriptRoot 'scripts/build-preflight.ps1')
+. (Join-Path $PSScriptRoot 'scripts/cargo-cache.ps1')
 $svlEnvironment = Get-SvlDevelopmentEnvironment -DataDirectory $DataDirectory
 $svlDebugConfig = if ($Configuration) { (Resolve-Path -LiteralPath $Configuration).Path } else { $svlEnvironment.Config }
 $svlPreviousPath = $env:Path
@@ -21,18 +22,15 @@ try {
     if ($CheckOnly) {
         Write-Host 'Plan: prepare the pinned libmpv runtime if it is missing.'
         Write-Host 'Plan: verify no process is running from this Cargo build directory.'
-        if (-not $Incremental) { Write-Host 'Plan: cargo clean --manifest-path src-tauri/Cargo.toml' }
+        Write-Host 'Plan: retire previous-version application caches; reuse current caches and dependencies.'
         Write-Host "Plan: pnpm tauri dev --config $svlDebugConfig"
         return
     }
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '.tools/runtime/mpv/libmpv-2.dll'))) {
         & (Join-Path $PSScriptRoot 'scripts/setup-mpv-development.ps1')
     }
-    if (-not $Incremental) {
-        Write-Host 'Cleaning previous Cargo build artifacts before compilation...'
-        & cargo clean --manifest-path (Join-Path $svlEnvironment.Workspace 'src-tauri/Cargo.toml')
-        if ($LASTEXITCODE -ne 0) { throw 'Cargo cleanup failed; development compilation was not started.' }
-    }
+    # Incremental builds are now the default; keep -Incremental for old launchers.
+    Invoke-SvlCargoCacheMaintenance
     & pnpm tauri dev --config $svlDebugConfig
     if ($LASTEXITCODE -ne 0) { throw "Development run failed ($LASTEXITCODE)." }
 } finally {

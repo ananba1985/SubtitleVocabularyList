@@ -19,7 +19,7 @@
 
     $svlDetails = ($svlRunning | ForEach-Object { "PID $($_.ProcessId): $($_.ExecutablePath)" }) -join [Environment]::NewLine
     throw @"
-本项目的编译产物仍在运行，Windows 无法在 cargo clean 时删除被占用的 exe。
+本项目的编译产物仍在运行，Windows 无法重新链接或覆盖被占用的 exe。
 $svlDetails
 请保存输入，从程序托盘选择“退出”，并在本地调试终端按 Ctrl+C 结束调试后重新运行本脚本。
 本次尚未开始清理或编译；不会自动终止进程，也不会操作此 Cargo 目录之外的安装版。

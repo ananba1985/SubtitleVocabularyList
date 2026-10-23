@@ -1,6 +1,6 @@
 {
   "name": "subtitle-vocabulary-list",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -23,6 +23,7 @@
     "desktop:package": "powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1 -SkipToolBuild -NoPause",
     "test:core": "cargo test --manifest-path src-tauri/Cargo.toml --no-default-features",
     "android:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Check",
+    "android:ocr": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android-ocr.ps1",
     "android:init": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Init",
     "android:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Dev",
     "android:studio": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Studio",

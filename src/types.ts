@@ -21,13 +21,25 @@ export type Explanation = Native.Explanation &
   Partial<Pick<Native.PreparedExplanation, "meaningScope">>;
 export type Settings = Native.Settings;
 export interface CollectionSeed {
+  draftId?: string;
+  inputId?: string;
+  operationId?: string;
+  saveAudio?: boolean;
+  imageSource?: { id: string; uri: string };
+  image?: Native.CaptureImage;
+  imageCrop?: Native.PixelRect;
+  ocrText?: string;
+  frameRange?: Native.WatchClipRange;
+  saveFrameAudio?: boolean;
+  videoUri?: string;
   alreadyKnown?: boolean;
   meaning?: string;
   text: string;
   kind: string;
   context: string;
   sourceId?: string;
-  example?: Pick<CandidateExample, "id" | "text" | "startMs" | "endMs"> & Partial<CandidateExample>;
+  example?: Pick<CandidateExample, "id" | "text" | "startMs" | "endMs"> &
+    Partial<CandidateExample>;
   sourceTitle?: string;
   locationKey?: string;
 }

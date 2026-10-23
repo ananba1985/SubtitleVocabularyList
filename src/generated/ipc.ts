@@ -88,6 +88,8 @@ export type Candidate = { key: string, text: string, kind: string, count: number
 
 export type CandidateExample = { id: string, text: string, startMs: number, endMs: number, decision: string | null, revision: number, };
 
+export type CaptureImage = { id: string, path: string, width: number, height: number, origin: string, frame: FrameImage | null, };
+
 export type CatalogInventory = { policyVersion: string, catalogs: Array<FrequencyCatalog>, banks: Array<BankSummary>, indexReady: boolean, };
 
 export type Choice = { id: string, text: string, };
@@ -140,11 +142,17 @@ export type ExampleInput = { text: string, contextMeaning: string, sourceId: str
 
 export type Explanation = { meaning: string, translation: string, notes: string, };
 
+export type FrameDraft = { text: string, kind: string, context: string, meaning: string, sourceId: string, sourceTitle: string, locationKey: string, example: CandidateExample | null, };
+
+export type FrameImage = { uri: string, sessionId: string, mediaRevision: number, positionMs: number, sha256: string, sourceId: string, title: string, audioTrackId: string | null, };
+
 export type FrequencyCatalog = { id: string, kind: string, title: string, sourceUrl: string, sourceVersion: string, sourceSha256: string, rankUnit: string, rawRows: number, maxRank: number, notice: string, eligibleTargets: number, };
 
 export type FrozenItem = { bankId: string, itemId: string, catalog: FrequencyCatalog, targetRank: number, lexemeKey: string, kind: string, questionType: string, fromRank: number, toRank: number, content: QuestionDraft, repeatRecent: boolean, };
 
 export type ImportOptions = { audioStream: number | null, subtitleStream: number | null, subtitleMode: string, externalSubtitle: string | null, };
+
+export type IncomingInput = { id: string, kind: string, text: string, uri: string, title: string, };
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null;
 
@@ -162,9 +170,13 @@ export type MeaningUpdate = { id: string | null, text: string, };
 
 export type MediaInspection = { audioTracks: Array<Stream>, subtitleTracks: Array<Stream>, externalSubtitle: string | null, };
 
+export type MediaRef = { uri: string, title: string, mime: string, size: number, };
+
 export type MediaTools = { ffmpeg: string, ffprobe: string, tesseract: string, pgsTessdata: string | null, whisper: string, whisperModel: string, };
 
 export type NativeStatus = { selectionRegistered: boolean, ocrRegistered: boolean, inputRegistered: boolean, replacementRegistered: boolean, error: string | null, };
+
+export type OcrText = { imageId: string, text: string, };
 
 export type Outcome = "correct" | "correct_with_hint" | "incorrect" | "needs_confirmation";
 
@@ -324,7 +336,7 @@ export type VideoControl = { sessionId: string, action: string, value: number | 
 
 export type VideoLearning = { sessionId: string, context: WatchContext | null, eligible: boolean, remainingSeconds: number | null, collected: boolean, skipped: boolean, task: TaskSnapshot | null, };
 
-export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, paused: boolean, revision: number, userPaused: boolean, foreground: boolean, windowFocused: boolean, fullscreen: boolean, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
+export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, paused: boolean, revision: number, userPaused: boolean, foreground: boolean, windowFocused: boolean, fullscreen: boolean, mediaRevision: number, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
 
 export type VideoStudy = { sourceId: string, sha256: string, subtitles: SubtitleInfo, };
 
@@ -421,6 +433,19 @@ export interface CommandMap {
   known_targets_list: { args: { search?: string | null; offset?: number | null; limit?: number | null }; result: KnownTargetPage };
   media_inspect: { args: { path: string }; result: MediaInspection };
   media_path: { args: { assetId: string }; result: string };
+  mobile_drafts_get: { args: undefined; result: string | null };
+  mobile_drafts_save: { args: { json: string }; result: void };
+  mobile_frame_draft: { args: { imageId: string; text: string; range?: WatchClipRange | null }; result: FrameDraft };
+  mobile_frame_preview: { args: { imageId: string; text: string; range: WatchClipRange; operationId: string }; result: TaskHandle<PreviewAudio> };
+  mobile_image_draft: { args: { imageId: string; text: string }; result: FrameDraft };
+  mobile_image_pick: { args: undefined; result: CaptureImage };
+  mobile_image_prepare: { args: { id: string; uri: string }; result: CaptureImage };
+  mobile_incoming_ack: { args: { id: string }; result: void };
+  mobile_incoming_get: { args: undefined; result: Array<IncomingInput> };
+  mobile_ocr_start: { args: { imageId: string; rect: PixelRect; operationId: string }; result: TaskHandle<OcrText> };
+  mobile_shared_video: { args: { uri: string }; result: MediaRef };
+  mobile_text_draft: { args: { text: string; title: string }; result: FrameDraft };
+  mobile_video_frame: { args: undefined; result: CaptureImage };
   native_status: { args: undefined; result: NativeStatus };
   online_query_start: { args: { text: string; provider?: string | null; operationId: string }; result: TaskHandle<LookupResult> };
   plugin_install: { args: { path: string }; result: Provider };

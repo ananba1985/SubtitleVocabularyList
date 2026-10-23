@@ -339,11 +339,21 @@ impl Store {
         title: &str,
         context: &WatchContext,
     ) -> Result<WatchContext, AppError> {
+        self.bind_watch_context_inner(path,title,context,None)
+    }
+
+    /// The URI adapter has already checked this content hash in the active media session.
+    pub(crate) fn bind_watch_context_verified(&self,path:&str,title:&str,context:&WatchContext,verified_hash:&str) -> Result<WatchContext,AppError> {
+        self.bind_watch_context_inner(path,title,context,Some(verified_hash))
+    }
+
+    fn bind_watch_context_inner(&self,path:&str,title:&str,context:&WatchContext,verified_hash:Option<&str>) -> Result<WatchContext,AppError> {
         if !context.source_id.is_empty() && !context.example_id.is_empty() {
             self.save_watch_clip(context, path)?;
             return Ok(context.clone());
         }
-        if crate::corpus::file_hash(std::path::Path::new(path))? != context.media_sha256 {
+        let matches = match verified_hash { Some(hash) => hash == context.media_sha256, None => crate::corpus::file_hash(std::path::Path::new(path))? == context.media_sha256 };
+        if !matches {
             return Err(AppError::new(
                 "conflict",
                 "视频内容已变化，请重新打开后收录。",

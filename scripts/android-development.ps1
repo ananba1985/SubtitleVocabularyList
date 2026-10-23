@@ -20,6 +20,12 @@ try {
     $env:RUSTUP_TOOLCHAIN = $svlAndroid.RustToolchain
     $env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
     if ($Mode -ne 'Init') {
+        $svlOcrRoot = Join-Path $svlAndroid.Workspace '.local/android-ocr'
+        if (-not (Test-Path -LiteralPath (Join-Path $svlOcrRoot 'install/lib/libtesseract.a'))) {
+            & (Join-Path $PSScriptRoot 'build-android-ocr.ps1') -ConfigPath $ConfigPath
+            if ($LASTEXITCODE -ne 0) { throw 'Android OCR native libraries are not ready.' }
+        }
+        # Tauri resolves libc++_shared.so from this same NDK via the Rust library's DT_NEEDED.
         & node (Join-Path $PSScriptRoot 'prepare-android-assets.mjs')
         if ($LASTEXITCODE -ne 0) { throw 'Android offline resources are not ready.' }
     }

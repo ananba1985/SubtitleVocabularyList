@@ -57,7 +57,7 @@ pub(crate) fn network() -> Result<crate::device_sync::DeviceNetwork, AppError> {
 pub(crate) fn audio_invoke<T: serde::de::DeserializeOwned>(command: &str, args: serde_json::Value) -> Result<T, AppError> {
     PLATFORM.get().ok_or_else(|| AppError::new("provider_unavailable", "手机声音接口尚未就绪。"))?
         .run_mobile_plugin(command, args)
-        .map_err(|error| AppError::new("audio_unavailable", format!("手机声音操作未完成：{error}")))
+        .map_err(|error| AppError::new("provider_unavailable", format!("手机系统操作未完成：{error}")))
 }
 
 pub(crate) fn speech_voices() -> Result<Vec<crate::speech::SystemVoice>, AppError> {

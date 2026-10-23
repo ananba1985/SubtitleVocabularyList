@@ -1,6 +1,7 @@
 package com.subtitlevocabularylist.android
 
 import android.os.Bundle
+import android.content.Intent
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
@@ -11,6 +12,12 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    IncomingInputs.receive(this,intent)
+  }
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    IncomingInputs.receive(this,intent)
   }
 
   override fun onWebViewCreate(webView: WebView) {

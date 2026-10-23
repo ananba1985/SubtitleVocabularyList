@@ -15,11 +15,13 @@ export function CollectionModal({
   onClose,
   onSaved,
   onMarked,
+  onDraftChanged,
 }: {
   seed: CollectionSeed;
   onClose: () => void;
   onSaved: () => void;
   onMarked: () => void;
+  onDraftChanged?: (seed: CollectionSeed) => void;
 }) {
   const features = useRuntimeFeatures();
   const [text, setText] = useState(seed.text),
@@ -29,11 +31,24 @@ export function CollectionModal({
   const [explanation, setExplanation] = useState<Explanation | null>(null),
     [prepared, setPrepared] = useState<PreparedCollection | null>(null);
   const [target, setTarget] = useState("create"),
-    [saveAudio, setSaveAudio] = useState(Boolean(seed.example)),
+    [saveAudio, setSaveAudio] = useState(
+      seed.saveAudio ?? Boolean(seed.example),
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [task, setTask] = useState<TaskSnapshot | null>(null),
-    [operationId, setOperationId] = useState(uid);
+    [operationId, setOperationId] = useState(seed.operationId ?? uid());
+  useEffect(() => {
+    onDraftChanged?.({
+      ...seed,
+      text,
+      kind,
+      meaning,
+      context,
+      saveAudio,
+      operationId,
+    });
+  }, [text, kind, meaning, context, saveAudio, operationId, onDraftChanged]);
   const [alreadyKnown, setAlreadyKnown] = useState(Boolean(seed.alreadyKnown));
   useEffect(() => {
     let disposed = false;
@@ -263,7 +278,9 @@ export function CollectionModal({
               ? "原句和时间位置来自已导入课程；需要纠正时，请修订课程包后重新导入。"
               : seed.locationKey?.startsWith("watch-ocr:")
                 ? "原句来自已核对的暂停帧；原声区间由你手动选择，不是字幕自动识别的起止时间。"
-                : features.mobile ? "原句来自所选对白，本次保存会保留来源和时间。" : "原句来自已选对白；需要纠正文字或时间时，可先在预习面板中修改。"}
+                : features.mobile
+                  ? "原句来自所选对白，本次保存会保留来源和时间。"
+                  : "原句来自已选对白；需要纠正文字或时间时，可先在预习面板中修改。"}
           </p>
         )}
         {seed.sourceTitle && (
@@ -376,13 +393,15 @@ export function CollectionModal({
           </p>
         )}
         <footer>
-          {features.knownTargetPreferences && <button
-            className="secondary"
-            onClick={markKnown}
-            disabled={busy || !text.trim()}
-          >
-            我已掌握，以后跳过
-          </button>}
+          {features.knownTargetPreferences && (
+            <button
+              className="secondary"
+              onClick={markKnown}
+              disabled={busy || !text.trim()}
+            >
+              我已掌握，以后跳过
+            </button>
+          )}
           <button className="secondary" onClick={onClose} disabled={busy}>
             暂不收录
           </button>

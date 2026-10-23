@@ -24,8 +24,9 @@
 | image | PGS 图像输出、屏幕快照与裁剪处理，版本见 Cargo 锁文件 | [image-rs/image](https://github.com/image-rs/image)，MIT 或 Apache-2.0 |
 | whisper.cpp | 发行资源从 1.8.3 固定源码编译 Windows x64 CPU CLI，静态 CRT | [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)，MIT |
 | 英语 Whisper 模型 | ggml-base.en，下载与 SHA256 见 build-offline-whisper.ps1，模型附 MIT 条款 | [转换模型来源](https://huggingface.co/ggerganov/whisper.cpp)、[原始 Whisper](https://github.com/openai/whisper)，MIT |
-| Tesseract 与英语数据 | 发行资源从 5.5.3 源码构建；0.8.3 构建脚本改用 tessdata_best 4.1.0 的 eng.traineddata，旧发行包使用 fast 数据 | [Tesseract](https://github.com/tesseract-ocr/tesseract)、[tessdata_best](https://github.com/tesseract-ocr/tessdata_best)，Apache-2.0 |
-| OCR 静态依赖 | Leptonica 1.85.0、libpng 1.6.43、libtiff 4.6.0、libjpeg-turbo 3.0.1、zlib 1.3.1 | 固定源码与摘要见 build-offline-ocr.ps1；分别保留 BSD 类、libpng、TIFF、IJG/BSD/zlib 及 zlib 条款，不替换成项目许可 |
+| Tesseract 与英语数据 | Windows／Android 从同一 5.5.3 源码构建；0.8.3 构建脚本改用 tessdata_best 4.1.0 的 eng.traineddata，旧发行包使用 fast 数据 | [Tesseract](https://github.com/tesseract-ocr/tesseract)、[tessdata_best](https://github.com/tesseract-ocr/tessdata_best)，Apache-2.0 |
+| Android OCR 原生依赖 | Leptonica 1.85.0（关闭图片编解码，由平台供给像素）、NDK 28.2.13676358 的 cpu-features、libc++_shared | Leptonica BSD 类条款及 NDK NOTICE／NOTICE.toolchain 随 assets 保留；固定配方见 scripts/build-android-ocr.ps1 |
+| OCR 静态依赖 | Windows：Leptonica 1.85.0、libpng 1.6.43、libtiff 4.6.0、libjpeg-turbo 3.0.1、zlib 1.3.1 | 固定源码与摘要见 build-offline-ocr.ps1；分别保留 BSD 类、libpng、TIFF、IJG/BSD/zlib 及 zlib 条款，不替换成项目许可 |
 | FFmpeg 与 ffprobe | 发行资源从 n9.0.2 固定源码构建，未开启 GPL、nonfree、网络或外部编解码库，使用静态 zlib；历史开发环境的 Gyan 构建不进入安装包 | [FFmpeg](https://github.com/FFmpeg/FFmpeg)、[许可说明](https://ffmpeg.org/legal.html)，本次构建 LGPL-2.1-or-later；原始源码、适配脚本与配置随源码资料交付 |
 | selectors 等传递依赖 | selectors 0.38.0 用于 HTML 解析；完整版本见生成的依赖清单 | [servo/stylo](https://github.com/servo/stylo)，MPL-2.0；保留源码许可声明，并附[正式条款](https://www.mozilla.org/media/MPL/2.0/index.txt) |
 | libmpv 播放引擎 | shinchiro 20261021 Windows x86_64，mpv git e471496c56；动态加载；0.16.4 起使用 mpv 原生 D3D11 输出 | [构建来源](https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261021)、[固定资源、摘要及材料边界](scripts/mpv-runtime-notice.md)。0.16.3 本机试用包准备 DLL 和 mpv Copyright／GPL／LGPL 原文，源码材料加入固定引擎源码和提供方确切构建配方。静态依赖的完整对应源码及条款尚未收齐，对外分发前须补齐，不能用头文件许可或单个引擎归档代替 |

@@ -19,6 +19,7 @@ pub struct VideoTrack { pub id: String, pub format_id: String, pub kind: String,
 #[serde(rename_all = "camelCase")]
 pub struct VideoState { pub session_id: String, pub uri: String, pub position_ms: u64, pub duration_ms: u64, pub playing: bool, pub paused: bool,
     pub revision: u64, pub user_paused: bool, pub foreground: bool, pub window_focused: bool, pub fullscreen: bool,
+    pub media_revision: u64,
     pub ended: bool, pub speed: f64, pub tracks: Vec<VideoTrack>, pub error: Option<String> }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,7 +62,7 @@ pub(crate) fn setting<T: serde::de::DeserializeOwned>(store: &Store, key: &str) 
     let json: Option<String> = store.connection()?.query_row("SELECT value_json FROM settings WHERE key=?", [key], |r| r.get(0)).optional()?;
     json.map(|s| serde_json::from_str(&s).map_err(Into::into)).transpose()
 }
-fn save<T: Serialize>(store: &Store, key: &str, value: &T) -> Result<(), AppError> {
+pub(crate) fn save<T: Serialize>(store: &Store, key: &str, value: &T) -> Result<(), AppError> {
     store.connection()?.execute("INSERT INTO settings(key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", rusqlite::params![key,serde_json::to_string(value)?])?;
     Ok(())
 }
@@ -84,6 +85,15 @@ pub(crate) fn pick(store: &Store) -> Result<PlaybackState, AppError> {
     Ok(playback)
 }
 
+pub(crate) fn register_shared(store:&Store,uri:&str)->Result<MediaRef,AppError> {
+    let file:MediaRef = invoke("describeDocument",serde_json::json!({"uri":uri}))?;
+    save(store,&key("media",&file.uri),&file)?;
+    let mut playback = store.playback_state()?;
+    if !playback.playlist.iter().any(|i|i.path==file.uri) { playback.playlist.push(PlaylistItem{path:file.uri.clone(),title:file.title.clone(),source_id:None}); }
+    store.save_playback_state(&playback)?;
+    Ok(file)
+}
+
 pub(crate) fn open(store: &Store, uri: &str) -> Result<VideoState, AppError> {
     reference(store, uri)?;
     let mut playback = store.playback_state()?;
@@ -91,6 +101,7 @@ pub(crate) fn open(store: &Store, uri: &str) -> Result<VideoState, AppError> {
     let tracks = setting::<std::collections::HashMap<String,String>>(store,&key("tracks",uri))?.unwrap_or_default();
     let state: VideoState = invoke("videoOpen", serde_json::json!({"uri":uri,"sessionId":uuid::Uuid::new_v4().to_string(),
         "positionMs":progress.map(|p| (p.position * 1000.0) as u64).unwrap_or(0),"speed":playback.preferences.speed,
+        "volume":if playback.preferences.muted {0.0}else{playback.preferences.volume/100.0},
         "audioKey":tracks.get("audio").cloned().unwrap_or_default(),"subtitleKey":tracks.get("subtitle").cloned().unwrap_or_default()}))?;
     playback.current_path = Some(uri.into());
     save(store,&key("verified",uri),&String::new())?;
@@ -110,13 +121,30 @@ pub(crate) fn state(store: &Store) -> Result<VideoState, AppError> {
     Ok(state)
 }
 pub(crate) fn control(store: &Store, control: VideoControl) -> Result<VideoState, AppError> {
-    if !matches!(control.action.as_str(), "play"|"pause"|"seek"|"speed"|"track"|"hide"|"fullscreen") || control.value.is_some_and(|v| !v.is_finite() || v < 0.0) {
+    if !matches!(control.action.as_str(), "play"|"pause"|"stop"|"seek"|"speed"|"volume"|"auto_next"|"learning_offset"|"track"|"hide"|"fullscreen") || control.value.is_some_and(|v| !v.is_finite() || (v < 0.0 && control.action != "learning_offset")) {
         return Err(AppError::new("invalid_input", "视频操作参数无效。"));
+    }
+    if control.action == "learning_offset" {
+        let current:VideoState=invoke("videoState",serde_json::json!({}))?;
+        if current.session_id != control.session_id { return Err(AppError::new("conflict","当前视频已切换。")); }
+        let study=study(store,&current.uri)?.ok_or_else(||AppError::new("resource_missing","视频资料尚未准备。"))?;
+        let asset=study.subtitles.selected_chinese_id.ok_or_else(||AppError::new("resource_missing","请先添加中文字幕。"))?;
+        store.set_subtitle_offset(&study.source_id,&asset,control.value.unwrap_or(0.0) as i64)?;
     }
     let state: VideoState = invoke("videoControl", serde_json::to_value(&control)?)?;
     persist_progress(store, &state)?;
     if control.action == "speed" {
         let mut playback = store.playback_state()?; playback.preferences.speed = state.speed; store.save_playback_state(&playback)?;
+    }
+    if matches!(control.action.as_str(),"volume"|"auto_next"|"stop") {
+        let mut playback=store.playback_state()?;
+        match control.action.as_str() {
+            "volume"=>{playback.preferences.volume=control.value.unwrap_or(100.0).clamp(0.0,100.0);playback.preferences.muted=false;},
+            "auto_next"=>playback.preferences.auto_next=control.value.unwrap_or(0.0)!=0.0,
+            "stop"=>playback.current_path=None,
+            _=>{}
+        }
+        store.save_playback_state(&playback)?;
     }
     if control.action == "track" {
         let kind = control.kind.as_deref().unwrap_or("subtitle");
@@ -144,6 +172,7 @@ pub(crate) fn viewport(viewport: VideoViewport) -> Result<(), AppError> {
 }
 pub(crate) fn persist_progress(store: &Store, state: &VideoState) -> Result<(), AppError> {
     if state.uri.is_empty() { return Ok(()); }
+    if let Some(audio) = state.tracks.iter().find(|t|t.kind=="audio"&&t.selected) { save(store,&key("actual_audio",&state.uri),&audio.format_id)?; }
     store.save_watch_progress(&crate::watch::WatchProgress { path:state.uri.clone(), position:state.position_ms as f64 /1000.0, ..Default::default() })
 }
 pub(crate) fn study(store: &Store, uri: &str) -> Result<Option<VideoStudy>, AppError> { setting(store, &key("study",uri)) }
@@ -199,9 +228,10 @@ fn install(store: &Store, media: &MediaRef, index: &MediaIndex) -> Result<VideoS
 }
 
 #[cfg(all(target_os = "android", feature = "mobile"))]
-pub(crate) fn export_audio(uri: &str, path: &std::path::Path, start_ms: i64, end_ms: i64) -> Result<i64, AppError> {
+pub(crate) fn export_audio(store: &Store, uri: &str, path: &std::path::Path, start_ms: i64, end_ms: i64) -> Result<i64, AppError> {
     #[derive(Deserialize)] #[serde(rename_all = "camelCase")] struct Exported { duration_ms: i64 }
-    let result: Exported = invoke("videoExport",serde_json::json!({"uri":uri,"path":path,"startMs":start_ms,"endMs":end_ms}))?;
+    let audio: Option<String> = setting(store,&key("actual_audio",uri))?;
+    let result: Exported = invoke("videoExport",serde_json::json!({"uri":uri,"path":path,"startMs":start_ms,"endMs":end_ms,"audioTrackId":audio.unwrap_or_default()}))?;
     Ok(result.duration_ms)
 }
 

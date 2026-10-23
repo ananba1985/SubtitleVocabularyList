@@ -64,9 +64,12 @@ pub fn recognize(program: &Path, image: &Path, cancelled: &AtomicBool) -> Result
         cancelled,
     )?;
     let text = String::from_utf8(output)
-        .map_err(|_| AppError::new("invalid_data", "OCR 没有返回可用文字。"))?
-        .trim()
-        .to_owned();
+        .map_err(|_| AppError::new("invalid_data", "OCR 没有返回可用文字。"))?;
+    recognized_text(&text)
+}
+
+pub(crate) fn recognized_text(text: &str) -> Result<String, AppError> {
+    let text = text.trim().to_owned();
     if text.is_empty() {
         return Err(AppError::new(
             "empty_recognition",

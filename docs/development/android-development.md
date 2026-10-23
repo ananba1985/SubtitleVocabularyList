@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-ANDROID-001 |
-| 文档版本 | 0.2 |
+| 文档版本 | 0.3 |
 | 更新日期 | 2026-10-22 |
-| 状态 | 开发入口与 Android 工程已接入；工具链与首次 debug 构建通过，手机安装与基本单词本流程通过，重开修复继续核对；见 Android 验证记录 |
+| 状态 | 0.22.0 Android 开发入口、固定离线 OCR 构建与本机学习正常流程已验证；同步与剧集资料共享后置，见 Android 验证记录 |
 | 依据 | [Android PRD](../requirements/android-PRD.md)、[架构与开发设计](../design/android-architecture.md)、[开发计划](../planning/android-development-plan.md) |
 
 ## 1 开发原则
@@ -59,7 +59,7 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 
 ### 4.1 当前可用与未来入口
 
-`android:check`、`android:init`、`android:dev`、`android:studio`、`android:build` 已接入，环境检查与初始化通过。dev 已完成 arm64 Rust 编译，Windows 符号链接权限仍阻止后续部署；studio／手动 build 未实际执行，不宣称已可安装。`android:package` 仍为按请求发布的后续入口。
+`android:check`、`android:init`、`android:dev`、`android:studio`、`android:build` 已接入；arm64 Rust／Kotlin、真机安装和内嵌页面 debug 构建均已有实际结果。Studio 工程可以由对应入口打开，尚未单独执行 IDE 操作验收。`android:package` 仍为按请求发布的后续入口。
 
 | 拟增入口 | 用途 | 行为边界 |
 | --- | --- | --- |
@@ -67,7 +67,7 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 | `pnpm android:init` | 一次性初始化 Android 工程 | 环境和平台配置准备后使用；不覆盖已维护工程，不自动装全 ABI |
 | `pnpm android:dev` | 日常手机增量调试 | 使用开发配置、mobile 特性和选定设备；不调用 NSIS 或发行入口 |
 | `pnpm android:studio` | 在 Android Studio 打开同一工程 | 交给 Tauri Android dev 的 `--open`，保持其所需开发上下文 |
-| `pnpm android:build` | 用户明确请求时导出本地 debug APK | 首期 arm64，留在指定持久产物目录；不自动升级、签名发布或安装 |
+| `pnpm android:build` | 开发闭环需要核对独立运行，或用户请求导出 debug APK 时 | 首期 arm64，留在指定持久产物目录；不自动升级、签名发布或安装 |
 | `pnpm android:package` | 用户明确请求时发布 | 正式签名、离线资源、条款／源码材料与摘要；与日常开发分开 |
 
 完成宿主与配置改造后，拟采用以下 CLI 路径封装入口：
@@ -117,9 +117,18 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 
 0.18.0 的手机账号页复用 `SyncView`，HTTP、分片、差量和完整学习历史均走原 Rust 实现；只在 `MobilePlatformPlugin` 适配 Keystore、浏览器及网络状态。开发时在“我的”保存站点／设备名，发起请求、打开系统浏览器核对连接码，批准后返回检查连接，再确认本机资料归属。自动同步默认关闭；原声当前只在不计费网络传输。断开连接保留本地资料，测试资料和真实账号批准结果分别记录；未连接真机时不能以本地合成凭据代替实际授权证据。
 
-## 7 修订记录
+## 7 OCR 构建与当前手机使用
+
+`pnpm android:ocr` 用项目选定 NDK、现有 Visual Studio CMake／Ninja 编译 arm64 静态库，输出 `.local/android-ocr/install`。首次 `android:dev`／`android:build` 缺缓存时自动执行；源码或 NDK 配方改变后显式重跑。Tesseract 5.5.3／Leptonica 1.85.0 复用桌面固定源码归档与摘要；只有原生输出分平台，Leptonica 的图片编解码关闭，由 Android 和 Rust 提供像素。CpuFeaturesNdkCompat 编译该 NDK 随附 cpu-features.c；Tauri 根据 DT_NEEDED 将相同 NDK 的 libc++_shared.so 加入 APK，不能再额外复制一份 jniLibs。
+
+资源准备现在包含 12 个词库、模型、许可和源清单文件。英语模型是 tessdata_best 4.1.0 的 eng，摘要在脚本固定。`android:dev` 只为开发连接 Vite；内嵌页面的 debug 构建用于本机正常离线检查，不是签名发布。个人原声、词库、截图、测试素材和模型均不进入公开源码。
+
+日常使用见 [Android 使用说明](android-user-guide.md)。本机验收具名素材在 `.local/android-acceptance`，手机对应 Download/SVL-Android；共享账号凭据保留，不为检查离线而断开或重置。当前按用户安排保持手动离线、自动同步关闭，真实联网闭环稍后继续。
+
+## 8 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
 | 0.1 | 2026-10-22 | 记录现有 Android Studio／双 SDK／JDK／Rust 状态、准备顺序、拟增入口、增量开发与单一业务核心维护规则 |
 | 0.2 | 2026-10-22 | 接入受控 Android 工程与会话工具链，记录首次 debug 构建、跨盘 Kotlin 缓存处理及共用离线资源准备；真机验收单独记录 |
+| 0.3 | 2026-10-22 | 补固定 Android OCR 构建、资源与运行入口，索引使用说明，更新实际开发状态 |

@@ -38,7 +38,7 @@ class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
     override fun onDestroy(activity: AppCompatActivity) { exporter.destroy(); video.destroy(); audio.destroy(); speech.destroy(); io.shutdown() }
 
     private fun sound(invoke: Invoke, action: () -> Unit) = activity.runOnUiThread {
-        try { action() } catch (_: Exception) { invoke.reject("手机声音接口暂不可用，请检查离线语音或音频文件。", "audio_unavailable") }
+        try { action() } catch (_: Exception) { invoke.reject("手机系统接口暂不可用，请检查本机资源或文件授权。", "provider_unavailable") }
     }
 
     @Command fun speechVoices(invoke: Invoke) = sound(invoke) { speech.list(invoke) }
@@ -58,6 +58,20 @@ class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
     @Command fun videoViewport(invoke: Invoke) = sound(invoke) { video.viewport(invoke) }
     @Command fun videoSubtitle(invoke: Invoke) = sound(invoke) { video.subtitle(invoke) }
     @Command fun videoExport(invoke: Invoke) = sound(invoke) { exporter.start(invoke) }
+    @Command fun incomingInputs(invoke: Invoke) = sound(invoke) { invoke.resolve(JSObject().put("inputs",IncomingInputs.list(activity))) }
+    @Command fun incomingAck(invoke: Invoke) = sound(invoke) { IncomingInputs.ack(activity,invoke.parseArgs(ImageArgs::class.java).id); invoke.resolve() }
+    @Command fun prepareImage(invoke: Invoke) {
+        val args = invoke.parseArgs(ImageArgs::class.java)
+        io.execute {
+            try { invoke.resolve(MobileImages.prepare(activity,args)) }
+            catch (_: Exception) { invoke.reject("图片无法读取，请重新选择或分享图片。", "resource_missing") }
+        }
+    }
+    @Command fun videoFrame(invoke: Invoke) = sound(invoke) { video.capture(invoke,io) }
+    @Command fun describeDocument(invoke: Invoke) {
+        val args = invoke.parseArgs(ImageArgs::class.java)
+        io.execute { try { invoke.resolve(MediaDocuments.describe(activity,Uri.parse(args.uri))) } catch (_:Exception) { invoke.reject("文件授权已失效，请通过文件选择器重新选择。","resource_missing") } }
+    }
 
     @Command fun pickDocuments(invoke: Invoke) {
         val args = invoke.parseArgs(VideoArgs::class.java)

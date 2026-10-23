@@ -9,11 +9,22 @@ export type CollectionQueueAction =
   | { type: "close" }
   | { type: "next" }
   | { type: "discard" };
+// replace is scoped to the current draft identity, so an old OCR result cannot replace a newer draft.
+export type MutableCollectionQueueAction =
+  | CollectionQueueAction
+  | { type: "replace"; seed: CollectionSeed }
+  | { type: "restore"; state: CollectionQueue };
 export function collectionQueue(
   state: CollectionQueue,
-  action: CollectionQueueAction,
+  action: MutableCollectionQueueAction,
 ): CollectionQueue {
   switch (action.type) {
+    case "restore":
+      return action.state;
+    case "replace":
+      return state.current?.draftId === action.seed.draftId
+        ? { ...state, current: action.seed }
+        : state;
     case "receive":
       return state.current || state.pending.length > 0
         ? { ...state, pending: [...state.pending, action.seed] }

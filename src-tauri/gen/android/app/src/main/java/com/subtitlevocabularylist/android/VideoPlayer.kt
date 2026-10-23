@@ -4,6 +4,11 @@ import android.app.Activity
 import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
+import android.view.SurfaceView
+import android.view.PixelCopy
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.content.pm.ActivityInfo
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
@@ -19,6 +24,8 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
+import java.util.concurrent.Executor
 
 @InvokeArg
 class VideoArgs {
@@ -29,6 +36,7 @@ class VideoArgs {
     var value: Double = 0.0
     var positionMs: Long = 0
     var speed: Float = 1f
+    var volume: Float = 1f
     var x: Double = 0.0
     var y: Double = 0.0
     var width: Double = 0.0
@@ -57,6 +65,7 @@ class VideoPlayer(private val activity: Activity) {
     private var fullscreen = false
     private var lastViewport: VideoArgs? = null
     private var revision = 0L
+    private var mediaRevision = 0L
     private var userPaused = false
     private var pendingPause = ""
     private val back = object : OnBackPressedCallback(false) {
@@ -69,7 +78,7 @@ class VideoPlayer(private val activity: Activity) {
         require(Uri.parse(args.uri).scheme == "content")
         destroy()
         uri = args.uri; sessionId = args.sessionId; error = null
-        revision++; userPaused = false; pendingPause = ""
+        revision++; mediaRevision++; userPaused = false; pendingPause = ""
         audioKey = args.audioKey; subtitleKey = args.subtitleKey; selectionApplied = false
         player = ExoPlayer.Builder(activity).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
@@ -84,9 +93,10 @@ class VideoPlayer(private val activity: Activity) {
                     userPaused = !ready && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST && pendingPause != "internal"
                     pendingPause = ""
                 }
-                override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) { revision++ }
+                override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) { revision++; mediaRevision++ }
                 override fun onTracksChanged(tracks: Tracks) {
                     revision++
+                    mediaRevision++
                     if (!selectionApplied && tracks.groups.isNotEmpty()) {
                         selectionApplied = true
                         if (audioKey.isNotEmpty()) select(C.TRACK_TYPE_AUDIO, audioKey)
@@ -96,6 +106,7 @@ class VideoPlayer(private val activity: Activity) {
             })
             setMediaItem(MediaItem.fromUri(uri), args.positionMs)
             setPlaybackSpeed(args.speed.coerceIn(0.25f, 3f))
+            volume = args.volume.coerceIn(0f,1f)
             prepare()
             if (foreground) play()
         }
@@ -129,6 +140,7 @@ class VideoPlayer(private val activity: Activity) {
         }
         return JSObject().put("sessionId", sessionId).put("uri", uri)
             .put("revision", revision).put("userPaused", userPaused).put("paused", player?.playWhenReady != true)
+            .put("mediaRevision",mediaRevision)
             .put("foreground", (activity as AppCompatActivity).lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
             .put("windowFocused", activity.hasWindowFocus())
             .put("fullscreen", fullscreen)
@@ -162,8 +174,11 @@ class VideoPlayer(private val activity: Activity) {
         when (args.action) {
             "play" -> if (foreground) player?.apply { if (playbackState == Player.STATE_ENDED) seekTo(0); play() }
             "pause" -> pause(true)
+            "stop" -> { pause(); val ending=snapshot(); destroy(); uri="";sessionId="";revision++;invoke.resolve(ending);return }
+            "learning_offset" -> pause()
             "seek" -> player?.seekTo(args.value.toLong().coerceAtLeast(0))
             "speed" -> player?.setPlaybackSpeed(args.value.toFloat().coerceIn(0.25f, 3f))
+            "volume" -> player?.volume = (args.value/100.0).toFloat().coerceIn(0f,1f)
             "hide" -> { pause(); if (fullscreen) setFullscreen(false); view?.visibility = View.GONE }
             "fullscreen" -> setFullscreen(!fullscreen)
             "track" -> player?.let { current ->
@@ -207,6 +222,33 @@ class VideoPlayer(private val activity: Activity) {
     fun selectedAudio(): Pair<TrackGroup, Int>? {
         val group = player?.currentTracks?.groups?.find { it.type == C.TRACK_TYPE_AUDIO && it.isSelected } ?: return null
         return (0 until group.length).find { group.isTrackSelected(it) }?.let { Pair(group.mediaTrackGroup, it) }
+    }
+    fun capture(invoke: Invoke,io: Executor) {
+        pause()
+        val id = UUID.randomUUID().toString()
+        val frame = JSObject().put("uri",uri).put("sessionId",sessionId).put("mediaRevision",mediaRevision).put("positionMs",player?.currentPosition ?: 0)
+        fun save(bitmap:Bitmap,origin:String) = io.execute {
+            try { invoke.resolve(MobileImages.save(activity,bitmap,id,origin).put("frame",frame)) }
+            catch (_: Exception) { invoke.reject("暂停帧保存失败，请重新截图。", "capture_failed") }
+        }
+        val bitmapCue = player?.currentCues?.cues?.firstOrNull { it.bitmap != null }?.bitmap
+        if (bitmapCue != null) { save(bitmapCue.copy(Bitmap.Config.ARGB_8888,false) ?: throw IllegalArgumentException("图片字幕无法复制。"),"当前图片字幕（没有可靠对白边界）"); return }
+        val surface = view?.videoSurfaceView as? SurfaceView
+        if (surface == null) { invoke.reject("当前视频画面不可截图。", "capture_failed"); return }
+        val handler = Handler(Looper.getMainLooper())
+        fun copy(remaining:Int) {
+            if (!surface.holder.surface.isValid || surface.width <= 0 || surface.height <= 0) {
+                if (remaining > 0) handler.postDelayed({copy(remaining-1)},150)
+                else invoke.reject("请让暂停视频画面可见后再截图。", "capture_failed")
+                return
+            }
+            val bitmap = Bitmap.createBitmap(surface.width,surface.height,Bitmap.Config.ARGB_8888)
+            PixelCopy.request(surface,bitmap,{result ->
+                if (result == PixelCopy.SUCCESS) save(bitmap,"视频暂停帧（没有可靠对白边界）")
+                else { bitmap.recycle(); if (remaining>0) handler.postDelayed({copy(remaining-1)},150) else invoke.reject("当前暂停帧尚未准备完成，请重试。","capture_failed") }
+            },handler)
+        }
+        copy(6)
     }
     fun subtitle(invoke: Invoke) {
         val args = invoke.parseArgs(VideoArgs::class.java)

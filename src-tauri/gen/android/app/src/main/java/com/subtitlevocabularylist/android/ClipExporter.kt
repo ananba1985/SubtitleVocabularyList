@@ -4,12 +4,13 @@ import android.app.Activity
 import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
-import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.TrackGroup
+import androidx.media3.common.C
 import androidx.media3.common.util.Clock
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.trackselection.TrackSelector
+import androidx.media3.exoplayer.trackselection.MappingTrackSelector
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.transformer.*
 import app.tauri.annotation.InvokeArg
 import app.tauri.plugin.Invoke
@@ -22,6 +23,7 @@ class ExportArgs {
     var path: String = ""
     var startMs: Long = 0
     var endMs: Long = 0
+    var audioTrackId: String = ""
 }
 
 class ClipExporter(private val activity: Activity, private val video: VideoPlayer) {
@@ -30,19 +32,26 @@ class ClipExporter(private val activity: Activity, private val video: VideoPlaye
     fun start(invoke: Invoke) {
         val args = invoke.parseArgs(ExportArgs::class.java)
         require(transformer == null && Uri.parse(args.uri).scheme == "content")
-        require(args.uri == video.snapshot().getString("uri")) { "请先打开对应视频，再截取原声。" }
         require(args.startMs >= 0 && args.endMs > args.startMs)
         val output = File(args.path).canonicalFile
         require(output.parentFile == File(activity.filesDir, "jobs").canonicalFile && output.extension == "m4a")
-        val audio = video.selectedAudio() ?: throw IllegalArgumentException("当前没有可截取音轨。")
-        if (!video.snapshot().getBoolean("paused")) video.pause()
-        // ExoPlayer prefixes the base source's group/format IDs with 0: when external
-        // subtitle sources are merged. Transformer reads the base video by itself.
-        val merged = audio.first.getFormat(audio.second).id?.startsWith("0:") == true
-        val exportGroup = if (merged) TrackGroup(audio.first.id.removePrefix("0:"),
-            *(0 until audio.first.length).map { audio.first.getFormat(it).buildUpon().setId(audio.first.getFormat(it).id?.removePrefix("0:")).build() }.toTypedArray()) else audio.first
-        val factory = TrackSelector.Factory { context -> DefaultTrackSelector(context).apply {
-            parameters = buildUponParameters().addOverride(TrackSelectionOverride(exportGroup, listOf(audio.second))).build()
+        val current = video.snapshot()
+        val selected = if (current.getString("uri") == args.uri) video.selectedAudio() else null
+        val liveId = selected?.let { it.first.getFormat(it.second).id }
+        val desired = args.audioTrackId.ifBlank { liveId ?: "" }.removePrefix("0:")
+        if (current.getString("uri") == args.uri && !current.getBoolean("paused")) video.pause()
+        val factory = TrackSelector.Factory { context -> object : DefaultTrackSelector(context) {
+            override fun selectAudioTrack(mapped: MappingTrackSelector.MappedTrackInfo, support: Array<Array<IntArray>>, mixed: IntArray, parameters: DefaultTrackSelector.Parameters): android.util.Pair<ExoTrackSelection.Definition,Int>? {
+                if (desired.isBlank()) return super.selectAudioTrack(mapped,support,mixed,parameters)
+                for (renderer in 0 until mapped.rendererCount) if (mapped.getRendererType(renderer) == C.TRACK_TYPE_AUDIO) {
+                    val groups = mapped.getTrackGroups(renderer)
+                    for (g in 0 until groups.length) for (track in 0 until groups[g].length) {
+                        if (groups[g].getFormat(track).id?.removePrefix("0:") == desired)
+                            return android.util.Pair(ExoTrackSelection.Definition(groups[g],track),renderer)
+                    }
+                }
+                throw IllegalArgumentException("所选音轨已变化，请重新选择后截取。")
+            }
         } }
         val loader = DefaultAssetLoaderFactory(activity, DefaultDecoderFactory.Builder(activity).build(), Clock.DEFAULT,
             null, DataSourceBitmapLoader(activity), factory)

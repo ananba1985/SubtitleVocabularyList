@@ -5,6 +5,7 @@ pub(crate) mod capture;
 pub(crate) mod corpus;
 pub(crate) mod learning;
 pub(crate) mod mobile_media;
+pub(crate) mod mobile_capture;
 pub(crate) mod query;
 #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 pub(crate) mod synchronization;
@@ -40,6 +41,19 @@ where
 // One command catalog for both hosts; platform dependencies stay explicitly scoped.
 svl_ipc_macros::catalog! {
         system::app_ready,
+        mobile_capture::mobile_incoming_get,
+        mobile_capture::mobile_incoming_ack,
+        mobile_capture::mobile_image_prepare,
+        mobile_capture::mobile_image_pick,
+        mobile_capture::mobile_video_frame,
+        mobile_capture::mobile_ocr_start,
+        mobile_capture::mobile_frame_preview,
+        mobile_capture::mobile_frame_draft,
+        mobile_capture::mobile_image_draft,
+        mobile_capture::mobile_text_draft,
+        mobile_capture::mobile_shared_video,
+        mobile_capture::mobile_drafts_get,
+        mobile_capture::mobile_drafts_save,
         mobile_media::video_library,
         mobile_media::video_learning_get,
         mobile_media::video_learning_visible,

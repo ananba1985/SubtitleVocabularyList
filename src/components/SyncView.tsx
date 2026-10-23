@@ -24,7 +24,7 @@ const conflictFields: Record<string, string> = {
   "sources.title": "来源名称",
 };
 
-export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void; refreshKey?: number }) {
+export function SyncView({ onChanged, refreshKey = 0, meteredAudio }: { onChanged: () => void; refreshKey?: number; meteredAudio?:{localBytes:number;limitBytes:number} }) {
   const { mobile } = useRuntimeFeatures();
   const [connection, setConnection] = useState<ConnectionStatus | null>(null),
     [busy, setBusy] = useState(false),
@@ -81,12 +81,12 @@ export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void;
       setTaskId(null);
     }
   }
-  async function synchronize() {
+  async function synchronize(allowMetered=false) {
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const task = await call("sync_start", {
+      const task = await call(allowMetered ? "sync_metered_start" : "sync_start", {
         operationId: uid(),
       });
       setTaskId(task.id);
@@ -234,10 +234,15 @@ export function SyncView({ onChanged, refreshKey = 0 }: { onChanged: () => void;
               disabled={
                 busy || connection.offline || connection.state !== "connected"
               }
-              onClick={synchronize}
+              onClick={() => synchronize()}
             >
               立即同步全部资料
             </button>
+            {mobile && meteredAudio && <div className="suggestion">
+              <p>本机原声总量约 {(meteredAudio.localBytes/1024/1024).toFixed(2)} MiB；实际只发送缺少的原声。下载量由账号资料决定。</p>
+              <p>本次可授权上传与下载原声内容合计最多 {(meteredAudio.limitBytes/1024/1024).toFixed(0)} MiB。结束、失败或取消即失效；自动同步仍等待不计费网络。</p>
+              <button disabled={busy || connection.offline || connection.state!=="connected"} onClick={()=>synchronize(true)}>本次允许计费网络同步原声</button>
+            </div>}
             {taskId && (
               <button
                 onClick={() =>

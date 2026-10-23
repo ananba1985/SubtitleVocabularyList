@@ -32,6 +32,8 @@ struct HttpRemote {
     supports_delta_download: bool,
     cancelled: Option<Arc<AtomicBool>>,
     confirmed_media: BTreeSet<(String, String)>,
+    #[cfg(target_os = "android")]
+    metered_audio_remaining: Option<usize>,
 }
 fn failure(code: &str, message: &str) -> AppError {
     AppError::new(code, message)
@@ -74,7 +76,20 @@ impl HttpRemote {
             supports_delta: false,
             supports_delta_download: false,
             cancelled: None,
+            #[cfg(target_os = "android")]
+            metered_audio_remaining: None,
         })
+    }
+    #[cfg(target_os = "android")]
+    fn audio_network(&mut self, bytes: Option<usize>) -> Result<(), AppError> {
+        if crate::device_sync::require_audio_network(self.metered_audio_remaining.is_some())? {
+            if let Some(bytes)=bytes {
+                let remaining=self.metered_audio_remaining.as_mut().unwrap();
+                if bytes>*remaining {return Err(failure("audio_budget_exceeded","本次计费网络原声额度已用完；已保存内容和待同步进度保留，可改用不计费网络或重新授权一次。"));}
+                *remaining-=bytes;
+            }
+        }
+        Ok(())
     }
     fn scope(&self) -> String {
         format!(
@@ -358,7 +373,7 @@ impl Remote for HttpRemote {
             return Err(failure("network_error", "站点原声状态无效。"));
         }
         #[cfg(target_os = "android")]
-        crate::device_sync::require_audio_network()?;
+        self.audio_network(Some(bytes.len()))?;
         let size = bytes.len();
         let (_, v) = read_json(
             self.client
@@ -382,7 +397,7 @@ impl Remote for HttpRemote {
     fn download(&mut self, hash: &str, format: &str) -> Result<Vec<u8>, AppError> {
         self.check()?;
         #[cfg(target_os = "android")]
-        crate::device_sync::require_audio_network()?;
+        self.audio_network(None)?;
         let response = self
             .client
             .get(format!("{}/api/svl/v1/media/{hash}", self.site))
@@ -407,6 +422,12 @@ impl Remote for HttpRemote {
             return Err(failure("invalid_data", "原声下载的类型或摘要标记不匹配。"));
         }
         let mut bytes = vec![];
+        #[cfg(target_os = "android")]
+        if self.metered_audio_remaining.is_some() {
+            let size=response.content_length().filter(|n|*n<=crate::sync_limits::MAX_AUDIO_BYTES as u64)
+                .ok_or_else(||failure("audio_size_unknown","无法确认原声大小，未授权继续传输；请改用不计费网络。"))?;
+            self.audio_network(Some(size as usize))?;
+        }
         response
             .take((crate::sync_limits::MAX_AUDIO_BYTES + 1) as u64)
             .read_to_end(&mut bytes)
@@ -490,11 +511,16 @@ impl Application {
         }
     }
     pub fn sync_start(self: &Arc<Self>, operation: String) -> Result<TaskHandle<SyncTaskResult>, AppError> {
+        self.sync_start_with_metered(operation,false)
+    }
+    pub(crate) fn sync_start_with_metered(self: &Arc<Self>, operation: String, allow_metered:bool) -> Result<TaskHandle<SyncTaskResult>, AppError> {
         let mut remote = HttpRemote::new(Arc::clone(self))?;
+        #[cfg(target_os = "android")]
+        if allow_metered {remote.metered_audio_remaining=Some(crate::sync_limits::MAX_AUDIO_BYTES);}
         let scope = remote.scope();
         let store = Arc::clone(&self.store);
         let guard = Arc::clone(&self.sync_guard);
-        let hash = digest(scope.as_bytes());
+        let hash = digest(format!("{scope}:{allow_metered}").as_bytes());
         self.start_network_task_typed("sync", &operation, &hash, move |context| {
             remote.cancelled = Some(Arc::clone(&context.cancelled));
             let _guard = guard
@@ -517,7 +543,9 @@ impl Application {
                 })?;
             let assessment = remote.sync_assessments(&scope, &context)?;
             #[cfg(target_os = "android")]
-            crate::device_sync::completed(&store, &scope)?;
+            if result.conflicts==0 && store.synchronization_status(&scope)?.pending==0 && assessment.conflicts==0 && assessment.pending==0 && assessment.pending_references==0 {
+                crate::device_sync::completed(&store, &scope)?;
+            }
             Ok(SyncTaskResult { entries: result, assessment })
         })
     }

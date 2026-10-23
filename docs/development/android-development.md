@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-DEV-ANDROID-001 |
-| 文档版本 | 0.4 |
+| 文档版本 | 0.5 |
 | 更新日期 | 2026-10-23 |
-| 状态 | 0.23.0 非同步 PRD 补齐和本机正常流程已验证；同步与剧集资料共享后置，见 Android 验证记录 |
+| 状态 | 0.24.0 非同步功能及真实手动词库往返正常链路已验证；剧集资料共享待实施，见 Android 验证记录 |
 | 依据 | [Android PRD](../requirements/android-PRD.md)、[架构与开发设计](../design/android-architecture.md)、[开发计划](../planning/android-development-plan.md) |
 
 ## 1 开发原则
@@ -115,7 +115,7 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 
 每次开发启动／debug 构建先由 `scripts/prepare-android-assets.mjs` 从共用 `.tools/release-dictionaries` 清单校验并暂存通用词库及许可，不读取个人 Data。Gradle 将 `.local/android-assets` 编入 APK；Android 在后台线程校验并原子安装资源到私有 files 目录，准备后再提供离线查询。实际设备结果以 [Android 验证记录](../testing/android-results.md) 为准。
 
-0.18.0 的手机账号页复用 `SyncView`，HTTP、分片、差量和完整学习历史均走原 Rust 实现；只在 `MobilePlatformPlugin` 适配 Keystore、浏览器及网络状态。开发时在“我的”保存站点／设备名，发起请求、打开系统浏览器核对连接码，批准后返回检查连接，再确认本机资料归属。自动同步默认关闭；原声当前只在不计费网络传输。断开连接保留本地资料，测试资料和真实账号批准结果分别记录；未连接真机时不能以本地合成凭据代替实际授权证据。
+0.18.0 的手机账号页复用 `SyncView`，HTTP、分片、差量和完整学习历史均走原 Rust 实现；只在 `MobilePlatformPlugin` 适配 Keystore、浏览器及网络状态。开发时在“我的”保存站点／设备名，发起请求、打开系统浏览器核对连接码，批准后返回检查连接，再确认本机资料归属。自动同步默认关闭；原声默认等待不计费网络，0.24.0 的单次授权和字节额度见 Android 设计第 7 节。断开连接保留本地资料，测试资料和真实账号批准结果分别记录；未连接真机时不能以本地合成凭据代替实际授权证据。
 
 ## 7 OCR 构建与当前手机使用
 
@@ -123,7 +123,7 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 
 资源准备现在包含 12 个词库、模型、许可和源清单文件。英语模型是 tessdata_best 4.1.0 的 eng，摘要在脚本固定。`android:dev` 只为开发连接 Vite；内嵌页面的 debug 构建用于本机正常离线检查，不是签名发布。个人原声、词库、截图、测试素材和模型均不进入公开源码。
 
-日常使用见 [Android 使用说明](android-user-guide.md)。本机验收具名素材在 `.local/android-acceptance`，手机对应 Download/SVL-Android；共享账号凭据保留，不为检查离线而断开或重置。当前按用户安排保持手动离线、自动同步关闭，真实联网闭环稍后继续。
+日常使用见 [Android 使用说明](android-user-guide.md)。本机验收具名素材在 `.local/android-acceptance`，手机对应 Download/SVL-Android；共享账号凭据保留，不为检查离线而断开或重置。0.24.0 用户恢复真实同步测试后，手动离线已关闭、自动同步仍关闭；私有检查点和网络证据在 `.local/android-sync-20261023`，隔离桌面资料在 `.local/android-sync-desktop/Data`。不复制手机 Keystore 凭据给其他设备，不直接操作日常 Data。
 
 ## 8 查询与媒体维护入口（0.23.0）
 
@@ -141,3 +141,4 @@ Android 采用独立开发配置处理 Vite host／devUrl。当前 `pnpm dev` �
 | 0.2 | 2026-10-22 | 接入受控 Android 工程与会话工具链，记录首次 debug 构建、跨盘 Kotlin 缓存处理及共用离线资源准备；真机验收单独记录 |
 | 0.3 | 2026-10-22 | 补固定 Android OCR 构建、资源与运行入口，索引使用说明，更新实际开发状态 |
 | 0.4 | 2026-10-23 | 补查询／密钥、共享历史、全字幕偏移、音轨缓存和临时图维护入口，索引 PRD 对照结果 |
+| 0.5 | 2026-10-23 | 补真实同步正常证据和隔离资料位置，区分单次网络授权、自动同步及剧集共享 |

@@ -296,6 +296,8 @@ svl_ipc_macros::catalog! {
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_start,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
+        synchronization::sync_metered_start,
+        #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::sync_resolve,
         #[cfg(all(windows, feature = "desktop"))]
         capture::native_status,

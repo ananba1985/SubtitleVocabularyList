@@ -75,6 +75,11 @@ pub(crate) async fn sync_conflicts(
 }
 
 #[svl_ipc_macros::command]
+pub(crate) async fn sync_metered_start(app:AppState<'_>,operation_id:String)->Result<crate::tasks::TaskHandle<crate::tasks::results::SyncTaskResult>,AppError> {
+    let app=Arc::clone(app.inner());background(move||app.sync_start_with_metered(operation_id,true)).await
+}
+
+#[svl_ipc_macros::command]
 pub(crate) async fn sync_start(
     app: AppState<'_>,
     operation_id: String,

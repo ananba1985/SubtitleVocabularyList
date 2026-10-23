@@ -36,6 +36,8 @@ pub struct DeviceSyncState {
     pub last_completed_at: Option<i64>,
     pub ready_audio: usize,
     pub missing_audio: usize,
+    pub ready_audio_bytes: u64,
+    pub metered_audio_limit_bytes: u64,
 }
 
 fn read<T: DeserializeOwned>(store: &Store, key: &str) -> Result<Option<T>, AppError> {
@@ -75,11 +77,11 @@ pub(crate) fn require_bound(store: &Store, account: &str) -> Result<(), AppError
 }
 /// Checked immediately before each real audio request; never discard audio to advance a cursor.
 #[cfg(target_os = "android")]
-pub(crate) fn require_audio_network() -> Result<(), AppError> {
+pub(crate) fn require_audio_network(allow_metered: bool) -> Result<bool, AppError> {
     let state = network()?;
     if !state.connected { return Err(AppError::new("network_unavailable", "当前没有可用网络，原声和待同步进度保留。")); }
-    if state.metered { return Err(AppError::new("wifi_required", "原声等待 Wi-Fi 等不计费网络；本地资料和未完成同步进度保留，连接后可继续同步。")); }
-    Ok(())
+    if state.metered && !allow_metered { return Err(AppError::new("wifi_required", "原声等待不计费网络；也可在同步页明确允许本次计费网络传输。本地资料与进度保留。")); }
+    Ok(state.metered)
 }
 #[cfg(target_os = "android")]
 pub(crate) fn completed(store: &Store, account: &str) -> Result<(), AppError> {
@@ -100,10 +102,14 @@ impl Application {
             "SELECT COUNT(CASE WHEN state='ready' THEN 1 END), COUNT(CASE WHEN state='missing' THEN 1 END) FROM media_assets",
             [], |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+        let paths = { let db=self.store.connection()?;let mut query=db.prepare("SELECT DISTINCT relative_path FROM media_assets WHERE state='ready'")?;
+            query.query_map([],|row|row.get::<_,String>(0))?.collect::<Result<Vec<_>,_>>()? };
+        let ready_audio_bytes=paths.iter().filter_map(|path|std::fs::metadata(self.store.root().join(path)).ok()).map(|m|m.len()).sum();
         Ok(DeviceSyncState {
             preferences: preferences(&self.store)?,
             binding_required: current_account.is_some() && current_account != bound_account,
             bound_account, current_account, network: network()?, last_completed_at, ready_audio, missing_audio,
+            ready_audio_bytes, metered_audio_limit_bytes:crate::sync_limits::MAX_AUDIO_BYTES as u64,
         })
     }
     pub fn device_sync_update(&self, mut input: DeviceSyncPreferences) -> Result<DeviceSyncPreferences, AppError> {

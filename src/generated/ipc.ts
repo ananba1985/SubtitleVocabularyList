@@ -128,7 +128,7 @@ export type DeviceNetwork = { connected: boolean, metered: boolean, foreground: 
 
 export type DeviceSyncPreferences = { deviceName: string, autoSync: boolean, };
 
-export type DeviceSyncState = { preferences: DeviceSyncPreferences, boundAccount: string | null, currentAccount: string | null, bindingRequired: boolean, network: DeviceNetwork, lastCompletedAt: number | null, readyAudio: number, missingAudio: number, };
+export type DeviceSyncState = { preferences: DeviceSyncPreferences, boundAccount: string | null, currentAccount: string | null, bindingRequired: boolean, network: DeviceNetwork, lastCompletedAt: number | null, readyAudio: number, missingAudio: number, readyAudioBytes: number, meteredAudioLimitBytes: number, };
 
 export type Entry = { id: string, kind: string, text: string, matchKey: string, revision: number, createdAt: number, updatedAt: number, collectionCount: number, occurrenceCount: number, meanings: Array<Meaning>, examples: Array<Example>, };
 
@@ -500,6 +500,7 @@ export interface CommandMap {
   subtitle_service_get: { args: undefined; result: SubtitleService };
   subtitle_service_set: { args: { config: SubtitleService; apiKey?: string | null }; result: SubtitleService };
   sync_conflicts: { args: undefined; result: Array<SyncConflictView> };
+  sync_metered_start: { args: { operationId: string }; result: TaskHandle<SyncTaskResult> };
   sync_resolve: { args: { input: ResolutionInput; operationId: string }; result: TaskHandle<SyncResolution> };
   sync_start: { args: { operationId: string }; result: TaskHandle<SyncTaskResult> };
   sync_status: { args: undefined; result: SyncStatus };

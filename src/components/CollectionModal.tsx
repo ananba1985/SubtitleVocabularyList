@@ -263,7 +263,7 @@ export function CollectionModal({
               ? "原句和时间位置来自已导入课程；需要纠正时，请修订课程包后重新导入。"
               : seed.locationKey?.startsWith("watch-ocr:")
                 ? "原句来自已核对的暂停帧；原声区间由你手动选择，不是字幕自动识别的起止时间。"
-                : "原句来自已选对白；需要纠正文字或时间时，可先在预习面板中修改。"}
+                : features.mobile ? "原句来自所选对白，本次保存会保留来源和时间。" : "原句来自已选对白；需要纠正文字或时间时，可先在预习面板中修改。"}
           </p>
         )}
         {seed.sourceTitle && (

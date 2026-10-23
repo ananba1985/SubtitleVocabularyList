@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-ARC-ANDROID-001 |
-| 文档版本 | 0.5 |
+| 文档版本 | 0.6 |
 | 更新日期 | 2026-10-22 |
 | 状态 | 独立运行与共享核心架构已确认；单词本已实装，0.18.0 接入共享认证与同步，真实账号闭环待验证；余下按计划实施 |
 | 依据 | [Android PRD](../requirements/android-PRD.md)、[Windows 架构](architecture.md)、[数据模型](data-model.md)、[同步设计](synchronization.md) |
@@ -129,7 +129,7 @@ SQLite、散列、网络与 OCR 不运行在 WebView／Android UI 线程。平�
 
 ## 5 平台接口与事件草案
 
-以下是设计契约，不是已实现命令。共享 CRUD、收录、测验与同步命令优先沿用现有名字及 DTO；新增内容由同一 Rust 类型生成工具输出到 TypeScript。Kotlin 只维护平台输入／输出 DTO，不复制 Entry、ReviewState 等完整业务模型。
+以下表格保留初始设计编号；当前实际入口见本节末，其余仍为设计契约。共享 CRUD、收录、测验与同步命令优先沿用现有名字及 DTO；新增内容由同一 Rust 类型生成工具输出到 TypeScript。Kotlin 只维护平台输入／输出 DTO，不复制 Entry、ReviewState 等完整业务模型。
 
 | 编号 | 接口／事件草案 | 输入与输出边界 |
 | --- | --- | --- |
@@ -146,6 +146,8 @@ SQLite、散列、网络与 OCR 不运行在 WebView／Android UI 线程。平�
 | AND-IF-11 | `app_lifecycle_changed`／音频焦点变化 | Rust 取消旧暂停计时、保存位置、处理待任务；不把内部暂停当作主动学习 |
 
 现有 AppError、TaskHandle 与 task_updated 保持为共用返回机制。事件包含 sessionId／revision／sequence，接收端丢弃旧会话结果；重开页面先读取当前快照，再订阅增量。这里只统一实际需要的窄接口，不建设任意消息总线或插件运行框架。
+
+0.20.0 本轮已接入 `video_pick/library/open/state/control/viewport`、`video_index_start/study/context/subtitle_add` 与共享 `preview_start`。系统选择器采用 ACTION_OPEN_DOCUMENT 并持久保存读取授权；MediaRef 只留在本机。Kotlin 仅实现系统授权、Media3 解码／解析／导出，Rust 继续负责来源、字幕资产、Corpus、片段摘要登记及收录事务。实际验证结论以 Android 增量记录为准。
 
 ## 6 播放、字幕与暂停学习
 
@@ -184,6 +186,16 @@ OCR 完成后允许核对原文；未核对不自动保存。NDK 库与英语资
 复用 ReviewView、reviews、review_policy 与原作答／修正保存，不在 Kotlin 编写判分或复习安排。SystemVoice DTO 与平台分派集中于 speech.rs；Application 继续统一管理原声优先、生成 WAV 缓存、任务及听力音频准备记录。Android TextToSpeech 只枚举无需联网且资源已安装的英语声音，生成语音明确标记。资源缺失提示系统安装入口，不自动下载或退到云端；单次合成遵守系统长度上限。
 
 Android 原声与生成语音共用 Media3 ExoPlayer，Rust 仅接受应用私有 media／jobs 文件，播放会话标识隔离旧组件控制。Media3 管理音频焦点和耳机拔出，后台暂停，返回不自动续播；前端读到实际播放位置后才开放听力提交。语音合成任务可取消，输出仍经共享 WAV 校验与原子保存。桌面保持现有 SAPI 和 HTML audio。
+
+### 6.6 Android 本地媒体接入（0.20.0）
+
+`mobile_video.rs` 是 URI 与既有 Store 之间的适配，不另建手机数据库。文件列表／倍速／自动连播沿用 PlaybackState，位置沿用 WatchProgress；媒体授权和平台轨道键存在本机 settings，URI 不进入同步包。新打开视频立即交给 Media3，指纹和文本字幕在独立任务读取，不以前台整集 AI 为前置。
+
+MediaIndex 使用 Media3 Extractor 的字幕转码输出，从 CueDecoder 取得已应用 sample／subsample 时间的 CuesWithTiming；只把原文和有效起止边界交给共享字幕处理。图片字幕／没有可靠边界的样本不猜结束时间，留给帧 OCR。外置 SRT／ASS／WebVTT 使用同一 Media3 文本解析器。原语料与中英资产进入现有 ImportedMedia／SubtitleBundle，复用时间重叠对齐、已存中文和已有学习记录保持规则。
+
+PlayerView 限定于 React 测量的视频区域，系统安全区由 Activity 统一处理；收录弹窗打开时暂停并隐藏原生视频，关闭后恢复区域。全屏使用同一 PlayerView 与系统返回回到原区域。原生音频和视频互相暂停，后台／焦点变化不自动续播。
+
+Media3 Transformer 仅导出当前视频所选音轨的指定片段，输出到本机 jobs；共享 ensure_clip 保留配方、摘要、media_assets 登记、重用与事务规则，不在 Kotlin 写业务库。原文件授权失效时可重新选择；已持久保存的原声走独立 media 文件。取消期间完成的旧输出仍由 Rust 检查任务取消状态，未提交输出不能显示为已收录。自动 5 秒整句收录和帧 OCR 仍属后续阶段。
 
 ## 7 同步、凭据与服务
 
@@ -226,3 +238,5 @@ Android 在首次连接和换账号后都须明确确认当前手机全部资料
 | 0.4 | 2026-10-22 | 对齐共享认证／同步实际接入、Keystore 私有接口、资料归属确认和前台可选自动触发，明确原声等待不计费网络及真实验收边界 |
 
 | 0.5 | 2026-10-22 | 接入复习共用逻辑、平台语音 DTO、Android 离线 TTS 与 Media3 音频；登记已确认的剧集准备资料共享及后置联调 |
+
+| 0.6 | 2026-10-22 | 接入本地 URI 视频、Media3 可靠字幕索引／外置解析、平台轨道与原声导出适配，共用播放／来源／持久化与收录 |

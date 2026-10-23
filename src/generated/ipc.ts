@@ -320,6 +320,16 @@ export type TransitionAssessment = { sessionId: string, expectedRevision: number
 
 export type TrayNavigation = "library" | "collect" | "import" | "episodes" | "watch" | "practice" | "reviews" | "leech" | "sync" | "tasks" | "settings";
 
+export type VideoControl = { sessionId: string, action: string, value: number | null, text: string | null, kind: string | null, };
+
+export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
+
+export type VideoStudy = { sourceId: string, sha256: string, subtitles: SubtitleInfo, };
+
+export type VideoTrack = { id: string, formatId: string, kind: string, title: string, selected: boolean, supported: boolean, };
+
+export type VideoViewport = { sessionId: string, x: number, y: number, width: number, height: number, ratio: number, };
+
 export type WatchChapter = { index: number, title: string, position: number, };
 
 export type WatchClipRange = { startMs: number, endMs: number, };
@@ -469,6 +479,16 @@ export interface CommandMap {
   translation_window_hide: { args: undefined; result: void };
   translation_window_pin: { args: { pinned: boolean }; result: void };
   tray_action_get: { args: undefined; result: TrayNavigation | null };
+  video_context: { args: undefined; result: WatchContext | null };
+  video_control: { args: { control: VideoControl }; result: VideoState };
+  video_index_start: { args: { uri: string; operationId: string }; result: TaskHandle<VideoStudy> };
+  video_library: { args: undefined; result: PlaybackState };
+  video_open: { args: { uri: string }; result: VideoState };
+  video_pick: { args: undefined; result: PlaybackState };
+  video_state: { args: undefined; result: VideoState };
+  video_study: { args: { uri: string }; result: VideoStudy | null };
+  video_subtitle_add: { args: { uri: string; language: string; operationId: string }; result: TaskHandle<VideoStudy> };
+  video_viewport: { args: { viewport: VideoViewport }; result: void };
   watch_collection_prepare: { args: { sessionId: string; expectedRevision: number; clipRange?: WatchClipRange | null }; result: WatchContext };
   watch_control: { args: { control: WatchControl }; result: PlayerSnapshot };
   watch_files_open_next: { args: undefined; result: PlayerSnapshot | null };

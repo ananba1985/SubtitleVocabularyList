@@ -36,3 +36,9 @@
 .mobile-app .mobile-audio { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .mobile-app .mobile-audio input[type=range] { flex:1; min-width:90px; width:100%; }
 .mobile-app .mobile-card select { max-width:100%; display:block; width:100%; margin-top:8px; }
+.mobile-watch label > select { display:block; width:100%; max-width:100%; margin:8px 0; }
+.mobile-watch h2 { font-size:18px; overflow-wrap:anywhere; }
+.mobile-video-surface { width:100%; aspect-ratio:16/9; background:#121b16; border-radius:8px; margin-bottom:12px; }
+.mobile-watch .video-seek { display:block; margin:14px 0; }
+.mobile-watch .video-seek input { width:100%; display:block; }
+.mobile-watch .field-row label { flex:1; min-width:90px; max-width:100%; }

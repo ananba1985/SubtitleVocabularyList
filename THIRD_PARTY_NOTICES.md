@@ -5,7 +5,8 @@
 | 组件 | 当前用途与版本依据 | 上游来源与许可 |
 | --- | --- | --- |
 | Tokio | 查询请求的异步取消与网络运行时，版本见 Cargo.lock | [tokio-rs/tokio](https://github.com/tokio-rs/tokio)，MIT |
-| Tauri | Windows 桌面宿主，Rust 2.12.1，CLI/API 版本见锁文件 | [tauri-apps/tauri](https://github.com/tauri-apps/tauri)，MIT 或 Apache-2.0 |
+| Tauri | Windows／Android 宿主，Rust 2.12.1，CLI/API 版本见锁文件 | [tauri-apps/tauri](https://github.com/tauri-apps/tauri)，MIT 或 Apache-2.0 |
+| AndroidX Media3 | Android 原声与视频播放、文本字幕解析和音频导出，1.11.1 | [androidx/media](https://github.com/androidx/media)，Apache-2.0；Android 系统解码器／TTS 引擎由设备系统提供 |
 | Tauri Dialog 与 Single Instance 插件 | 本机文件、目录选择和单实例激活，版本见锁文件 | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace)，MIT 或 Apache-2.0 |
 | Tauri Global Shortcut 插件 | 全局快捷键注册，Rust 2.4.0；底层 global-hotkey 0.8.0 | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace)、[tauri-apps/global-hotkey](https://github.com/tauri-apps/global-hotkey)，MIT 或 Apache-2.0 |
 | windows | Windows UI Automation、SAPI、GDI 截图与进程窗口 API 绑定，0.62.2 | [microsoft/windows-rs](https://github.com/microsoft/windows-rs)，MIT 或 Apache-2.0 |

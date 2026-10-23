@@ -4,6 +4,7 @@ pub(crate) mod assessment;
 pub(crate) mod capture;
 pub(crate) mod corpus;
 pub(crate) mod learning;
+pub(crate) mod mobile_media;
 pub(crate) mod query;
 #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 pub(crate) mod synchronization;
@@ -39,6 +40,16 @@ where
 // One command catalog for both hosts; platform dependencies stay explicitly scoped.
 svl_ipc_macros::catalog! {
         system::app_ready,
+        mobile_media::video_library,
+        mobile_media::video_pick,
+        mobile_media::video_open,
+        mobile_media::video_state,
+        mobile_media::video_context,
+        mobile_media::video_control,
+        mobile_media::video_viewport,
+        mobile_media::video_study,
+        mobile_media::video_index_start,
+        mobile_media::video_subtitle_add,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
         synchronization::device_sync_get,
         #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
@@ -168,7 +179,6 @@ svl_ipc_macros::catalog! {
         vocabulary::collection_prepare,
         vocabulary::collection_from_example,
         vocabulary::collection_commit,
-        #[cfg(all(windows, feature = "desktop"))]
         vocabulary::preview_start,
         vocabulary::media_path,
         learning::audio_open,

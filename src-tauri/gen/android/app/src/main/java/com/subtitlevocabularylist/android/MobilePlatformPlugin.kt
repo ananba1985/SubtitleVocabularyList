@@ -6,8 +6,10 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.util.Base64
+import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AppCompatActivity
 import app.tauri.annotation.Command
+import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
@@ -26,12 +28,14 @@ class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
     private val io = Executors.newSingleThreadExecutor()
     private val speech = OfflineSpeech(activity)
     private val audio = ClipAudio(activity)
+    private val video = VideoPlayer(activity)
+    private val exporter = ClipExporter(activity, video)
     @Volatile private var foreground = true
 
     override fun onResume(activity: AppCompatActivity) { foreground = true }
-    override fun onPause(activity: AppCompatActivity) { foreground = false; audio.pause() }
+    override fun onPause(activity: AppCompatActivity) { foreground = false; audio.pause(); video.pause() }
 
-    override fun onDestroy(activity: AppCompatActivity) { audio.destroy(); speech.destroy(); io.shutdown() }
+    override fun onDestroy(activity: AppCompatActivity) { exporter.destroy(); video.destroy(); audio.destroy(); speech.destroy(); io.shutdown() }
 
     private fun sound(invoke: Invoke, action: () -> Unit) = activity.runOnUiThread {
         try { action() } catch (_: Exception) { invoke.reject("手机声音接口暂不可用，请检查离线语音或音频文件。", "audio_unavailable") }
@@ -45,9 +49,41 @@ class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
         catch (_: Exception) { activity.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         invoke.resolve()
     }
-    @Command fun audioOpen(invoke: Invoke) = sound(invoke) { audio.open(invoke, foreground) }
+    @Command fun audioOpen(invoke: Invoke) = sound(invoke) { video.pause(); audio.open(invoke, foreground) }
     @Command fun audioState(invoke: Invoke) = sound(invoke) { audio.state(invoke) }
     @Command fun audioControl(invoke: Invoke) = sound(invoke) { audio.control(invoke) }
+    @Command fun videoOpen(invoke: Invoke) = sound(invoke) { audio.pause(); video.open(invoke, foreground) }
+    @Command fun videoState(invoke: Invoke) = sound(invoke) { video.state(invoke) }
+    @Command fun videoControl(invoke: Invoke) = sound(invoke) { if (foreground) audio.pause(); video.control(invoke, foreground) }
+    @Command fun videoViewport(invoke: Invoke) = sound(invoke) { video.viewport(invoke) }
+    @Command fun videoSubtitle(invoke: Invoke) = sound(invoke) { video.subtitle(invoke) }
+    @Command fun videoExport(invoke: Invoke) = sound(invoke) { exporter.start(invoke) }
+
+    @Command fun pickDocuments(invoke: Invoke) {
+        val args = invoke.parseArgs(VideoArgs::class.java)
+        startActivityForResult(invoke, MediaDocuments.intent(args.kind), "documentsPicked")
+    }
+    @ActivityCallback fun documentsPicked(invoke: Invoke, result: ActivityResult) {
+        if (result.resultCode != Activity.RESULT_OK) { invoke.resolve(JSObject().put("files", org.json.JSONArray())); return }
+        io.execute {
+            try { invoke.resolve(MediaDocuments.picked(activity, result.data)) }
+            catch (_: Exception) { invoke.reject("文件读取授权未能保存，请重新选择本地文件。", "resource_missing") }
+        }
+    }
+    @Command fun mediaIndex(invoke: Invoke) {
+        val args = invoke.parseArgs(VideoArgs::class.java)
+        io.execute {
+            try { invoke.resolve(MediaIndex(activity).video(Uri.parse(args.uri))) }
+            catch (_: Exception) { invoke.reject("字幕索引未完成，视频仍可播放；可选择外置文本字幕。", "invalid_data") }
+        }
+    }
+    @Command fun subtitleRead(invoke: Invoke) {
+        val args = invoke.parseArgs(VideoArgs::class.java)
+        io.execute {
+            try { invoke.resolve(MediaIndex(activity).subtitle(Uri.parse(args.uri), args.title)) }
+            catch (_: Exception) { invoke.reject("字幕读取失败，请选择有效的 SRT、ASS 或 WebVTT 文件。", "invalid_data") }
+        }
+    }
 
     @Command
     fun credentialTransform(invoke: Invoke) {

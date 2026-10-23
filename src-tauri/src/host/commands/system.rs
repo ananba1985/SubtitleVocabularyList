@@ -36,7 +36,7 @@ pub(crate) fn app_capabilities() -> AppCapabilities {
         offline_core: true,
         independent_runtime: true,
         synchronization: cfg!(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))),
-        native_playback: cfg!(all(windows, feature = "desktop")),
+        native_playback: cfg!(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))),
         screen_capture: cfg!(all(windows, feature = "desktop")),
         system_speech: cfg!(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile"))),
         known_target_preferences: cfg!(all(windows, feature = "desktop")),

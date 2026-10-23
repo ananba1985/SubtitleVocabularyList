@@ -27,7 +27,7 @@ export interface CollectionSeed {
   kind: string;
   context: string;
   sourceId?: string;
-  example?: CandidateExample;
+  example?: Pick<CandidateExample, "id" | "text" | "startMs" | "endMs"> & Partial<CandidateExample>;
   sourceTitle?: string;
   locationKey?: string;
 }

@@ -582,7 +582,7 @@ impl Store {
             [source_id],
             |row| row.get(0),
         )? };
-        if !Path::new(&audio).is_file() {
+        if !Path::new(&audio).is_file() && !(cfg!(all(target_os = "android", feature = "mobile")) && audio.starts_with("content://")) {
             return Err(AppError::new(
                 "resource_missing",
                 "预习原声音频不可用，请重新导入素材；已有收录片段仍可使用。",
@@ -593,6 +593,14 @@ impl Store {
             .join("jobs")
             .join(format!("clip-{}.m4a", Uuid::new_v4()));
         let result = (|| {
+            #[cfg(all(target_os = "android", feature = "mobile"))]
+            let duration = {
+                if cancelled.load(std::sync::atomic::Ordering::Relaxed) { return Err(AppError::new("cancelled","任务已取消。")); }
+                let duration = crate::mobile_video::export_audio(&audio,&temporary,example.start_ms,example.end_ms)?;
+                if cancelled.load(std::sync::atomic::Ordering::Relaxed) { return Err(AppError::new("cancelled","任务已取消。")); }
+                duration
+            };
+            #[cfg(not(all(target_os = "android", feature = "mobile")))]
             let duration = media::extract_clip_stream(
                 tools,
                 Path::new(&audio),

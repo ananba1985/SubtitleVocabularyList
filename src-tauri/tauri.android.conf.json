@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.subtitlevocabularylist.android",
+  "build": {
+    "features": [
+      "mobile"
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "SubtitleVocabularyList",
+        "visible": true
+      }
+    ]
+  },
+  "bundle": {
+    "resources": [],
+    "android": {
+      "minSdkVersion": 29
+    }
+  }
+}

@@ -1,4 +1,4 @@
-mod commands;
+use crate::host::commands;
 
 #[cfg(feature = "ipc-types")]
 pub(crate) fn export_ipc_types() -> String { commands::export_types() }

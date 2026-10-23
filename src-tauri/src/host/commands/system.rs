@@ -2,12 +2,48 @@ use super::{AppState, background};
 use crate::error::AppError;
 use crate::{
     application::Settings,
-    desktop_capture::{self, NativeDesktop},
     tasks::TaskSnapshot,
 };
+#[cfg(all(windows, feature = "desktop"))]
+use crate::desktop_capture::{self, NativeDesktop};
 use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::{Manager, State};
+
+#[derive(serde::Serialize)]
+#[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppCapabilities {
+    platform: String,
+    offline_core: bool,
+    independent_runtime: bool,
+    synchronization: bool,
+    native_playback: bool,
+    screen_capture: bool,
+    system_speech: bool,
+    known_target_preferences: bool,
+}
+
+#[svl_ipc_macros::command]
+pub(crate) fn app_capabilities() -> AppCapabilities {
+    AppCapabilities {
+        platform: std::env::consts::OS.into(),
+        offline_core: true,
+        independent_runtime: true,
+        synchronization: cfg!(all(windows, feature = "desktop")),
+        native_playback: cfg!(all(windows, feature = "desktop")),
+        screen_capture: cfg!(all(windows, feature = "desktop")),
+        system_speech: cfg!(all(windows, feature = "desktop")),
+        known_target_preferences: cfg!(all(windows, feature = "desktop")),
+    }
+}
+
+#[cfg(not(all(windows, feature = "desktop")))]
+#[svl_ipc_macros::command]
+pub(crate) async fn settings_update(app: AppState<'_>, settings: Settings) -> Result<Settings, AppError> {
+    let app = app.inner().clone();
+    background(move || app.save_settings(settings)).await
+}
 
 #[derive(serde::Serialize)]
 #[cfg_attr(feature = "ipc-types", derive(ts_rs::TS))]
@@ -46,6 +82,8 @@ pub(crate) enum TrayNavigation {
 pub(crate) async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
     let app = app.inner().clone();
     background(move || {
+        #[cfg(all(target_os = "android", feature = "mobile"))]
+        crate::mobile_platform::prepare_resources(&app.store)?;
         let connection = app.store.connection()?;
         Ok(AppInfo {
             version: env!("CARGO_PKG_VERSION").into(),
@@ -69,11 +107,13 @@ pub(crate) async fn app_info(app: AppState<'_>) -> Result<AppInfo, AppError> {
     .await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn autostart_get() -> Result<bool, AppError> {
     background(crate::autostart::enabled).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn autostart_set(app: AppState<'_>, enabled: bool) -> Result<bool, AppError> {
     let root = app.store.root().to_path_buf();
@@ -86,6 +126,7 @@ pub(crate) async fn settings_get(app: AppState<'_>) -> Result<Settings, AppError
     background(move || app.settings()).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn settings_update(
     app: AppState<'_>,
@@ -167,6 +208,7 @@ pub(crate) async fn task_cancel(
     .await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn tray_action_get(
     action: State<'_, TrayAction>,
@@ -178,6 +220,7 @@ pub(crate) fn tray_action_get(
         .take())
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn app_quit(handle: tauri::AppHandle) {
     desktop_capture::quit(&handle);

@@ -1,6 +1,6 @@
 [package]
 name = "subtitle-vocabulary-list"
-version = "0.16.10"
+version = "0.17.0"
 description = "Offline Windows vocabulary notebook with original dialogue audio"
 edition = "2024"
 rust-version = "1.90"
@@ -16,9 +16,11 @@ path = "src/main.rs"
 required-features = ["desktop"]
 
 [features]
-default = ["desktop"]
+default = ["app-host"]
+app-host = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog"]
+mobile = ["app-host"]
 ipc-types = ["desktop", "dep:ts-rs"]
-desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-global-shortcut", "dep:windows", "dep:windows-core", "dep:libloading"]
+desktop = ["app-host", "tauri/tray-icon", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-global-shortcut", "dep:windows", "dep:windows-core", "dep:libloading"]
 
 [build-dependencies]
 tauri-build = { version = "=2.7.1", optional = true , features = [] }
@@ -26,10 +28,8 @@ tauri-build = { version = "=2.7.1", optional = true , features = [] }
 [dependencies]
 svl-ipc-macros = { path = "ipc-macros" }
 ts-rs = { version = "=12.0.1", optional = true, features = ["serde-json-impl"] }
-tauri = { version = "=2.12.1", optional = true, features = ["tray-icon", "protocol-asset"] }
+tauri = { version = "=2.12.1", optional = true, features = ["protocol-asset"] }
 tauri-plugin-dialog = { version = "2", optional = true }
-tauri-plugin-single-instance = { version = "2", optional = true }
-tauri-plugin-global-shortcut = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
@@ -49,6 +49,8 @@ libloading = { version = "=0.7.4", optional = true }
 tokio = { version = "1", features = ["rt", "time", "macros"] }
 
 [target.'cfg(windows)'.dependencies]
+tauri-plugin-single-instance = { version = "2", optional = true }
+tauri-plugin-global-shortcut = { version = "2", optional = true }
 windows-core = { version = "=0.62.2", optional = true }
 windows = { version = "=0.62.2", optional = true, features = ["Win32_Foundation", "Win32_Media_Speech", "Win32_Media_Audio", "Win32_System_Com", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Registry", "Win32_UI_Accessibility", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Graphics_Dwm", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_Security_Cryptography", "Win32_UI_Shell"] }
 

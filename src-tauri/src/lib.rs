@@ -15,7 +15,7 @@ pub mod desktop_layout;
 pub mod error;
 pub mod explanations;
 pub mod known_targets;
-#[cfg(any(feature = "desktop", test))]
+#[cfg(any(feature = "app-host", test))]
 mod ipc_dto;
 #[cfg(feature = "ipc-types")]
 mod ipc_export;
@@ -76,10 +76,21 @@ mod sync_transport;
 #[cfg(all(windows, feature = "desktop"))]
 pub mod windows_native;
 
-#[cfg(feature = "desktop")]
+#[cfg(feature = "app-host")]
+mod host;
+
+#[cfg(all(target_os = "android", feature = "mobile"))]
+mod mobile;
+#[cfg(all(target_os = "android", feature = "mobile"))]
+mod mobile_platform;
+
+#[cfg(all(target_os = "android", feature = "mobile"))]
+pub use mobile::run;
+
+#[cfg(all(windows, feature = "desktop"))]
 mod desktop;
 
-#[cfg(feature = "desktop")]
+#[cfg(all(windows, feature = "desktop"))]
 pub use desktop::run;
 
 #[cfg(feature = "ipc-types")]

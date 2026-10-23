@@ -1,6 +1,6 @@
 {
   "name": "subtitle-vocabulary-list",
-  "version": "0.16.10",
+  "version": "0.17.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -21,7 +21,12 @@
     "desktop:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File 本地调试运行.ps1",
     "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File 本地打包运行.ps1",
     "desktop:package": "powershell -NoProfile -ExecutionPolicy Bypass -File 生成安装包.ps1 -SkipToolBuild -NoPause",
-    "test:core": "cargo test --manifest-path src-tauri/Cargo.toml --no-default-features"
+    "test:core": "cargo test --manifest-path src-tauri/Cargo.toml --no-default-features",
+    "android:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Check",
+    "android:init": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Init",
+    "android:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Dev",
+    "android:studio": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Studio",
+    "android:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-development.ps1 -Mode Build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",

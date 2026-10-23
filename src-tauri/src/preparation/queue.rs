@@ -104,7 +104,7 @@ impl Store {
             {
                 continue;
             }
-            if input.kind == "sentence" || self.dictionary.explanation(&input.text)?.is_none() {
+            if input.kind == "sentence" || self.dictionary_explanation(&input.text)?.is_none() {
                 pending.push(input);
             }
         }

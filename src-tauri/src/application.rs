@@ -608,6 +608,9 @@ fn generate_explanation(
     if let Some(value) = store.available_word_explanation(text, context_text)? {
         return Ok((value.value, false));
     }
+    if cfg!(target_os = "android") {
+        return Err(AppError::new("resource_missing", "本词未命中手机离线词库或已存解释，可先保存原文并手动补充释义。手机不依赖桌面模型服务。"));
+    }
     let _permit = model_gate.acquire(text, context_text, context)?;
     if let Some(value) = store.available_word_explanation(text, context_text)? {
         return Ok((value.value, false));

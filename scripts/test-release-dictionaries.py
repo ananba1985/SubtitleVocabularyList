@@ -18,7 +18,7 @@ def main():
     manifest = json.loads((staged / "manifest.json").read_text(encoding="utf-8"))
     expected = {item["path"]: item["sha256"] for item in manifest["files"]}
     expected["manifest.json"] = digest(staged / "manifest.json")
-    config = json.loads((root / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+    config = json.loads((root / "src-tauri/tauri.windows.conf.json").read_text(encoding="utf-8"))
     prefix = "../.tools/release-dictionaries/"
     mapped = {source.removeprefix(prefix): destination for source, destination in config["bundle"]["resources"].items()
               if source.startswith(prefix)}

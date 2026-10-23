@@ -271,7 +271,7 @@ impl Store {
                 [&example_id],
                 |row| row.get(0),
             )?;
-            for token in tokens(&saved_text, &self.dictionary)? {
+            for token in tokens(&saved_text, &*self.base_dictionary()?)? {
                 transaction.execute("INSERT OR IGNORE INTO occurrences(id,source_id,example_id,candidate_key,raw_text,token_start,token_end,kind) VALUES (?,?,?,?,?,?,?,?)",params![Uuid::new_v4().to_string(),id,example_id,token.key,token.raw,token.start as i64,token.end as i64,token.kind])?;
             }
         }
@@ -526,7 +526,7 @@ impl Store {
             "DELETE FROM candidate_decisions WHERE source_id=? AND scope_key=?",
             params![source_id, id],
         )?;
-        for token in tokens(text, &self.dictionary)? {
+        for token in tokens(text, &*self.base_dictionary()?)? {
             transaction.execute("INSERT OR IGNORE INTO occurrences(id,source_id,example_id,candidate_key,raw_text,token_start,token_end,kind,entry_id) VALUES (?,?,?,?,?,?,?,?,?)",params![Uuid::new_v4().to_string(),source_id,id,token.key,token.raw,token.start as i64,token.end as i64,token.kind,old_links.get(&token.key)])?;
         }
         if old_start != start_ms || old_end != end_ms {

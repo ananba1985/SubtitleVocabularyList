@@ -3,14 +3,14 @@ use rusqlite::Connection;
 use std::{
     path::{Path, PathBuf},
     ops::{Deref, DerefMut},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard},
     time::Duration,
 };
 
 pub struct Store {
     root: PathBuf,
     connection: Mutex<Connection>,
-    pub(crate) dictionary: crate::base_dictionary::BaseDictionary,
+    dictionary: RwLock<crate::base_dictionary::BaseDictionary>,
     pub(crate) assessment_packet: Mutex<Option<Arc<crate::assessment_sync::PreparedPacket>>>,
     pub(crate) subtitle_guard: Mutex<()>,
 }
@@ -110,7 +110,7 @@ impl Store {
         Ok(Self {
             assessment_packet: Mutex::new(None),
             subtitle_guard: Mutex::new(()),
-            dictionary: crate::base_dictionary::BaseDictionary::load(&root),
+            dictionary: RwLock::new(crate::base_dictionary::BaseDictionary::load(&root)),
             root,
             connection: Mutex::new(connection),
         })
@@ -121,7 +121,25 @@ impl Store {
     }
 
     pub fn dictionary_warnings(&self) -> Vec<String> {
-        self.dictionary.warnings()
+        self.dictionary.read().map(|dictionary| dictionary.warnings())
+            .unwrap_or_else(|_| vec!["离线词库当前不可用，请重新打开应用。".into()])
+    }
+
+    pub(crate) fn dictionary_explanation(&self, text: &str) -> Result<Option<crate::explanations::Explanation>, AppError> {
+        self.base_dictionary()?.explanation(text)
+    }
+
+    pub(crate) fn base_dictionary(&self) -> Result<RwLockReadGuard<'_, crate::base_dictionary::BaseDictionary>, AppError> {
+        self.dictionary.read()
+            .map_err(|_| AppError::new("resource_missing", "离线词库当前不可用，请重新打开应用。"))
+    }
+
+    #[cfg(all(target_os = "android", feature = "mobile"))]
+    pub(crate) fn reload_base_dictionary(&self) -> Result<(), AppError> {
+        let dictionary = crate::base_dictionary::BaseDictionary::load(&self.root);
+        *self.dictionary.write()
+            .map_err(|_| AppError::new("resource_missing", "离线词库当前不可用，请重新打开应用。"))? = dictionary;
+        Ok(())
     }
 
     pub fn connection(&self) -> Result<ConnectionGuard<'_>, AppError> {
@@ -177,7 +195,7 @@ mod tests {
             subtitle_guard: Mutex::new(()),
             root: directory.path().into(),
             connection: Mutex::new(connection),
-            dictionary: crate::base_dictionary::BaseDictionary::load(directory.path()),
+            dictionary: RwLock::new(crate::base_dictionary::BaseDictionary::load(directory.path())),
         };
         let entry = legacy
             .collect(&crate::vocabulary::CollectionInput {

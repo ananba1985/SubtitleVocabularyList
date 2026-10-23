@@ -1,12 +1,16 @@
-pub(super) mod assessment;
-pub(super) mod capture;
-pub(super) mod corpus;
-pub(super) mod learning;
-pub(super) mod query;
-pub(super) mod synchronization;
-pub(super) mod system;
-pub(super) mod vocabulary;
-pub(super) mod watch;
+#[cfg(all(windows, feature = "desktop"))]
+pub(crate) mod assessment;
+#[cfg(all(windows, feature = "desktop"))]
+pub(crate) mod capture;
+pub(crate) mod corpus;
+pub(crate) mod learning;
+pub(crate) mod query;
+#[cfg(all(windows, feature = "desktop"))]
+pub(crate) mod synchronization;
+pub(crate) mod system;
+pub(crate) mod vocabulary;
+#[cfg(all(windows, feature = "desktop"))]
+pub(crate) mod watch;
 
 use crate::{application::Application, error::AppError};
 use std::sync::Arc;
@@ -32,65 +36,122 @@ where
     background(move || crate::ipc_dto::project(work()?)).await
 }
 
-// Keep all desktop IPC registrations at this single entry point.
+// One command catalog for both hosts; platform dependencies stay explicitly scoped.
 svl_ipc_macros::catalog! {
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_open,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_related_videos,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_files_pending,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_files_open_next,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_state_get,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_playlist_update,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_control,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_viewport_set,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_progress_get,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::watch_collection_prepare,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_info_get,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_prepare_start,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_chinese_select,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_service_get,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_service_set,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_search_context,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_search_get,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_search_start,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_download_start,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_download_preview,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_download_commit_start,
+        #[cfg(all(windows, feature = "desktop"))]
         watch::subtitle_alignment_set,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_preview,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_start,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_session_get,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_session_list,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_answer_submit,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_session_transition,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_audio_start,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_audio_event,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_result_correct,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_report_get,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_report_items,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_history_list,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_compare,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_collection_prepare,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_collection_commit,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_catalog_get,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_settings_get,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_settings_update,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_bank_prepare,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_bank_review,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_bank_items,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_bank_audio_prepare,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_sync_status,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_sync_conflicts,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_sync_keep_both,
+        #[cfg(all(windows, feature = "desktop"))]
         assessment::assessment_audio_prepare,
         corpus::sources_list,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::import_start,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::media_inspect,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::candidates_list,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::known_target_get,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::known_target_set,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::known_targets_list,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::candidate_examples,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::candidate_decide,
+        #[cfg(all(windows, feature = "desktop"))]
         corpus::source_example_update,
         vocabulary::entries_list,
         vocabulary::entry_get,
@@ -98,6 +159,7 @@ svl_ipc_macros::catalog! {
         vocabulary::collection_prepare,
         vocabulary::collection_from_example,
         vocabulary::collection_commit,
+        #[cfg(all(windows, feature = "desktop"))]
         vocabulary::preview_start,
         vocabulary::media_path,
         learning::review_units,
@@ -106,62 +168,104 @@ svl_ipc_macros::catalog! {
         learning::review_submit,
         learning::review_correct,
         learning::review_history,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::review_audio_start,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::practice_get,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::practice_import,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::practice_progress_save,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::practice_audio_save,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::practice_example,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::speech_voices,
+        #[cfg(all(windows, feature = "desktop"))]
         learning::speech_start,
         query::translation_session_open,
         query::translation_session_get,
         query::translation_query_start,
         query::translation_query_cancel,
+        #[cfg(all(windows, feature = "desktop"))]
         query::translation_window_hide,
+        #[cfg(all(windows, feature = "desktop"))]
         query::translation_window_pin,
+        #[cfg(all(windows, feature = "desktop"))]
         query::translation_open,
+        #[cfg(all(windows, feature = "desktop"))]
         query::translation_collect,
+        #[cfg(all(windows, feature = "desktop"))]
         query::query_copy,
+        #[cfg(all(windows, feature = "desktop"))]
         query::clipboard_listener_get,
+        #[cfg(all(windows, feature = "desktop"))]
         query::clipboard_listener_set,
         query::providers_list,
         query::providers_update,
+        #[cfg(all(windows, feature = "desktop"))]
         query::plugin_install,
+        #[cfg(all(windows, feature = "desktop"))]
         query::plugin_remove,
+        #[cfg(all(windows, feature = "desktop"))]
         query::explanations_status,
+        #[cfg(all(windows, feature = "desktop"))]
         query::explanations_prepare,
         query::explanation_get,
         query::explanation_import,
         query::explain_start,
         query::online_query_start,
+        system::app_capabilities,
         system::app_info,
         system::settings_get,
         system::settings_update,
+        #[cfg(all(windows, feature = "desktop"))]
         system::autostart_get,
+        #[cfg(all(windows, feature = "desktop"))]
         system::autostart_set,
         system::task_get,
         system::tasks_list,
         system::tasks_history,
         system::task_cancel,
+        #[cfg(all(windows, feature = "desktop"))]
         system::tray_action_get,
+        #[cfg(all(windows, feature = "desktop"))]
         system::app_quit,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::connection_status,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::connection_start,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::connection_check,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::connection_open,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::sync_status,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::sync_conflicts,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::sync_start,
+        #[cfg(all(windows, feature = "desktop"))]
         synchronization::sync_resolve,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::native_status,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::replacement_status_get,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::replacement_cancel,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::replacement_result_open,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::replacement_clipboard_restore,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::capture_selection,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::capture_ocr,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::capture_session_get,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::capture_ocr_cancel,
+        #[cfg(all(windows, feature = "desktop"))]
         capture::capture_ocr_submit,
 }

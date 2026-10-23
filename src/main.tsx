@@ -5,6 +5,7 @@ import { CaptureOverlay } from "./components/CaptureOverlay";
 import { QueryView } from "./components/QueryView";
 import { useAudioFocus } from "./audioFocus";
 import "./styles.css";
+import MobileApp from "./mobile/MobileApp";
 
 class AppBoundary extends React.Component<
   { children: React.ReactNode },
@@ -35,6 +36,7 @@ function ReadyView() {
   React.useEffect(() => {
     window.dispatchEvent(new Event("svl-app-ready"));
   }, []);
+  if (import.meta.env.TAURI_ENV_PLATFORM === "android" || /Android/.test(navigator.userAgent)) return <MobileApp />;
   return new URLSearchParams(location.search).get("translate") ? (
     <QueryView />
   ) : new URLSearchParams(location.search).get("capture") ? (

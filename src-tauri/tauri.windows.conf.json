@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "features": [
+      "desktop"
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "SubtitleVocabularyList",
+        "width": 960,
+        "height": 640,
+        "minWidth": 600,
+        "minHeight": 420,
+        "visible": false,
+        "backgroundColor": "#f6f7f3"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "licenseFile": "../LICENSE",
+    "shortDescription": "离线剧集英语单词本",
+    "resources": {
+      "../.tools/release-resources/": "tools/",
+      "../.tools/release-dictionaries/base.sqlite3": "Data/dictionaries/base.sqlite3",
+      "../.tools/release-dictionaries/ecdict.sqlite3": "Data/dictionaries/ecdict.sqlite3",
+      "../.tools/release-dictionaries/manifest.json": "Data/dictionaries/manifest.json",
+      "../.tools/release-dictionaries/notices/Google-README.md": "Data/dictionaries/notices/Google-README.md",
+      "../.tools/release-dictionaries/notices/ECDICT-README.md": "Data/dictionaries/notices/ECDICT-README.md",
+      "../.tools/release-dictionaries/notices/ECDICT-LICENSE.txt": "Data/dictionaries/notices/ECDICT-LICENSE.txt"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "nsis-open-with.nsh",
+        "languages": [
+          "SimpChinese"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

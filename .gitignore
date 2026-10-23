@@ -3,7 +3,8 @@ node_modules/
 /dist/
 /target/
 /src-tauri/target/
-/src-tauri/gen/
+/src-tauri/gen/*
+!/src-tauri/gen/android/
 
 # Local tools and generated files
 /.tools/

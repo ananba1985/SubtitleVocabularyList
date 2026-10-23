@@ -3,8 +3,9 @@ use crate::error::AppError;
 use crate::{
     corpus::CandidateExample,
     reviews::{AnswerInput, Attempt, CorrectionInput, Question, ReviewUnit},
-    windows_native::SystemVoice,
 };
+#[cfg(all(windows, feature = "desktop"))]
+use crate::windows_native::SystemVoice;
 use std::sync::Arc;
 
 #[svl_ipc_macros::command]
@@ -67,6 +68,7 @@ pub(crate) async fn review_history(
     background(move || app.store.review_history(unit_id.as_deref(), offset, limit)).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn review_audio_start(
     app: AppState<'_>,
@@ -77,6 +79,7 @@ pub(crate) async fn review_audio_start(
     background(move || app.review_audio_start(question_id, operation_id)).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_get(
     app: AppState<'_>,
@@ -85,6 +88,7 @@ pub(crate) async fn practice_get(
     background(move || app.store.practice_get()).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_import(
     app: AppState<'_>,
@@ -94,6 +98,7 @@ pub(crate) async fn practice_import(
     background(move || app.store.practice_import(document)).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_progress_save(
     app: AppState<'_>,
@@ -104,6 +109,7 @@ pub(crate) async fn practice_progress_save(
     background(move || app.store.practice_progress_save(&document_id, progress)).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_audio_save(
     app: AppState<'_>,
@@ -117,6 +123,7 @@ pub(crate) async fn practice_audio_save(
     background(move || app.store.practice_audio_save(&bytes)).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn practice_example(
     app: AppState<'_>,
@@ -128,11 +135,13 @@ pub(crate) async fn practice_example(
     background(move || app.store.practice_example(&document_id, chapter, sentence)).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn speech_voices() -> Result<Vec<SystemVoice>, AppError> {
     background(crate::windows_native::system_voices).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn speech_start(
     app: AppState<'_>,

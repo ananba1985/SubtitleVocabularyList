@@ -1,5 +1,6 @@
 use super::{AppState, background};
 use crate::error::AppError;
+#[cfg(all(windows, feature = "desktop"))]
 use crate::desktop_capture;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
@@ -52,11 +53,13 @@ pub(crate) fn translation_query_cancel(
     app.queries.cancel(&session_id, query_id.as_deref())
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn translation_window_hide(handle: tauri::AppHandle) {
     crate::desktop_query::hide_query(&handle);
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn translation_window_pin(
     handle: tauri::AppHandle,
@@ -69,11 +72,13 @@ pub(crate) fn translation_window_pin(
         .map_err(|_| AppError::new("internal_error", "无法固定查询窗口。"))
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn translation_open(handle: tauri::AppHandle) -> Result<(), AppError> {
     crate::desktop_query::open_input(&handle)
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn translation_collect(
     app: AppState<'_>,
@@ -95,6 +100,7 @@ pub(crate) async fn translation_collect(
     .await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn query_copy(handle: tauri::AppHandle, text: String) -> Result<(), AppError> {
     handle
@@ -102,6 +108,7 @@ pub(crate) fn query_copy(handle: tauri::AppHandle, text: String) -> Result<(), A
         .copy(&text)
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn clipboard_listener_get(
     handle: tauri::AppHandle,
@@ -111,6 +118,7 @@ pub(crate) fn clipboard_listener_get(
         .status()
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) fn clipboard_listener_set(
     handle: tauri::AppHandle,
@@ -147,6 +155,7 @@ pub(crate) async fn providers_update(
     .await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn plugin_install(
     app: AppState<'_>,
@@ -170,6 +179,7 @@ pub(crate) async fn plugin_install(
     .await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn plugin_remove(
     app: AppState<'_>,
@@ -184,6 +194,7 @@ pub(crate) async fn plugin_remove(
     .await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn explanations_status(
     app: AppState<'_>,
@@ -192,6 +203,7 @@ pub(crate) async fn explanations_status(
     background(move || app.preparation_status()).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn explanations_prepare(
     app: AppState<'_>,

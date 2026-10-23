@@ -12,6 +12,8 @@
 
 0.7.3 的手动打包流程已加入双底库：首次安装写入所选目录的 `Data/dictionaries`，升级只更新底库资源，保留个人词库及学习记录。打包不读取个人数据库；本轮仅完成[资源流程验证](docs/testing/dictionary-packaging-results.md)，未生成新安装包。
 
+Android 已按 [开发计划](docs/planning/android-development-plan.md) 开始实施，采用共享 Rust 业务核心与独立手机运行环境；当前实际编译／运行边界见 [Android 记录](docs/testing/android-results.md)。
+
 ## 边看边学（0.16.0 开发版）
 
 从侧栏打开“边看边学”，选择已导入剧集或本地视频。已导入视频在主动暂停时读取已保存句译文，靠近原字幕显示；完整译文显示后持续暂停 5 秒自动收录整句和原声，提前播放取消。学习设置可关闭自动收录或调整秒数；全屏画面占满屏幕，控制随鼠标移动浮现并自动隐藏，不留白色学习面板；Esc 退出并取消尚未到期的本次自动收录。播放控制沿用 mpv 内置 OSC 与默认快捷键，应用只增加学习联动及宿主窗口适配。
@@ -29,7 +31,7 @@ OCR 核对原文后可选择原声区间、手动试听并用于确认收录；�
 | 文档 | 职责 |
 | --- | --- |
 | [产品需求文档](docs/requirements/PRD.md) | 产品目标、0.1 范围、用户流程、需求和验收标准 |
-| [Android 客户端 PRD](docs/requirements/android-PRD.md) | 已认可的 P0 范围、后续候选、移动采集及完整同步；尚未实现 |
+| [Android 客户端 PRD](docs/requirements/android-PRD.md) | 已认可的 P0 范围、后续候选、移动采集及完整同步；Android 开发中 |
 | [Android 架构与复用设计](docs/design/android-architecture.md) | 共用 Rust 核心、React 逻辑、同一数据与同步契约，集中适配 Android 系统能力 |
 | [Android 开发指南](docs/development/android-development.md) | 已核实的本机环境、准备步骤与拟增开发入口，区分计划和实际可运行状态 |
 | [Android 开发计划](docs/planning/android-development-plan.md) | 环境、共用宿主、单词本、同步、复习、播放学习及 OCR 阶段与完成证据 |

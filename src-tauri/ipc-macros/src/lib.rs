@@ -2,8 +2,19 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    FnArg, GenericArgument, ItemFn, Path, PathArguments, ReturnType, Type, parse_macro_input,
+    Attribute, FnArg, GenericArgument, ItemFn, Path, PathArguments, ReturnType, Type, parse_macro_input,
+    parse::{Parse, ParseStream},
 };
+
+struct CatalogCommand {
+    attrs: Vec<Attribute>,
+    path: Path,
+}
+impl Parse for CatalogCommand {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(Self { attrs: input.call(Attribute::parse_outer)?, path: input.parse()? })
+    }
+}
 
 fn last_name(ty: &Type) -> String {
     match ty {
@@ -121,25 +132,30 @@ pub fn command(_: TokenStream, input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn catalog(input: TokenStream) -> TokenStream {
-    let paths = parse_macro_input!(input with syn::punctuated::Punctuated::<Path, syn::Token![,]>::parse_terminated);
-    let commands: Vec<_> = paths.iter().collect();
+    let paths = parse_macro_input!(input with syn::punctuated::Punctuated::<CatalogCommand, syn::Token![,]>::parse_terminated);
+    let commands: Vec<_> = paths.iter().map(|entry| {
+        let attrs = &entry.attrs;
+        let path = &entry.path;
+        quote! { #(#attrs)* #path }
+    }).collect();
     let exports: Vec<_> = paths
         .iter()
-        .cloned()
-        .map(|mut path| {
+        .map(|entry| {
+            let attrs = &entry.attrs;
+            let mut path = entry.path.clone();
             let last = path.segments.last_mut().unwrap();
             last.ident = format_ident!("__ipc_{}", last.ident);
-            path
+            quote! { #(#attrs)* #path(&mut registry); }
         })
         .collect();
     quote! {
-        pub(super) fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
+        pub(crate) fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
             tauri::generate_handler![#(#commands),*]
         }
         #[cfg(feature = "ipc-types")]
         pub(crate) fn export_types() -> String {
             let mut registry = crate::ipc_export::Registry::new();
-            #(#exports(&mut registry);)*
+            #(#exports)*
             registry.include::<crate::error::AppError>();
             registry.include::<crate::tasks::TaskUpdate<'static>>();
             registry.include::<crate::preparation::PreparationProgress>();

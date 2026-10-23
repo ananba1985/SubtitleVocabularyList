@@ -84,6 +84,7 @@ pub(crate) async fn collection_commit(
     background(move || app.commit(draft_id, target_entry_id, expected_revision, save_audio)).await
 }
 
+#[cfg(all(windows, feature = "desktop"))]
 #[svl_ipc_macros::command]
 pub(crate) async fn preview_start(
     app: AppState<'_>,

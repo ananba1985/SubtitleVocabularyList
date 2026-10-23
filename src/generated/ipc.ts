@@ -2,6 +2,8 @@
 
 export type AnswerInput = { operationId: string, questionId: string, answer: string, unable: boolean, };
 
+export type AppCapabilities = { platform: string, offlineCore: boolean, independentRuntime: boolean, synchronization: boolean, nativePlayback: boolean, screenCapture: boolean, systemSpeech: boolean, knownTargetPreferences: boolean, };
+
 export type AppError = { code: string, message: string, retryable: boolean, };
 
 export type AppInfo = { version: string, dataDirectory: string, schemaVersion: number, entryCount: number, sourceCount: number, networkUnavailable: boolean, dictionaryWarnings: Array<string>, };
@@ -327,6 +329,7 @@ export type WatchTrack = { id: number, kind: string, title: string, selected: bo
 export type WatchViewport = { x: number, y: number, width: number, height: number, visible: boolean, };
 
 export interface CommandMap {
+  app_capabilities: { args: undefined; result: AppCapabilities };
   app_info: { args: undefined; result: AppInfo };
   app_quit: { args: undefined; result: void };
   assessment_answer_submit: { args: { input: AssessmentAnswerInput }; result: AssessmentSession };

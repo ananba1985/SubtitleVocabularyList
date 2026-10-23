@@ -10,11 +10,13 @@ export function LibraryView({
   refreshKey,
   collect,
   report,
+  compact = false,
 }: {
   info: AppInfo | null;
   refreshKey: number;
   collect: (seed: CollectionSeed) => void;
   report: (error: unknown) => void;
+  compact?: boolean;
 }) {
   const [search, setSearch] = useState(""),
     [offset, setOffset] = useState(0),
@@ -61,6 +63,7 @@ export function LibraryView({
     <>
       {entry && (
         <div className="library-actions">
+          {compact && <button className="secondary" onClick={() => { setEntry(null); setAudioPath(""); }}>返回列表</button>}
           <button className="secondary" onClick={() => setEditing(true)}>
             修改选中词条
           </button>
@@ -103,7 +106,7 @@ export function LibraryView({
         />
         <span className="muted">自由浏览不会自动记为测验通过</span>
       </div>
-      <div className="split-view">
+      <div className={`split-view${compact && entry ? " compact-detail" : ""}`}>
         <section className="list-panel" aria-label="词条列表">
           {entries.map((value) => (
             <button

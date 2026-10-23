@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$InstallDirectory)
 $ErrorActionPreference='Stop'
 $svlWorkspace=Split-Path $PSScriptRoot
-$svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
+$svlConfig=Get-Content -LiteralPath (Join-Path $svlWorkspace 'src-tauri/tauri.windows.conf.json') -Raw | ConvertFrom-Json
 $svlResources=$svlConfig.bundle.resources.PSObject.Properties | Where-Object {$_.Name.StartsWith('../.tools/release-dictionaries/')}
 # Reuse the installer's explicit file mapping; never copy or remove the Data tree.
 foreach($svlResource in $svlResources){

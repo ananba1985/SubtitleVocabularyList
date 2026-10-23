@@ -1,5 +1,5 @@
 fn main() {
-    #[cfg(feature = "desktop")]
+    #[cfg(feature = "app-host")]
     tauri_build::build();
     // IPC-enabled native checks have no application binary resources/manifest.
     #[cfg(all(feature = "ipc-types", windows, target_env = "msvc"))]

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { call, message, uid, waitTask } from "../api";
 import type { SystemVoice, TaskSnapshot } from "../types";
 import { AudioPlayer } from "./AudioPlayer";
+import { useRuntimeFeatures } from "../runtimeFeatures";
 
 export function SystemSpeech({
   text,
@@ -10,6 +11,7 @@ export function SystemSpeech({
   text: string;
   label?: string;
 }) {
+  const features = useRuntimeFeatures();
   const [task, setTask] = useState<TaskSnapshot | null>(null),
     [result, setResult] = useState<{
       path: string;
@@ -41,6 +43,7 @@ export function SystemSpeech({
       setBusy(false);
     }
   }
+  if (!features.systemSpeech) return null;
   return (
     <div className="system-speech">
       <div className="actions">

@@ -9,6 +9,7 @@ import type {
 } from "../types";
 import { SystemSpeech } from "./SystemSpeech";
 import { OnlineLookup } from "./OnlineLookup";
+import { useRuntimeFeatures } from "../runtimeFeatures";
 export function CollectionModal({
   seed,
   onClose,
@@ -20,6 +21,7 @@ export function CollectionModal({
   onSaved: () => void;
   onMarked: () => void;
 }) {
+  const features = useRuntimeFeatures();
   const [text, setText] = useState(seed.text),
     [kind, setKind] = useState(seed.kind),
     [meaning, setMeaning] = useState(seed.meaning ?? ""),
@@ -36,7 +38,7 @@ export function CollectionModal({
   useEffect(() => {
     let disposed = false;
     setAlreadyKnown(false);
-    if (text.trim())
+    if (features.knownTargetPreferences && text.trim())
       call("known_target_get", { kind, text })
         .then((known) => {
           if (!disposed) setAlreadyKnown(known);
@@ -45,7 +47,7 @@ export function CollectionModal({
     return () => {
       disposed = true;
     };
-  }, [kind, text]);
+  }, [kind, text, features.knownTargetPreferences]);
   async function markKnown() {
     setBusy(true);
     setError("");
@@ -275,7 +277,7 @@ export function CollectionModal({
           onClick={explain}
           disabled={busy || !text.trim()}
         >
-          本地解释
+          {features.mobile ? "离线查词" : "本地解释"}
         </button>
         {explanation && (
           <div className="suggestion">
@@ -374,13 +376,13 @@ export function CollectionModal({
           </p>
         )}
         <footer>
-          <button
+          {features.knownTargetPreferences && <button
             className="secondary"
             onClick={markKnown}
             disabled={busy || !text.trim()}
           >
             我已掌握，以后跳过
-          </button>
+          </button>}
           <button className="secondary" onClick={onClose} disabled={busy}>
             暂不收录
           </button>

@@ -1,0 +1,8 @@
+{
+  "rustToolchain": "1.95.0",
+  "rustTarget": "aarch64-linux-android",
+  "ndkVersion": "28.2.13676358",
+  "javaMajor": 21,
+  "compileSdk": 36,
+  "minSdk": 29
+}

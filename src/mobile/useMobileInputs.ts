@@ -14,6 +14,12 @@ const ids = (queue: CollectionQueue) =>
       s?.inputId ? [s.inputId] : [],
     ),
   );
+const imageIds = (queue: CollectionQueue) =>
+  new Set(
+    [queue.current, ...queue.pending].flatMap((s) =>
+      s?.image ? [s.image.id] : [],
+    ),
+  );
 
 export function useMobileInputs(
   queue: CollectionQueue,
@@ -26,11 +32,12 @@ export function useMobileInputs(
     handled = useRef(new Set<string>()),
     previous = useRef(new Set<string>());
   const writes = useRef(Promise.resolve());
+  const previousImages = useRef(new Set<string>());
   useEffect(() => {
     if (!ready) return;
     let disposed = false;
     call("mobile_drafts_get")
-      .then((raw) => {
+      .then(async (raw) => {
         if (disposed) return;
         if (raw) {
           const saved = JSON.parse(raw);
@@ -48,7 +55,16 @@ export function useMobileInputs(
               (id: unknown) => typeof id === "string",
             ),
           );
+          previousImages.current = imageIds(saved.queue);
         }
+        const incoming = await call("mobile_incoming_get");
+        await call("mobile_images_cleanup", {
+          keep: [
+            ...previousImages.current,
+            ...incoming.filter((i) => i.kind === "image").map((i) => i.id),
+          ],
+        });
+        if (disposed) return;
         setLoaded(true);
       })
       .catch((e) => setError(message(e)));
@@ -59,6 +75,11 @@ export function useMobileInputs(
   useEffect(() => {
     if (!loaded) return;
     const current = ids(queue);
+    const images = imageIds(queue),
+      removedImages = [...previousImages.current].filter(
+        (id) => !images.has(id),
+      );
+    previousImages.current = images;
     const closed = [...previous.current].filter((id) => !current.has(id));
     previous.current = current;
     closed.forEach((id) => handled.current.add(id));
@@ -71,6 +92,8 @@ export function useMobileInputs(
       .catch(() => {})
       .then(async () => {
         await call("mobile_drafts_save", { json });
+        if (removedImages.length)
+          await call("mobile_images_release", { ids: removedImages });
         for (const id of closed) {
           await call("mobile_incoming_ack", { id });
           handled.current.delete(id);
@@ -83,7 +106,7 @@ export function useMobileInputs(
     let disposed = false,
       reading = false;
     async function receive() {
-      if (reading) return;
+      if (reading || document.visibilityState !== "visible") return;
       reading = true;
       try {
         const inputs = await call("mobile_incoming_get");

@@ -174,6 +174,8 @@ export type MediaRef = { uri: string, title: string, mime: string, size: number,
 
 export type MediaTools = { ffmpeg: string, ffprobe: string, tesseract: string, pgsTessdata: string | null, whisper: string, whisperModel: string, };
 
+export type MobileResources = { dictionariesReady: boolean, ocrReady: boolean, ocrModelBytes: number, temporaryImages: number, };
+
 export type NativeStatus = { selectionRegistered: boolean, ocrRegistered: boolean, inputRegistered: boolean, replacementRegistered: boolean, error: string | null, };
 
 export type OcrText = { imageId: string, text: string, };
@@ -235,6 +237,8 @@ export type ProviderUpdate = { id: string, enabled: boolean, autoQuery: boolean,
 export type QueryInput = { target: string, context: string, mode: string, sourceLanguage: string, targetLanguage: string, origin: QueryOrigin, };
 
 export type QueryOrigin = { kind: string, sourceId: string | null, sourceTitle: string, locationKey: string, };
+
+export type QuerySeed = { text: string, kind: string, context: string, meaning: string, sourceId: string | null, sourceTitle: string, locationKey: string, };
 
 export type QuerySession = { sessionId: string, inputRevision: number, queryId: string | null, input: QueryInput, automatic: boolean, results: Array<ProviderResult>, };
 
@@ -336,7 +340,7 @@ export type VideoControl = { sessionId: string, action: string, value: number | 
 
 export type VideoLearning = { sessionId: string, context: WatchContext | null, eligible: boolean, remainingSeconds: number | null, collected: boolean, skipped: boolean, task: TaskSnapshot | null, };
 
-export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, paused: boolean, revision: number, userPaused: boolean, foreground: boolean, windowFocused: boolean, fullscreen: boolean, mediaRevision: number, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
+export type VideoState = { sessionId: string, uri: string, positionMs: number, durationMs: number, playing: boolean, paused: boolean, revision: number, userPaused: boolean, foreground: boolean, windowFocused: boolean, fullscreen: boolean, mediaRevision: number, subtitleDelayMs: number, ended: boolean, speed: number, tracks: Array<VideoTrack>, error: string | null, };
 
 export type VideoStudy = { sourceId: string, sha256: string, subtitles: SubtitleInfo, };
 
@@ -421,6 +425,7 @@ export interface CommandMap {
   device_sync_update: { args: { input: DeviceSyncPreferences }; result: DeviceSyncPreferences };
   entries_list: { args: { search?: string | null; offset?: number | null; limit?: number | null }; result: Array<Entry> };
   entry_get: { args: { entryId: string }; result: Entry };
+  entry_review_history: { args: { entryId: string; offset: number; limit: number }; result: Array<Attempt> };
   entry_update: { args: { input: EntryUpdate }; result: Entry };
   explain_start: { args: { text: string; context: string; operationId: string }; result: TaskHandle<Explanation> };
   explanation_get: { args: { text: string; context: string }; result: PreparedExplanation | null };
@@ -433,6 +438,7 @@ export interface CommandMap {
   known_targets_list: { args: { search?: string | null; offset?: number | null; limit?: number | null }; result: KnownTargetPage };
   media_inspect: { args: { path: string }; result: MediaInspection };
   media_path: { args: { assetId: string }; result: string };
+  mobile_copy: { args: { text: string }; result: void };
   mobile_drafts_get: { args: undefined; result: string | null };
   mobile_drafts_save: { args: { json: string }; result: void };
   mobile_frame_draft: { args: { imageId: string; text: string; range?: WatchClipRange | null }; result: FrameDraft };
@@ -440,9 +446,13 @@ export interface CommandMap {
   mobile_image_draft: { args: { imageId: string; text: string }; result: FrameDraft };
   mobile_image_pick: { args: undefined; result: CaptureImage };
   mobile_image_prepare: { args: { id: string; uri: string }; result: CaptureImage };
+  mobile_images_cleanup: { args: { keep: Array<string> }; result: void };
+  mobile_images_release: { args: { ids: Array<string> }; result: void };
   mobile_incoming_ack: { args: { id: string }; result: void };
   mobile_incoming_get: { args: undefined; result: Array<IncomingInput> };
   mobile_ocr_start: { args: { imageId: string; rect: PixelRect; operationId: string }; result: TaskHandle<OcrText> };
+  mobile_query_seed: { args: { sessionId: string; revision: number; providerId: string }; result: QuerySeed };
+  mobile_resources_get: { args: undefined; result: MobileResources };
   mobile_shared_video: { args: { uri: string }; result: MediaRef };
   mobile_text_draft: { args: { text: string; title: string }; result: FrameDraft };
   mobile_video_frame: { args: undefined; result: CaptureImage };
@@ -506,6 +516,7 @@ export interface CommandMap {
   translation_window_hide: { args: undefined; result: void };
   translation_window_pin: { args: { pinned: boolean }; result: void };
   tray_action_get: { args: undefined; result: TrayNavigation | null };
+  video_collection_draft: { args: { revision: number; text: string; kind: string; meaning: string }; result: FrameDraft };
   video_context: { args: undefined; result: WatchContext | null };
   video_control: { args: { control: VideoControl }; result: VideoState };
   video_index_start: { args: { uri: string; operationId: string }; result: TaskHandle<VideoStudy> };
@@ -518,6 +529,7 @@ export interface CommandMap {
   video_state: { args: undefined; result: VideoState };
   video_study: { args: { uri: string }; result: VideoStudy | null };
   video_subtitle_add: { args: { uri: string; language: string; operationId: string }; result: TaskHandle<VideoStudy> };
+  video_translation_set: { args: { revision: number; translation: string }; result: void };
   video_viewport: { args: { viewport: VideoViewport }; result: void };
   watch_collection_prepare: { args: { sessionId: string; expectedRevision: number; clipRange?: WatchClipRange | null }; result: WatchContext };
   watch_control: { args: { control: WatchControl }; result: PlayerSnapshot };

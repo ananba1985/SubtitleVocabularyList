@@ -50,6 +50,9 @@ class VideoArgs {
     var audioKey: String = ""
     var subtitleKey: String = ""
     var select: Boolean = true
+    var renderSubtitlePath: String = ""
+    var originalSubtitleKey: String = ""
+    var subtitleDelayMs: Long = 0
 }
 
 /** Rendering and track selection only. Learning state is owned by Rust. */
@@ -61,6 +64,8 @@ class VideoPlayer(private val activity: Activity) {
     private var error: String? = null
     private var audioKey = ""
     private var subtitleKey = ""
+    private var originalSubtitleKey = ""
+    private var subtitleDelayMs = 0L
     private var selectionApplied = false
     private var fullscreen = false
     private var lastViewport: VideoArgs? = null
@@ -78,12 +83,12 @@ class VideoPlayer(private val activity: Activity) {
         require(Uri.parse(args.uri).scheme == "content")
         destroy()
         uri = args.uri; sessionId = args.sessionId; error = null
-        revision++; mediaRevision++; userPaused = false; pendingPause = ""
+        revision++; mediaRevision++; userPaused = false; pendingPause = "";originalSubtitleKey="";subtitleDelayMs=0
         audioKey = args.audioKey; subtitleKey = args.subtitleKey; selectionApplied = false
         player = ExoPlayer.Builder(activity).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             setHandleAudioBecomingNoisy(true)
-            trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredTextLanguage("en").build()
+            trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage("en").setPreferredTextLanguage("en").build()
             addListener(object : Player.Listener {
                 override fun onPlayerError(failure: PlaybackException) { if (sessionId == args.sessionId) error = "视频无法播放：${failure.errorCodeName}。请检查文件授权和编码。" }
                 override fun onPlaybackSuppressionReasonChanged(reason: Int) { if (reason != Player.PLAYBACK_SUPPRESSION_REASON_NONE) pause() }
@@ -131,16 +136,18 @@ class VideoPlayer(private val activity: Activity) {
             if (group.type == C.TRACK_TYPE_AUDIO || group.type == C.TRACK_TYPE_TEXT) {
                 repeat(group.length) { i ->
                     val f = group.getTrackFormat(i)
+                    if (f.id?.contains("svl-delay:") == true) return@repeat
                     tracks.put(JSObject().put("id", trackKey(group.type, group.mediaTrackGroup, i))
                         .put("kind", if (group.type == C.TRACK_TYPE_AUDIO) "audio" else "subtitle")
                         .put("title", f.label ?: f.language ?: f.sampleMimeType ?: "轨道").put("formatId", f.id ?: "")
-                        .put("selected", group.isTrackSelected(i)).put("supported", group.isTrackSupported(i)))
+                        .put("selected", if(group.type==C.TRACK_TYPE_TEXT && originalSubtitleKey.isNotEmpty()) trackKey(group.type,group.mediaTrackGroup,i)==originalSubtitleKey || (originalSubtitleKey.startsWith("raw:") && (f.id==originalSubtitleKey.removePrefix("raw:") || f.id?.endsWith(":"+originalSubtitleKey.removePrefix("raw:"))==true)) else group.isTrackSelected(i)).put("supported", group.isTrackSupported(i)))
                 }
             }
         }
         return JSObject().put("sessionId", sessionId).put("uri", uri)
             .put("revision", revision).put("userPaused", userPaused).put("paused", player?.playWhenReady != true)
             .put("mediaRevision",mediaRevision)
+            .put("subtitleDelayMs",subtitleDelayMs)
             .put("foreground", (activity as AppCompatActivity).lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
             .put("windowFocused", activity.hasWindowFocus())
             .put("fullscreen", fullscreen)
@@ -176,6 +183,8 @@ class VideoPlayer(private val activity: Activity) {
             "pause" -> pause(true)
             "stop" -> { pause(); val ending=snapshot(); destroy(); uri="";sessionId="";revision++;invoke.resolve(ending);return }
             "learning_offset" -> pause()
+            "pause_internal" -> pause()
+            "subtitle_delay" -> pause()
             "seek" -> player?.seekTo(args.value.toLong().coerceAtLeast(0))
             "speed" -> player?.setPlaybackSpeed(args.value.toFloat().coerceIn(0.25f, 3f))
             "volume" -> player?.volume = (args.value/100.0).toFloat().coerceIn(0f,1f)
@@ -184,9 +193,34 @@ class VideoPlayer(private val activity: Activity) {
             "track" -> player?.let { current ->
                 val type = if (args.kind == "audio") C.TRACK_TYPE_AUDIO else C.TRACK_TYPE_TEXT
                 val key = args.text.ifEmpty { "off" }; require(select(type,key))
-                if (type == C.TRACK_TYPE_AUDIO) audioKey = key else subtitleKey = key
+                if (type == C.TRACK_TYPE_AUDIO) audioKey = key else {subtitleKey = key;originalSubtitleKey=if(subtitleDelayMs!=0L && key!="off") key else ""}
             }
         }
+        invoke.resolve(snapshot())
+    }
+
+    /** Shifted WebVTT comes from the existing Rust index; Media3 still owns cue rendering. */
+    fun renderSubtitle(invoke:Invoke) {
+        val args=invoke.parseArgs(VideoArgs::class.java)
+        require(args.sessionId==sessionId)
+        val current=player ?: throw IllegalArgumentException("请先打开视频。")
+        val item=current.currentMediaItem ?: throw IllegalArgumentException("视频尚未准备。")
+        val configs=item.localConfiguration!!.subtitleConfigurations.filter {it.id?.startsWith("svl-delay:")!=true}.toMutableList()
+        val hadGenerated=item.localConfiguration!!.subtitleConfigurations.size!=configs.size
+        if(args.renderSubtitlePath.isEmpty() && !hadGenerated) {subtitleDelayMs=args.subtitleDelayMs;invoke.resolve(snapshot());return}
+        val base=args.originalSubtitleKey.ifEmpty {originalSubtitleKey}
+        if(args.renderSubtitlePath.isNotEmpty()) {
+            val file=java.io.File(args.renderSubtitlePath).canonicalFile
+            require(file.parentFile==java.io.File(activity.filesDir,"jobs").canonicalFile && file.name.startsWith("svl-shift-") && file.extension=="vtt")
+            val id="svl-delay:${file.nameWithoutExtension}"
+            configs.add(MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file)).setId(id).setMimeType(MimeTypes.TEXT_VTT).setLanguage("en").setLabel("校正字幕").build())
+            originalSubtitleKey=base;subtitleKey="raw:$id"
+        } else {originalSubtitleKey="";subtitleKey=base.ifEmpty {"off"}}
+        subtitleDelayMs=args.subtitleDelayMs
+        val position=current.currentPosition;val playing=current.playWhenReady
+        selectionApplied=false;revision++;mediaRevision++
+        current.setMediaItem(item.buildUpon().setSubtitleConfigurations(configs).build(),position)
+        current.prepare();current.playWhenReady=playing
         invoke.resolve(snapshot())
     }
 
@@ -207,7 +241,7 @@ class VideoPlayer(private val activity: Activity) {
         }
     }
     private fun setFullscreen(value: Boolean) {
-        revision++
+        interruptLearning()
         fullscreen = value; back.isEnabled = value
         view?.setFullscreenButtonState(value)
         val bars = WindowInsetsControllerCompat(activity.window, activity.window.decorView)
@@ -255,16 +289,17 @@ class VideoPlayer(private val activity: Activity) {
         require(args.uri == uri && Uri.parse(args.subtitleUri).scheme == "content")
         val current = player ?: throw IllegalArgumentException("请先打开视频。")
         val item = current.currentMediaItem ?: throw IllegalArgumentException("视频尚未就绪。")
-        val configs = item.localConfiguration!!.subtitleConfigurations.filter { it.id != args.subtitleUri }.toMutableList()
+        val configs = item.localConfiguration!!.subtitleConfigurations.filter { it.id != args.subtitleUri && it.id?.startsWith("svl-delay:")!=true }.toMutableList()
         configs.add(MediaItem.SubtitleConfiguration.Builder(Uri.parse(args.subtitleUri)).setId(args.subtitleUri)
             .setMimeType(args.mime).setLanguage(args.language).setLabel(args.title).build())
         val position = current.currentPosition; val playing = current.playWhenReady
-        if (args.language == "en" && args.select) subtitleKey = "raw:${args.subtitleUri}"
+        if (args.language == "en" && args.select) {subtitleKey = "raw:${args.subtitleUri}";originalSubtitleKey=""}
         selectionApplied = false
         current.setMediaItem(item.buildUpon().setSubtitleConfigurations(configs).build(),position)
         current.prepare(); current.playWhenReady = playing
         invoke.resolve(snapshot())
     }
     fun pause(user: Boolean = false) { revision++; pendingPause = if (user) "user" else "internal"; userPaused = user; player?.pause() }
+    fun interruptLearning() {revision++;userPaused=false}
     fun destroy() { if (fullscreen) setFullscreen(false); (view?.parent as? ViewGroup)?.removeView(view); view?.player = null; view = null; player?.release(); player = null }
 }

@@ -180,7 +180,7 @@ fn frame_context(
             crate::vocabulary::digest(text.as_bytes())
         ),
         media_sha256: frame.sha256.clone(),
-        audio_stream: frame.audio_track_id.as_ref().map(|_| 0),
+        audio_stream: frame.audio_track_id.as_ref().map(|audio| mobile_video::audio_slot(store, &frame.uri, audio)).transpose()?,
         precise_timing: false,
         subtitle_start_ms: 0,
         subtitle_end_ms: 0,
@@ -287,6 +287,15 @@ pub(crate) fn text_draft(store: &Store, text: &str, title: &str) -> Result<Frame
 }
 
 impl Application {
+    pub(crate) fn video_collection_draft(&self,revision:u64,text:String,kind:String,meaning:String)->Result<FrameDraft,AppError> {
+        let learning=self.video_learning()?;
+        let context=learning.context.filter(|c|c.revision==revision).ok_or_else(||AppError::new("conflict","暂停对白已变化，请重新核对。"))?;
+        let state=mobile_video::state(&self.store)?;
+        let title=self.store.playback_state()?.playlist.iter().find(|i|i.path==state.uri).map(|i|i.title.clone()).unwrap_or_else(||"本地视频".into());
+        let bound=self.store.bind_watch_context_verified(&state.uri,&title,&context,&context.media_sha256)?;
+        Ok(FrameDraft{text,kind,context:bound.text,meaning,source_id:bound.source_id.clone(),source_title:title,location_key:bound.location_key,
+            example:Some(self.store.source_example(&bound.source_id,&bound.example_id)?)})
+    }
     pub(crate) fn mobile_ocr_start(
         &self,
         id: String,
@@ -327,6 +336,19 @@ impl Application {
         let (_, context) = frame_context(&self.store, &id, &text, Some(&range))?;
         self.preview_start(context.source_id, context.example_id, operation_id)
     }
+}
+
+pub(crate) fn release_images(store:&Store,ids:&[String])->Result<(),AppError> {
+    for id in ids {
+        let key=image_key(id)?;
+        // Capture PNGs are disposable; vocabulary/audio/source data is never removed here.
+        if mobile_video::setting::<CaptureImage>(store,&key)?.is_some() {
+            let path=store.root().join("jobs").join(format!("image-{id}.png"));
+            match std::fs::remove_file(path) { Ok(())=>{},Err(e) if e.kind()==std::io::ErrorKind::NotFound=>{},Err(e)=>return Err(e.into()) }
+            store.connection()?.execute("DELETE FROM settings WHERE key=?",[key])?;
+        }
+    }
+    Ok(())
 }
 
 fn recognize(

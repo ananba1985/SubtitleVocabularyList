@@ -15,6 +15,7 @@ import { MobileWatch } from "./MobileWatch";
 import { useAutomaticSync } from "./useAutomaticSync";
 import { useMobileInputs } from "./useMobileInputs";
 import { MobileOcrModal } from "./MobileOcrModal";
+import { MobileServiceSettings } from "./MobileServiceSettings";
 import "./mobile.css";
 
 export default function MobileApp() {
@@ -29,6 +30,8 @@ export default function MobileApp() {
   const [tasks, setTasks] = useState<TaskSnapshot[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState("");
+  const [resources, setResources] =
+    useState<CommandResult<"mobile_resources_get"> | null>(null);
   const [queue, dispatch] = useReducer(collectionQueue, {
     current: null,
     pending: [],
@@ -52,6 +55,7 @@ export default function MobileApp() {
         call("tasks_list"),
       ]);
     setInfo(nextInfo);
+    setResources(await call("mobile_resources_get"));
     setSettings(nextSettings);
     setCapabilities(nextCapabilities);
     setTasks(nextTasks);
@@ -242,10 +246,11 @@ export default function MobileApp() {
                 {info && (
                   <p>
                     离线词库：
-                    {info.dictionaryWarnings.length
+                    {!resources?.dictionariesReady
                       ? "请查看下方资源提示"
                       : "已准备"}{" "}
-                    · 英语 OCR 资源：已准备
+                    · 英语 OCR 资源：
+                    {resources?.ocrReady ? "已准备" : "不可用，请检查离线资源"}
                   </p>
                 )}
                 {!!info?.dictionaryWarnings.length && (
@@ -254,6 +259,12 @@ export default function MobileApp() {
               </section>
               {settings && capabilities?.systemSpeech && (
                 <MobileSpeechSettings settings={settings} saved={setSettings} />
+              )}
+              {settings && (
+                <MobileServiceSettings
+                  settings={settings}
+                  saved={setSettings}
+                />
               )}
               {info && settings && capabilities?.synchronization && (
                 <MobileAccount

@@ -5,6 +5,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { EntryEditor } from "./EntryEditor";
 import { SystemSpeech } from "./SystemSpeech";
 import { OnlineLookup } from "./OnlineLookup";
+import { EntryLearningHistory } from "./EntryLearningHistory";
 export function LibraryView({
   info,
   refreshKey,
@@ -191,6 +192,7 @@ export function LibraryView({
                 {entry.collectionCount} 次
               </p>
               <h3>例句与原声</h3>
+              {compact && <EntryLearningHistory key={entry.id} entryId={entry.id} />}
               {entry.examples.map((example) => (
                 <article className="example-card" key={example.id}>
                   <p className="quote">{example.text}</p>

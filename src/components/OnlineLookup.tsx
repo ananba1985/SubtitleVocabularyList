@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { call, message, uid, waitTask } from "../api";
 import type { LookupResult } from "../generated/ipc";
 
@@ -13,7 +13,24 @@ export function OnlineLookup({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [taskId, setTaskId] = useState<string | null>(null);
+  const generation = useRef(0),
+    active = useRef<string | null>(null);
+  useEffect(() => {
+    generation.current++;
+    setResult(null);
+    setBusy(false);
+    setTaskId(null);
+    const task = active.current;
+    if (task) void call("task_cancel", { taskId: task }).catch(() => {});
+    return () => {
+      generation.current++;
+      if (active.current)
+        void call("task_cancel", { taskId: active.current }).catch(() => {});
+    };
+  }, [text]);
   async function lookup(provider: "dictionary" | "translation") {
+    const epoch = ++generation.current;
+    let ownTaskId: string | null = null;
     setBusy(true);
     setError("");
     setResult(null);
@@ -23,13 +40,23 @@ export function OnlineLookup({
         provider,
         operationId: uid(),
       });
+      active.current = task.id;
+      ownTaskId = task.id;
+      if (epoch !== generation.current) {
+        await call("task_cancel", { taskId: task.id });
+        return;
+      }
       setTaskId(task.id);
-      setResult(await waitTask(task));
+      const value = await waitTask(task);
+      if (epoch === generation.current) setResult(value);
     } catch (e) {
-      setError(message(e));
+      if (epoch === generation.current) setError(message(e));
     } finally {
-      setBusy(false);
-      setTaskId(null);
+      if (epoch === generation.current) {
+        setBusy(false);
+        setTaskId(null);
+      }
+      if (active.current === ownTaskId) active.current = null;
     }
   }
   return (

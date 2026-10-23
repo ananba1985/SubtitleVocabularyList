@@ -19,7 +19,7 @@ pub struct VideoTrack { pub id: String, pub format_id: String, pub kind: String,
 #[serde(rename_all = "camelCase")]
 pub struct VideoState { pub session_id: String, pub uri: String, pub position_ms: u64, pub duration_ms: u64, pub playing: bool, pub paused: bool,
     pub revision: u64, pub user_paused: bool, pub foreground: bool, pub window_focused: bool, pub fullscreen: bool,
-    pub media_revision: u64,
+    pub media_revision: u64, pub subtitle_delay_ms:i64,
     pub ended: bool, pub speed: f64, pub tracks: Vec<VideoTrack>, pub error: Option<String> }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -66,6 +66,19 @@ pub(crate) fn save<T: Serialize>(store: &Store, key: &str, value: &T) -> Result<
     store.connection()?.execute("INSERT INTO settings(key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json", rusqlite::params![key,serde_json::to_string(value)?])?;
     Ok(())
 }
+// Keep Media3 format identities in the platform adapter; shared clip recipes use
+// their stable numeric slot. Slot zero is reserved for pre-slot Android caches.
+pub(crate) fn audio_slot(store: &Store, uri: &str, format_id: &str) -> Result<usize, AppError> {
+    static SLOTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = SLOTS.lock().map_err(|_| AppError::new("internal_error", "音轨信息暂不可用。"))?;
+    let name = key("audio_slots", uri);
+    let mut slots = setting::<std::collections::HashMap<String, usize>>(store, &name)?.unwrap_or_default();
+    if let Some(slot) = slots.get(format_id) { return Ok(*slot); }
+    let slot = slots.values().copied().max().unwrap_or(0) + 1;
+    slots.insert(format_id.into(), slot);
+    save(store, &name, &slots)?;
+    Ok(slot)
+}
 fn reference(store: &Store, uri: &str) -> Result<MediaRef, AppError> {
     setting(store, &key("media", uri))?.ok_or_else(|| AppError::new("resource_missing", "请先通过系统选择器授权此视频。"))
 }
@@ -111,7 +124,7 @@ pub(crate) fn open(store: &Store, uri: &str) -> Result<VideoState, AppError> {
             invoke::<VideoState>("videoSubtitle",serde_json::json!({"uri":uri,"subtitleUri":subtitle.id,"mime":subtitle.mime,"language":subtitle.language,"title":subtitle.title,"select":false}))?;
         }
     }
-    Ok(state)
+    render_delayed(store,state)
 }
 pub(crate) fn state(store: &Store) -> Result<VideoState, AppError> {
     static LAST_SAVE: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
@@ -121,8 +134,13 @@ pub(crate) fn state(store: &Store) -> Result<VideoState, AppError> {
     Ok(state)
 }
 pub(crate) fn control(store: &Store, control: VideoControl) -> Result<VideoState, AppError> {
-    if !matches!(control.action.as_str(), "play"|"pause"|"stop"|"seek"|"speed"|"volume"|"auto_next"|"learning_offset"|"track"|"hide"|"fullscreen") || control.value.is_some_and(|v| !v.is_finite() || (v < 0.0 && control.action != "learning_offset")) {
+    if !matches!(control.action.as_str(), "play"|"pause"|"pause_internal"|"stop"|"seek"|"speed"|"volume"|"auto_next"|"subtitle_delay"|"learning_offset"|"track"|"hide"|"fullscreen") || control.value.is_some_and(|v| !v.is_finite() || (v < 0.0 && !matches!(control.action.as_str(),"learning_offset"|"subtitle_delay"))) {
         return Err(AppError::new("invalid_input", "视频操作参数无效。"));
+    }
+    if control.action=="subtitle_delay" {
+        let current:VideoState=invoke("videoState",serde_json::json!({}))?;
+        if current.session_id!=control.session_id || control.value.unwrap_or(0.0).abs()>3600000.0 {return Err(AppError::new("invalid_input","字幕偏移或视频会话无效。"));}
+        save(store,&key("subtitle_delay",&current.uri),&(control.value.unwrap_or(0.0) as i64))?;
     }
     if control.action == "learning_offset" {
         let current:VideoState=invoke("videoState",serde_json::json!({}))?;
@@ -162,7 +180,7 @@ pub(crate) fn control(store: &Store, control: VideoControl) -> Result<VideoState
             }
         }
     }
-    Ok(state)
+    if control.action=="subtitle_delay" || (control.action=="track" && control.kind.as_deref()==Some("subtitle")) { render_delayed(store,state) } else { Ok(state) }
 }
 pub(crate) fn viewport(viewport: VideoViewport) -> Result<(), AppError> {
     if [viewport.x,viewport.y,viewport.width,viewport.height,viewport.ratio].iter().any(|v| !v.is_finite()) || viewport.ratio <= 0.0 {
@@ -172,10 +190,38 @@ pub(crate) fn viewport(viewport: VideoViewport) -> Result<(), AppError> {
 }
 pub(crate) fn persist_progress(store: &Store, state: &VideoState) -> Result<(), AppError> {
     if state.uri.is_empty() { return Ok(()); }
-    if let Some(audio) = state.tracks.iter().find(|t|t.kind=="audio"&&t.selected) { save(store,&key("actual_audio",&state.uri),&audio.format_id)?; }
+    if let Some(audio) = state.tracks.iter().find(|t|t.kind=="audio"&&t.selected) {
+        audio_slot(store, &state.uri, &audio.format_id)?;
+        save(store,&key("actual_audio",&state.uri),&audio.format_id)?;
+    }
     store.save_watch_progress(&crate::watch::WatchProgress { path:state.uri.clone(), position:state.position_ms as f64 /1000.0, ..Default::default() })
 }
-pub(crate) fn study(store: &Store, uri: &str) -> Result<Option<VideoStudy>, AppError> { setting(store, &key("study",uri)) }
+pub(crate) fn study(store: &Store, uri: &str) -> Result<Option<VideoStudy>, AppError> {
+    let mut study:Option<VideoStudy>=setting(store,&key("study",uri))?;
+    if let Some(study)=&mut study {if let Some(bundle)=store.subtitle_bundle(&study.source_id)? {study.subtitles=bundle.info();}}
+    Ok(study)
+}
+
+fn render_delayed(store:&Store,state:VideoState)->Result<VideoState,AppError> {
+    render_delayed_track(store,state,None)
+}
+fn render_delayed_track(store:&Store,state:VideoState,selected_id:Option<&str>)->Result<VideoState,AppError> {
+    let delay=setting::<i64>(store,&key("subtitle_delay",&state.uri))?.unwrap_or(0);
+    let selected=state.tracks.iter().find(|t|t.kind=="subtitle"&&selected_id.map(|id|t.format_id==id||t.format_id.ends_with(&format!(":{id}"))).unwrap_or(t.selected));
+    let mut path=String::new();
+    if delay!=0 && (selected.is_some()||selected_id.is_some()) {
+        let index=setting::<MediaIndex>(store,&key("index",&state.uri))?;
+        if let Some(track)=index.as_ref().and_then(|i|i.subtitles.iter().find(|s|selected_id==Some(s.id.as_str()) || selected.is_some_and(|t|s.id==t.format_id || t.format_id.ends_with(&format!(":{}",s.id))))) {
+            let stamp=|ms:i64|format!("{:02}:{:02}:{:02}.{:03}",ms/3600000,ms/60000%60,ms/1000%60,ms%1000);
+            let mut vtt=String::from("WEBVTT\n\n");
+            for cue in &track.cues {let end=cue.end_ms+delay;if end<=0 {continue} let text=cue.text.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;");
+                vtt.push_str(&format!("{} --> {}\n{}\n\n",stamp((cue.start_ms+delay).max(0)),stamp(end),text));}
+            let file=store.root().join("jobs").join(format!("svl-shift-{}.vtt",vocabulary::digest(vtt.as_bytes())));std::fs::write(&file,vtt)?;path=file.display().to_string();
+        } else {return Err(AppError::new("resource_missing","本轨没有可校正的文本索引，请添加文本字幕或继续观看。"));}
+    }
+    let original=selected.map(|t|t.id.clone()).or_else(||selected_id.map(|id|format!("raw:{id}"))).unwrap_or_else(||"off".into());
+    invoke("videoRenderSubtitle",serde_json::json!({"sessionId":state.session_id,"renderSubtitlePath":path,"originalSubtitleKey":original,"subtitleDelayMs":delay}))
+}
 
 pub(crate) fn context(store: &Store, state: &VideoState) -> Result<Option<crate::watch::WatchContext>, AppError> {
     let Some(study) = study(store,&state.uri)? else { return Ok(None) };
@@ -184,9 +230,19 @@ pub(crate) fn context(store: &Store, state: &VideoState) -> Result<Option<crate:
         query.query_map([&study.source_id], |r|Ok(crate::corpus::CandidateExample {id:r.get(0)?,text:r.get(1)?,start_ms:r.get(2)?,end_ms:r.get(3)?,revision:r.get(4)?,decision:None}))?.collect::<Result<Vec<_>,_>>()?
     };
     let media = crate::watch::WatchMedia { source_id:Some(study.source_id.clone()),path:state.uri.clone().into(),title:reference(store,&state.uri)?.title,
-        subtitle_stream:None,audio_stream:state.tracks.iter().any(|t|t.kind=="audio"&&t.selected).then_some(0),text_source:"android_text".into(),examples,
+        subtitle_stream:None,audio_stream:state.tracks.iter().find(|t|t.kind=="audio"&&t.selected).map(|t|audio_slot(store,&state.uri,&t.format_id)).transpose()?,text_source:"android_text".into(),examples,
         subtitles:store.subtitle_bundle(&study.source_id)?,media_sha256:study.sha256 };
-    store.watch_context(&media,state.position_ms as i64,0,0)
+    let delay=setting::<i64>(store,&key("subtitle_delay",&state.uri))?.unwrap_or(0);
+    let time=state.position_ms as i64-delay;
+    let index=setting::<MediaIndex>(store,&key("index",&state.uri))?;
+    let track=index.as_ref().and_then(|i|i.subtitles.iter().find(|s|s.cues.iter().any(|c|crate::subtitles::english_text(&c.text).is_some())));
+    let cue=track.and_then(|s|s.cues.iter().find(|c|c.start_ms<=time&&time<c.end_ms).or_else(||s.cues.iter().rev().find(|c|c.end_ms<=time&&time-c.end_ms<=3000)));
+    let Some(cue)=cue else { return Ok(None) };
+    let start=(cue.start_ms+delay).max(0);let end=(cue.end_ms+delay).min(state.duration_ms as i64);
+    if end<=start {return Ok(None)}
+    let mut context=store.watch_text_context(&media,&cue.text,start,end,0,"android_text",media.audio_stream,Some((cue.start_ms,cue.end_ms)))?;
+    if let Some(context)=&mut context {context.previous=time>=cue.end_ms;}
+    Ok(context)
 }
 
 fn install(store: &Store, media: &MediaRef, index: &MediaIndex) -> Result<VideoStudy, AppError> {
@@ -228,9 +284,13 @@ fn install(store: &Store, media: &MediaRef, index: &MediaIndex) -> Result<VideoS
 }
 
 #[cfg(all(target_os = "android", feature = "mobile"))]
-pub(crate) fn export_audio(store: &Store, uri: &str, path: &std::path::Path, start_ms: i64, end_ms: i64) -> Result<i64, AppError> {
+pub(crate) fn export_audio(store: &Store, uri: &str, path: &std::path::Path, start_ms: i64, end_ms: i64, audio_stream: Option<usize>) -> Result<i64, AppError> {
     #[derive(Deserialize)] #[serde(rename_all = "camelCase")] struct Exported { duration_ms: i64 }
-    let audio: Option<String> = setting(store,&key("actual_audio",uri))?;
+    let audio = if let Some(slot) = audio_stream.filter(|s| *s > 0) {
+        let slots = setting::<std::collections::HashMap<String,usize>>(store,&key("audio_slots",uri))?.unwrap_or_default();
+        Some(slots.into_iter().find(|(_,s)| *s==slot).map(|(id,_)|id)
+            .ok_or_else(||AppError::new("resource_missing","收录时的音轨不可用，请重新选择视频音轨。"))?)
+    } else { setting::<String>(store,&key("actual_audio",uri))? };
     let result: Exported = invoke("videoExport",serde_json::json!({"uri":uri,"path":path,"startMs":start_ms,"endMs":end_ms,"audioTrackId":audio.unwrap_or_default()}))?;
     Ok(result.duration_ms)
 }
@@ -249,9 +309,13 @@ impl Application {
                     index.subtitles.insert(0,refreshed);
                 }
             }
+            let current=state(&store)?;
+            if current.uri==uri && let Some(selected)=current.tracks.iter().find(|t|t.kind=="subtitle"&&t.selected) {
+                if let Some(p)=index.subtitles.iter().position(|s|(s.id==selected.format_id||selected.format_id.ends_with(&format!(":{}",s.id))) && s.cues.iter().any(|c|crate::subtitles::english_text(&c.text).is_some())) {let track=index.subtitles.remove(p);index.subtitles.insert(0,track);}
+            }
             let result = install(&store,&media,&index)?;
             let current = state(&store)?;
-            if current.uri == uri && current.session_id == opened { save(&store,&key("verified",&uri),&opened)?; }
+            if current.uri == uri && current.session_id == opened { save(&store,&key("verified",&uri),&opened)?; render_delayed(&store,current)?; }
             Ok(result)
         })
     }
@@ -271,6 +335,11 @@ impl Application {
             index.subtitles.retain(|s|s.id != subtitle.id); index.subtitles.insert(0,subtitle);
             context.check_cancelled()?;
             let mut result = install(&store,&media,&index)?;
+            if language=="en" {
+                let mut tracks=setting::<std::collections::HashMap<String,String>>(&store,&key("tracks",&uri))?.unwrap_or_default();
+                tracks.insert("subtitle".into(),format!("raw:{}",file.uri));save(&store,&key("tracks",&uri),&tracks)?;
+                let current=state(&store)?;if current.uri==uri {render_delayed_track(&store,current,Some(&file.uri))?;}
+            }
             if language == "zh" {
                 if let Some(id) = result.subtitles.assets.iter().find(|a|a.title == file.title && a.cue_count > 0 && matches!(a.language.as_str(),"zh"|"en-zh")).map(|a|a.id.clone()) {
                     result.subtitles = store.select_chinese_subtitle(&result.source_id,Some(id))?;

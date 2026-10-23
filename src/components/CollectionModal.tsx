@@ -10,6 +10,7 @@ import type {
 import { SystemSpeech } from "./SystemSpeech";
 import { OnlineLookup } from "./OnlineLookup";
 import { useRuntimeFeatures } from "../runtimeFeatures";
+import { MobileQuery } from "../mobile/MobileQuery";
 export function CollectionModal({
   seed,
   onClose,
@@ -24,6 +25,7 @@ export function CollectionModal({
   onDraftChanged?: (seed: CollectionSeed) => void;
 }) {
   const features = useRuntimeFeatures();
+  const [copyNotice, setCopyNotice] = useState("");
   const [text, setText] = useState(seed.text),
     [kind, setKind] = useState(seed.kind),
     [meaning, setMeaning] = useState(seed.meaning ?? ""),
@@ -105,6 +107,10 @@ export function CollectionModal({
     }
   }
   async function prepare() {
+    if (features.mobile && /[\u3400-\u9fff]/.test(text)) {
+      setError("请先取得并核对英文译文，或把原文改为英语目标，再确认收录。");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -216,6 +222,20 @@ export function CollectionModal({
             ×
           </button>
         </header>
+
+        {features.mobile && (
+          <button
+            disabled={busy || !text.trim()}
+            onClick={() =>
+              call("mobile_copy", { text })
+                .then(() => setCopyNotice("已复制原文，未收录。"))
+                .catch((e) => setError(message(e)))
+            }
+          >
+            复制当前原文
+          </button>
+        )}
+        {copyNotice && <p role="status">{copyNotice}</p>}
         <div className="field-row">
           <label>
             类型
@@ -288,6 +308,23 @@ export function CollectionModal({
             来源：{seed.sourceTitle}。自动语境可在上方补充或修订。
           </p>
         )}
+        {features.mobile && (
+          <details className="supplementary-lookup">
+            <summary>按需查询／中文转英文</summary>
+            <MobileQuery
+              text={text}
+              context={context}
+              seed={seed}
+              apply={(value) => {
+                setText(value.text);
+                setKind(value.kind);
+                setMeaning(value.meaning);
+                setContext(value.context);
+                change();
+              }}
+            />
+          </details>
+        )}
         {!seed.example && text.trim() && <SystemSpeech text={text} />}
         <button
           className="secondary"
@@ -317,17 +354,19 @@ export function CollectionModal({
             </button>
           </div>
         )}
-        <details className="supplementary-lookup">
-          <summary>联网查询</summary>
-          <OnlineLookup
-            key={text}
-            text={text}
-            onMeaning={(value) => {
-              setMeaning(value);
-              change();
-            }}
-          />
-        </details>
+        {!features.mobile && (
+          <details className="supplementary-lookup">
+            <summary>联网查询</summary>
+            <OnlineLookup
+              key={text}
+              text={text}
+              onMeaning={(value) => {
+                setMeaning(value);
+                change();
+              }}
+            />
+          </details>
+        )}
         {seed.example && (
           <label className="check-label">
             <input

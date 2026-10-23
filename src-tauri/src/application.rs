@@ -376,15 +376,12 @@ impl Application {
         crate::site_connection::site_origin(&settings.site_url)?;
         let url = reqwest::Url::parse(&settings.model_url)
             .map_err(|_| AppError::new("invalid_input", "本地模型地址无效。"))?;
-        if !matches!(url.scheme(), "http" | "https")
-            || !matches!(
-                url.host_str(),
-                Some("127.0.0.1" | "localhost" | "[::1]" | "::1")
-            )
-        {
+        let loopback=matches!(url.host_str(),Some("127.0.0.1"|"localhost"|"[::1]"|"::1"));
+        let allowed=matches!(url.scheme(),"http"|"https") && (loopback || (cfg!(target_os="android") && url.scheme()=="https" && url.host_str().is_some()));
+        if !allowed || !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
             return Err(AppError::new(
                 "invalid_input",
-                "本地模型请使用本机回环地址。",
+                if cfg!(target_os="android") {"手机模型请使用 HTTPS 服务根地址，或手机自身的回环地址；密钥请单独填写。"} else {"本地模型请使用本机回环地址。"},
             ));
         }
         settings.tools = self.defaults.tools.clone();

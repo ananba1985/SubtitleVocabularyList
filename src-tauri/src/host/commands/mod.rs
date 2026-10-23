@@ -6,6 +6,7 @@ pub(crate) mod corpus;
 pub(crate) mod learning;
 pub(crate) mod mobile_media;
 pub(crate) mod mobile_capture;
+pub(crate) mod mobile_tools;
 pub(crate) mod query;
 #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 pub(crate) mod synchronization;
@@ -42,6 +43,14 @@ where
 svl_ipc_macros::catalog! {
         system::app_ready,
         mobile_capture::mobile_incoming_get,
+        mobile_tools::mobile_query_seed,
+        mobile_tools::mobile_copy,
+        mobile_tools::entry_review_history,
+        mobile_tools::mobile_resources_get,
+        mobile_tools::mobile_images_release,
+        mobile_tools::mobile_images_cleanup,
+        mobile_media::video_collection_draft,
+        mobile_media::video_translation_set,
         mobile_capture::mobile_incoming_ack,
         mobile_capture::mobile_image_prepare,
         mobile_capture::mobile_image_pick,

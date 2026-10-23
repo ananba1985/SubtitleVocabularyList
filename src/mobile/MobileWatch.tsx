@@ -5,6 +5,7 @@ import type { CollectionSeed, Settings } from "../types";
 import { AudioPlayer } from "../components/AudioPlayer";
 import { useVideoLearning } from "./useVideoLearning";
 import { MobileWordQuery } from "./MobileWordQuery";
+import { MobileQuery } from "./MobileQuery";
 
 type VideoState = CommandResult<"video_state">;
 const time = (ms: number) =>
@@ -46,6 +47,14 @@ export function MobileWatch({
   const generation = useRef(0);
   const advanced = useRef("");
   const [offset, setOffset] = useState(0);
+  const [subtitleDelay, setSubtitleDelay] = useState(0),
+    [translationDraft, setTranslationDraft] = useState("");
+  useEffect(() => {
+    setTranslationDraft("");
+  }, [context?.revision]);
+  useEffect(() => {
+    setSubtitleDelay((state?.subtitleDelayMs ?? 0) / 1000);
+  }, [state?.sessionId, state?.subtitleDelayMs]);
   useEffect(() => {
     setOffset(
       (study?.subtitles.assets.find(
@@ -287,11 +296,17 @@ export function MobileWatch({
     setBusy(true);
     setError("");
     try {
+      const draft = await call("video_collection_draft", {
+        revision: context.revision,
+        text: context.text,
+        kind: "sentence",
+        meaning: context.translation,
+      });
       setClip(
         await waitTask(
           await call("preview_start", {
-            sourceId: context.sourceId,
-            exampleId: context.exampleId,
+            sourceId: draft.sourceId,
+            exampleId: draft.example!.id,
             operationId: uid(),
           }),
         ),
@@ -342,22 +357,22 @@ export function MobileWatch({
       setBusy(false);
     }
   }
-  function draft(text: string, kind: string, meaning: string) {
+  async function draft(text: string, kind: string, meaning: string) {
     if (!context) return;
-    collect({
-      text,
-      kind,
-      context: context.text,
-      meaning,
-      sourceId: context.sourceId,
-      sourceTitle: title,
-      example: {
-        id: context.exampleId,
-        text: context.text,
-        startMs: context.startMs,
-        endMs: context.endMs,
-      },
-    });
+    setBusy(true);
+    try {
+      const seed = await call("video_collection_draft", {
+        revision: context.revision,
+        text,
+        kind,
+        meaning,
+      });
+      collect({ ...seed, example: seed.example ?? undefined });
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
   }
   const title = library?.playlist.find((i) => i.path === state?.uri)?.title;
   return (
@@ -505,8 +520,34 @@ export function MobileWatch({
             ))}
           </div>
           {notice && <p role="status">{notice}</p>}
+          {!study && !indexing && (
+            <button disabled={busy} onClick={() => open(state.uri)}>
+              重试字幕准备
+            </button>
+          )}
           <details className="mobile-learning-options">
             <summary>播放设置</summary>
+            <label>
+              画面字幕整体偏移（秒）
+              <input
+                aria-label="画面字幕整体偏移"
+                type="number"
+                step="0.1"
+                value={subtitleDelay}
+                onChange={(e) => setSubtitleDelay(Number(e.target.value))}
+              />
+            </label>
+            <button
+              disabled={busy || indexing || !study}
+              onClick={() =>
+                control("subtitle_delay", Math.round(subtitleDelay * 1000))
+              }
+            >
+              应用画面字幕偏移
+            </button>
+            <p className="muted">
+              正数延后字幕；学习对白和收录原声区间随之校正。使用可靠文本轨，原字幕文件保持不变。
+            </p>
             <label>
               播放器音量
               <input
@@ -547,7 +588,7 @@ export function MobileWatch({
                   应用中文偏移
                 </button>
                 <p className="muted">
-                  正数推迟学习面板中的中文；画面内封字幕保持播放器原时间。
+                  正数推迟中英文对齐中的中文；画面字幕使用上方的整体偏移。
                 </p>
               </>
             )}
@@ -627,6 +668,41 @@ export function MobileWatch({
                 {context.translation ||
                   "尚无译文，可添加中文字幕或手动填写释义。"}
               </p>
+              {!context.translation && (
+                <details className="mobile-learning-options">
+                  <summary>补充当前对白译文</summary>
+                  <MobileQuery
+                    text={context.text}
+                    context=""
+                    apply={(value) => setTranslationDraft(value.meaning)}
+                  />
+                  <label>
+                    人工中文译文
+                    <textarea
+                      aria-label="当前对白人工译文"
+                      value={translationDraft}
+                      onChange={(e) => setTranslationDraft(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    disabled={busy || !translationDraft.trim()}
+                    onClick={async () => {
+                      try {
+                        await call("video_translation_set", {
+                          revision: context.revision,
+                          translation: translationDraft,
+                        });
+                        setTranslationDraft("");
+                        setState(await call("video_state"));
+                      } catch (e) {
+                        setError(message(e));
+                      }
+                    }}
+                  >
+                    保存当前对白译文
+                  </button>
+                </details>
+              )}
               <p className="notice" role="status">
                 {learning?.collected
                   ? "该对白已自动收录，重复暂停不会重复追加。"

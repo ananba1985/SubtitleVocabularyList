@@ -596,7 +596,7 @@ impl Store {
             #[cfg(all(target_os = "android", feature = "mobile"))]
             let duration = {
                 if cancelled.load(std::sync::atomic::Ordering::Relaxed) { return Err(AppError::new("cancelled","任务已取消。")); }
-                let duration = crate::mobile_video::export_audio(self,&audio,&temporary,example.start_ms,example.end_ms)?;
+                let duration = crate::mobile_video::export_audio(self,&audio,&temporary,example.start_ms,example.end_ms,video.and_then(|(_,stream)|stream))?;
                 if cancelled.load(std::sync::atomic::Ordering::Relaxed) { return Err(AppError::new("cancelled","任务已取消。")); }
                 duration
             };

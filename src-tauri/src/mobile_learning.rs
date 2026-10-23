@@ -44,16 +44,22 @@ impl Application {
         }
         session.eligible = state.user_paused && state.paused && state.foreground && state.window_focused && !state.fullscreen && state.error.is_none()
             && settings.watch_auto_collect && session.context.as_ref().is_some_and(|c|!c.translation.trim().is_empty());
-        if !session.eligible || session.skipped { session.clock.cancel(); }
+        if !session.eligible || session.skipped {
+            if (!state.window_focused || state.fullscreen) && session.clock.remaining(session.revision,Instant::now(),settings.watch_collect_delay_seconds).is_some() {session.skipped=true;}
+            session.clock.cancel();
+        }
         let collected = session.context.as_ref().map(|c|self.store.watch_receipt(c)).transpose()?.flatten().is_some();
         if collected { session.clock.cancel(); }
         let remaining = session.clock.remaining(session.revision,Instant::now(),settings.watch_collect_delay_seconds);
         if remaining.is_some_and(|n|n <= 0.0) && session.eligible && !session.skipped && !collected && session.task_id.is_none() {
             let context = session.context.clone().unwrap();
+            let state_uri=state.uri.clone();
             let store = Arc::clone(&self.store); let tools = settings.tools;
             let hash = crate::vocabulary::digest(serde_json::to_string(&context)?.as_bytes());
             let task = self.tasks.start_typed("watch_collect",&uuid::Uuid::new_v4().to_string(),&hash,move |task| {
                 task.subject(&context.text); task.progress("audio",0,1,"正在保存暂停对白与独立原声"); task.check_cancelled()?;
+                let title=store.playback_state()?.playlist.iter().find(|i|i.path==state_uri).map(|i|i.title.clone()).unwrap_or_else(||"本地视频".into());
+                let context=store.bind_watch_context_verified(&state_uri,&title,&context,&context.media_sha256)?;
                 let asset = if context.precise_timing && context.audio_stream.is_some() {
                     Some(store.ensure_clip(&tools,&context.source_id,&context.example_id,&task.cancelled)?)
                 } else { None };
@@ -70,7 +76,10 @@ impl Application {
     pub(crate) fn video_learning_visible(&self, revision: u64, visible: bool) -> Result<(), AppError> {
         if !visible {
             let mut session = session().lock().map_err(|_|AppError::new("internal_error","暂停学习状态暂不可用。"))?;
-            if session.context.as_ref().is_some_and(|c|c.revision == revision) { session.clock.cancel(); }
+            if session.context.as_ref().is_some_and(|c|c.revision == revision) {
+                if session.clock.remaining(session.revision,Instant::now(),self.settings()?.watch_collect_delay_seconds).is_some() {session.skipped=true;}
+                session.clock.cancel();
+            }
             return Ok(());
         }
         if self.video_learning()?.collected { return Ok(()); }

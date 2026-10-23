@@ -1096,11 +1096,17 @@ impl Store {
         offset: u32,
         limit: u32,
     ) -> Result<Vec<Attempt>, AppError> {
+        self.review_history_filtered(unit_id,None,offset,limit)
+    }
+    pub fn entry_review_history(&self,entry_id:&str,offset:u32,limit:u32)->Result<Vec<Attempt>,AppError> {
+        self.review_history_filtered(None,Some(entry_id),offset,limit)
+    }
+    fn review_history_filtered(&self,unit_id:Option<&str>,entry_id:Option<&str>,offset:u32,limit:u32)->Result<Vec<Attempt>,AppError> {
         let connection = self.connection()?;
-        let mut query=connection.prepare("SELECT id FROM review_attempts WHERE (? IS NULL OR unit_id=?) ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?")?;
+        let mut query=connection.prepare("SELECT a.id FROM review_attempts a LEFT JOIN learning_units u ON u.id=a.unit_id WHERE (? IS NULL OR a.unit_id=?) AND (? IS NULL OR u.entry_id=?) ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?")?;
         let ids = query
             .query_map(
-                params![unit_id, unit_id, limit.clamp(1, 100), offset],
+                params![unit_id, unit_id,entry_id,entry_id, limit.clamp(1, 100), offset],
                 |r| r.get::<_, String>(0),
             )?
             .collect::<Result<Vec<_>, _>>()?;

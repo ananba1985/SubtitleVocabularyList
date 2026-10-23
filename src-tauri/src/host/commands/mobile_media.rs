@@ -2,6 +2,21 @@ use super::{AppState, background};
 use crate::{error::AppError, mobile_video::{self, VideoControl, VideoState, VideoStudy, VideoViewport}, tasks::TaskHandle, playback::PlaybackState};
 
 #[svl_ipc_macros::command]
+pub(crate) async fn video_collection_draft(app:AppState<'_>,revision:u64,text:String,kind:String,meaning:String)->Result<crate::mobile_capture::FrameDraft,AppError> {
+    let app=app.inner().clone();background(move||app.video_collection_draft(revision,text,kind,meaning)).await
+}
+#[svl_ipc_macros::command]
+pub(crate) async fn video_translation_set(app:AppState<'_>,revision:u64,translation:String)->Result<(),AppError> {
+    let app=app.inner().clone();background(move||{
+        let context=app.video_learning()?.context.filter(|c|c.revision==revision).ok_or_else(||AppError::new("conflict","暂停对白已变化。"))?;
+        app.store.save_sentence_translation(&context.text,&translation,"manual://android","manual")?;
+        let state=mobile_video::state(&app.store)?;
+        mobile_video::control(&app.store,VideoControl{session_id:state.session_id,action:"pause_internal".into(),value:None,text:None,kind:None})?;
+        Ok(())
+    }).await
+}
+
+#[svl_ipc_macros::command]
 pub(crate) async fn video_library(app: AppState<'_>) -> Result<PlaybackState, AppError> {
     let app = app.inner().clone(); background(move || app.store.playback_state()).await
 }

@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.100 |
-| 更新日期 | 2026-10-22 |
+| 文档版本 | 0.101 |
+| 更新日期 | 2026-10-23 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
 
@@ -15,12 +15,13 @@
 | 类型 | 当前或后续位置 | 必须包含 | 职责边界 |
 | --- | --- | --- | --- |
 | 产品需求 PRD | [requirements/PRD.md](requirements/PRD.md) | 背景、目标、范围、流程、需求编号、业务规则、验收标准、待确认项 | 描述需要满足的行为和结果；具体框架、代码结构和数据库实现属于设计文档 |
-| Android 客户端需求 | [requirements/android-PRD.md](requirements/android-PRD.md) | 现有功能清单、Android 适用性、首版／后续边界、采集学习流程、完整同步及验收标准 | 用户已认可 P0 规划基线，P1 保持候选；未表示 Android 已实现 |
+| Android 客户端需求 | [requirements/android-PRD.md](requirements/android-PRD.md) | 现有功能清单、Android 适用性、首版／后续边界、采集学习流程、完整同步及验收标准 | P0 基线已确认；0.23.0 非同步结果见审查，完整同步与 P1 边界保留 |
 | Android 架构与复用设计 | [design/android-architecture.md](design/android-architecture.md) | 源码复用清单、共用 Rust／React、平台接口、数据／媒体／同步、工程风险 | 独立运行与共享核心方案已确认，分列实际接入和待实施方案；Windows 现有架构保持 |
 | Android 开发指南 | [development/android-development.md](development/android-development.md) | 本机 Studio／SDK／JDK 盘点、环境准备、开发入口、类型与维护规则 | 工程和脚本已接入，固定工具链检查与原生编译通过；设备运行单独记录 |
-| Android 使用说明 | [development/android-user-guide.md](development/android-user-guide.md) | 本机收录、分享、OCR、观看、复习与恢复入口 | 对应 0.22.0 的本机实现，完整同步及剧集共享后置 |
+| Android 使用说明 | [development/android-user-guide.md](development/android-user-guide.md) | 本机查询／收录、历史、分享、OCR、字幕偏移、观看／复习与恢复 | 对应 0.23.0 本机实现，完整同步及剧集共享后置 |
 | Android 开发计划 | [planning/android-development-plan.md](planning/android-development-plan.md) | AND-M-00 至 AND-M-09、依赖、改动位置、交付门槛与需求验收追溯 | 已开始实施，逐阶段核对实际证据；发布仍为用户明确要求时的条件阶段 |
-| Android 增量验证 | [testing/android-results.md](testing/android-results.md) | 实际工具链、共享宿主编译、类型检查与设备／服务结果 | 分阶段记录单词本／复习／播放、0.21.0 暂停计时与点词、0.22.0 真实分享／离线 OCR／草稿恢复和独立运行；同步及剧集共享后置，不据此宣称完整 P0 完成 |
+| Android 增量验证 | [testing/android-results.md](testing/android-results.md) | 实际工具链、共享宿主编译、类型检查与设备／服务结果 | 分阶段正常证据及 0.23.0 PRD 补齐、不同音轨内容／独立冷启动；同步和真实远端服务边界分别保留 |
+| Android PRD 对照审查 | [testing/android-prd-review.md](testing/android-prd-review.md) | 非同步 P0 逐项实现、原缺口、补齐证据、同步／P1 和未验收边界 | 本轮发现缺口已补，未宣称完整 P0、全部设备兼容或正式发布 |
 | 边看边学需求 | [PRD 第 3.7 节与 FR-25 至 FR-29](requirements/PRD.md) | 内嵌观看、已准备译文、显示后 5 秒整句收录、OCR 保底及手动收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学设计 | [design/watch-and-learn.md](design/watch-and-learn.md) | mpv/libmpv 内嵌、字幕时间、原生 OSD、流式／OCR 与统一收录 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
 | 边看边学开发计划 | [planning/watch-and-learn-plan.md](planning/watch-and-learn-plan.md) | M-20 至 M-27、依赖、交付门槛与对应正常证据 | 本轮已按用户接受结束；原通过证据及未实测边界保留，后续问题按缺陷修复，不阻塞开发 |
@@ -274,3 +275,4 @@
 | 0.99 | 2026-10-22 | 索引 Android 0.21.0 实际可见计时、提前继续、自动保存与离线点词收录，保留 OCR／生命周期和后置同步范围 |
 
 | 0.100 | 2026-10-22 | 索引 Android 0.22.0 系统分享／离线 OCR／本机恢复与独立运行，增加使用说明，保留后置同步范围 |
+| 0.101 | 2026-10-23 | 索引 Android 0.23.0 PRD 对照补齐、查询／历史／字幕偏移／音轨内容证据，更新相关文档状态 |

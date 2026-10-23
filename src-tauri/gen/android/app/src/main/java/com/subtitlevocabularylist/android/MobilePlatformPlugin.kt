@@ -21,6 +21,8 @@ import java.util.concurrent.Executors
 class CredentialArgs { var data: String = ""; var protect: Boolean = false }
 @InvokeArg
 class BrowserArgs { var url: String = "" }
+@InvokeArg
+class CopyArgs { var text: String = "" }
 
 /** One Android adapter; business data and rules belong to the shared Rust core. */
 @TauriPlugin
@@ -31,17 +33,26 @@ class MobilePlatformPlugin(private val activity: Activity) : Plugin(activity) {
     private val video = VideoPlayer(activity)
     private val exporter = ClipExporter(activity, video)
     @Volatile private var foreground = true
+    private val rotation=object:android.content.BroadcastReceiver(){override fun onReceive(context:android.content.Context,intent:Intent){video.interruptLearning()}}
+    init {androidx.core.content.ContextCompat.registerReceiver(activity,rotation,android.content.IntentFilter("com.subtitlevocabularylist.android.CONFIGURATION_CHANGED"),androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)}
 
     override fun onResume(activity: AppCompatActivity) { foreground = true }
     override fun onPause(activity: AppCompatActivity) { foreground = false; audio.pause(); video.pause() }
 
-    override fun onDestroy(activity: AppCompatActivity) { exporter.destroy(); video.destroy(); audio.destroy(); speech.destroy(); io.shutdown() }
+    override fun onDestroy(activity: AppCompatActivity) { activity.unregisterReceiver(rotation);exporter.destroy(); video.destroy(); audio.destroy(); speech.destroy(); io.shutdown() }
 
     private fun sound(invoke: Invoke, action: () -> Unit) = activity.runOnUiThread {
         try { action() } catch (_: Exception) { invoke.reject("手机系统接口暂不可用，请检查本机资源或文件授权。", "provider_unavailable") }
     }
 
     @Command fun speechVoices(invoke: Invoke) = sound(invoke) { speech.list(invoke) }
+    @Command fun copyText(invoke:Invoke) = sound(invoke) {
+        val text=invoke.parseArgs(CopyArgs::class.java).text
+        require(text.length<=100000)
+        (activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("SubtitleVocabularyList",text))
+        invoke.resolve()
+    }
+    @Command fun videoRenderSubtitle(invoke:Invoke) = sound(invoke) { video.renderSubtitle(invoke) }
     @Command fun speechSynthesize(invoke: Invoke) = sound(invoke) { speech.synthesize(invoke) }
     @Command fun speechCancel(invoke: Invoke) = sound(invoke) { speech.cancel(invoke) }
     @Command fun speechSettingsOpen(invoke: Invoke) = sound(invoke) {

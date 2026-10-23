@@ -254,11 +254,11 @@ impl Store {
                 return Err(AppError::new("invalid_input", "配置包含插件未声明的字段。"));
             }
             let mut secrets = load_secrets(self.root(), &provider.id)?;
-            for (key, value) in update.secrets {
+            for (key, value) in &update.secrets {
                 if value.is_empty() {
-                    secrets.remove(&key);
+                    secrets.remove(key);
                 } else {
-                    secrets.insert(key, value);
+                    secrets.insert(key.clone(), value.clone());
                 }
             }
             if update.enabled
@@ -275,6 +275,13 @@ impl Store {
             }
             save_secrets(self.root(), &provider.id, &secrets)?;
             provider.credential_fields = secrets.keys().cloned().collect();
+        }
+        if provider.kind == "qwen" && !update.secrets.is_empty() {
+            if update.secrets.keys().any(|k|k!="apiKey") || update.secrets.values().any(|v|v.len()>8192) { return Err(AppError::new("invalid_input","模型凭据字段无效。")); }
+            let mut secrets=load_secrets(self.root(),&provider.id)?;
+            for (key,value) in update.secrets { if value.is_empty(){secrets.remove(&key);}else{secrets.insert(key,value);} }
+            save_secrets(self.root(),&provider.id,&secrets)?;
+            provider.credential_fields=secrets.keys().cloned().collect();
         }
         provider.enabled = update.enabled;
         provider.auto_query = update.auto_query;

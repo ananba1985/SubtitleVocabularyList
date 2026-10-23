@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { call, message, uid, waitTask } from "../api";
 import type { Explanation } from "../types";
+import { MobileQuery } from "./MobileQuery";
 
 export function MobileWordQuery({ target, context, close, collect }: {
   target:string; context:string; close:()=>void; collect:(text:string,kind:string,meaning:string)=>void;
@@ -23,7 +24,8 @@ export function MobileWordQuery({ target, context, close, collect }: {
     <label>收录类型<select value={kind} onChange={(e) => setKind(e.target.value)}><option value="word">单词</option><option value="phrase">短语</option></select></label>
     {busy && <p role="status">正在查询本机资料…</p>}
     {error && <p className="notice">{error}</p>}
-    {result && <><p>释义：{result.meaning}</p>{result.translation && <p>原句译文：{result.translation}</p>}</>}
+    {result && text.trim()===request && <><p>释义：{result.meaning}</p>{result.translation && <p>原句译文：{result.translation}</p>}</>}
+    <MobileQuery text={text} context={context} apply={value=>collect(value.text,value.kind,value.meaning)} />
     <button disabled={!text.trim()||busy} onClick={() => collect(text.trim(),kind,text.trim() === request ? result?.meaning ?? "" : "")}>确认收录所查内容</button>
   </section>;
 }

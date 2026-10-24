@@ -7,6 +7,7 @@
 
     $svlProblems = [Collections.Generic.List[string]]::new()
     $svlCommands = @{}
+    $svlSourceCommit = $null
     Write-Host '正在检查打包前置条件（不清理、不编译、不下载）……'
     foreach ($svlTool in @('git', 'node', 'pnpm', 'cargo', 'python')) {
         $svlCommands[$svlTool] = Get-Command $svlTool -ErrorAction SilentlyContinue
@@ -55,6 +56,8 @@
                     ($svlChanges -join "`n") +
                     "`n请先核对并提交需要打包的修改，确保 git status 干净后重试；脚本不会自动提交、还原或删除这些文件。")
             }
+            $svlSourceCommit = (& git -C $Workspace rev-parse --verify HEAD).Trim()
+            if ($LASTEXITCODE -ne 0) { throw '无法确定打包源码提交。' }
             Write-Host '通过：源码工作区干净。'
         } catch {
             $svlProblems.Add($_.Exception.Message)
@@ -134,5 +137,17 @@
     }
 
     Write-Host '打包前检查通过。此结果不代替实际编译、资源摘要／许可校验或安装验收。'
-    [pscustomobject]@{ Version = $svlVersion; Resources = $svlResources; RequiredResources = $svlRequired }
+    [pscustomobject]@{ Version = $svlVersion; SourceCommit = $svlSourceCommit; Resources = $svlResources; RequiredResources = $svlRequired }
+}
+
+function Assert-SvlPackageSourceSnapshot {
+    param([string]$Workspace, [string]$SourceCommit, [string]$Version)
+    $svlCurrentCommit = (& git -C $Workspace rev-parse --verify HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) { throw '无法核对打包源码提交。' }
+    $svlChanges = @(& git -C $Workspace status --porcelain=v1 --untracked-files=all)
+    if ($LASTEXITCODE -ne 0) { throw '无法核对打包源码状态。' }
+    $svlCurrentVersion = (Get-Content -LiteralPath (Join-Path $Workspace 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+    if ($svlCurrentCommit -ne $SourceCommit -or $svlCurrentVersion -ne $Version -or $svlChanges.Count) {
+        throw "打包期间源码发生变化，已停止交付以防安装器与源码版本不一致。起始版本 $Version／提交 $SourceCommit，当前版本 $svlCurrentVersion／提交 $svlCurrentCommit。请在其他开发提交完成后重新运行；已有改动不会被还原或删除。"
+    }
 }

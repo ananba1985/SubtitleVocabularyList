@@ -23,6 +23,7 @@ $svlLocationPushed=$true
 & {
 $svlPreflight=Assert-SvlPackageReady -Workspace $svlWorkspace -ResourcesDirectory $ResourcesDirectory -SkipToolBuild:$SkipToolBuild
 $svlVersion=$svlPreflight.Version
+$svlSourceCommit=$svlPreflight.SourceCommit
 $svlResources=$svlPreflight.Resources
 $svlRequired=$svlPreflight.RequiredResources
 $svlDelivery=Join-Path $svlWorkspace ('release/'+$svlVersion)
@@ -44,6 +45,7 @@ if(-not $SkipToolBuild){
     & (Join-Path $svlScripts 'build-offline-whisper.ps1') -ResourcesDirectory $ResourcesDirectory
     & (Join-Path $svlScripts 'build-offline-ffmpeg.ps1') -ResourcesDirectory $ResourcesDirectory
 }
+Assert-SvlPackageSourceSnapshot -Workspace $svlWorkspace -SourceCommit $svlSourceCommit -Version $svlVersion
 $svlManifest=@()
 foreach($svlRelative in $svlRequired){
     $svlPath=Join-Path $svlResources $svlRelative
@@ -55,6 +57,7 @@ Copy-Item -LiteralPath (Join-Path $svlWorkspace 'LICENSE') -Destination (Join-Pa
 & (Join-Path $svlScripts 'prepare-release-licenses.ps1') -ResourcesDirectory $ResourcesDirectory
 & pnpm tauri build
 if($LASTEXITCODE -ne 0){throw 'Installer build failed.'}
+Assert-SvlPackageSourceSnapshot -Workspace $svlWorkspace -SourceCommit $svlSourceCommit -Version $svlVersion
 foreach($svlItem in $svlManifest){
     if((Get-FileHash -LiteralPath (Join-Path $svlResources $svlItem.path)).Hash.ToLowerInvariant() -ne $svlItem.sha256){throw 'Offline resources changed during packaging; rebuild from the verified snapshot.'}
 }
@@ -77,7 +80,8 @@ Get-ChildItem -LiteralPath $svlResources -Force | Copy-Item -Destination $svlSta
     "Run SubtitleVocabularyList.exe from this directory. Keep the tools and Data/dictionaries directories beside it.`r`nUser data and caches are stored in the Data subdirectory beside the executable. Reference dictionary updates replace only the packaged dictionary files, not vocabulary.sqlite3 or learning records. This standalone directory is separate from an installed application's Data directory.`r`n",
     [Text.UTF8Encoding]::new($false))
 
-& (Join-Path $svlScripts 'export-release-source.ps1') -OutputDirectory $svlDelivery
+& (Join-Path $svlScripts 'export-release-source.ps1') -OutputDirectory $svlDelivery -SourceRef $svlSourceCommit
+Assert-SvlPackageSourceSnapshot -Workspace $svlWorkspace -SourceCommit $svlSourceCommit -Version $svlVersion
 $svlOutputs=@($svlInstallers[0].Name,('SubtitleVocabularyList_'+$svlVersion+'_source-materials.zip'))
 $svlOutputs+=Get-ChildItem -LiteralPath $svlStandalone -Recurse -File | ForEach-Object {$_.FullName.Substring($svlDelivery.Length+1).Replace('\','/')}
 $svlSums=foreach($svlName in $svlOutputs){(Get-FileHash -LiteralPath (Join-Path $svlDelivery $svlName)).Hash.ToLowerInvariant()+'  '+$svlName}

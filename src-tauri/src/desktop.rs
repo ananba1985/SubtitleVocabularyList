@@ -148,6 +148,8 @@ pub fn run() {
                 .allow_directory(store.root().join("media"), true)?;
             app.asset_protocol_scope()
                 .allow_directory(store.root().join("jobs"), true)?;
+            app.asset_protocol_scope().allow_directory(store.root().join("corpora"), true)?;
+            app.asset_protocol_scope().allow_directory(store.root().join("cache/speech"), true)?;
             let handle = app.handle().clone();
             let tasks = TaskManager::new(
                 Arc::clone(&store),

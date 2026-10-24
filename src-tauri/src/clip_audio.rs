@@ -27,7 +27,7 @@ pub(crate) fn open(store: &Store, path: &str, start_ms: Option<u64>, end_ms: Opt
     }
     let path = std::path::Path::new(path).canonicalize()?;
     let root = store.root().canonicalize()?;
-    if !path.is_file() || !(path.starts_with(root.join("media")) || path.starts_with(root.join("jobs"))) {
+    if !path.is_file() || !["media", "jobs", "corpora", "cache/speech"].iter().any(|directory| path.starts_with(root.join(directory))) {
         return Err(AppError::new("invalid_input", "只能播放本机已保存的原声或生成语音。"));
     }
     invoke("audioOpen", serde_json::json!({ "path": path, "sessionId": uuid::Uuid::new_v4().to_string(), "positionMs": start, "endMs":end_ms, "speed":speed }))

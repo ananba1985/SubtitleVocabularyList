@@ -14,6 +14,8 @@ pub fn run() {
             let store = Arc::new(Store::open(root)?);
             app.asset_protocol_scope().allow_directory(store.root().join("media"), true)?;
             app.asset_protocol_scope().allow_directory(store.root().join("jobs"), true)?;
+            app.asset_protocol_scope().allow_directory(store.root().join("corpora"), true)?;
+            app.asset_protocol_scope().allow_directory(store.root().join("cache/speech"), true)?;
             let handle = app.handle().clone();
             let tasks = TaskManager::new(Arc::clone(&store), Arc::new(move |snapshot| {
                 let _ = handle.emit("task_updated", snapshot.update_event());

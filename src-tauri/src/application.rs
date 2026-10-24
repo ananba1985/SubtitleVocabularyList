@@ -129,12 +129,9 @@ impl Application {
                         })?;
                     let key =
                         vocabulary::digest(&serde_json::to_vec(&(&question.target, &voice.id))?);
-                    let path = store.root().join("jobs").join(format!("system-{key}.wav"));
+                    let path = crate::job_storage::speech_directory(&store)?.join(format!("system-{key}.wav"));
                     if !valid_wave(&path) {
-                        let temporary = store
-                            .root()
-                            .join("jobs")
-                            .join(format!("review-{}.wav", Uuid::new_v4()));
+                        let temporary = context.work_directory()?.join(format!("review-{}.wav", Uuid::new_v4()));
                         let result = crate::speech::synthesize(
                             &question.target,
                             &voice.id,
@@ -197,12 +194,9 @@ impl Application {
                         )
                     })?;
                 let key = vocabulary::digest(&serde_json::to_vec(&(&text, &voice.id))?);
-                let path = store.root().join("jobs").join(format!("system-{key}.wav"));
+                let path = crate::job_storage::speech_directory(&store)?.join(format!("system-{key}.wav"));
                 if !valid_wave(&path) {
-                    let temporary = store
-                        .root()
-                        .join("jobs")
-                        .join(format!("system-{}.wav", Uuid::new_v4()));
+                    let temporary = context.work_directory()?.join(format!("system-{}.wav", Uuid::new_v4()));
                     let result = (|| {
                         crate::speech::synthesize(
                             &text,
@@ -806,10 +800,7 @@ fn import_one(
         }
         return Ok(source);
     }
-    let directory = store
-        .root()
-        .join("jobs")
-        .join(format!("video-{fingerprint}"));
+    let directory = context.work_directory()?.join(format!("video-{fingerprint}"));
     let mut imported = media::import_media_with_options(
         tools,
         path,
@@ -870,10 +861,6 @@ fn import_one(
             "{} · 音轨 {} · {}",
             imported.title, imported.audio_stream, subtitle
         );
-        std::fs::write(
-            directory.join("corpus.json"),
-            serde_json::to_vec_pretty(&imported)?,
-        )?;
     }
     std::fs::write(directory.join("corpus.json"), serde_json::to_vec_pretty(&imported)?)?;
     context.check_cancelled()?;

@@ -1,64 +1,14 @@
 //! Cleanup of application-owned migration artifacts after a successful startup.
 use crate::{error::AppError, store::Store};
+use crate::managed_files::{is_link, owned_path, plain_tree};
 use rusqlite::{Connection, MAIN_DB, OpenFlags};
 use std::{
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 
 fn error(message: impl Into<String>) -> AppError {
     AppError::new("data_maintenance", message)
-}
-
-fn is_link(metadata: &fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        if metadata.file_attributes() & 0x400 != 0 {
-            return true;
-        }
-    }
-    metadata.file_type().is_symlink()
-}
-
-// Every deletion is confined to the selected Data directory, including on Windows
-// where junctions are reparse points rather than ordinary symlinks.
-fn owned_path(root: &Path, path: &Path) -> Result<(), AppError> {
-    let relative = path
-        .strip_prefix(root)
-        .map_err(|_| error("清理路径超出资料目录。"))?;
-    let mut current = root.to_path_buf();
-    for component in std::iter::once(Component::CurDir).chain(relative.components()) {
-        match component {
-            Component::CurDir => (),
-            Component::Normal(name) => current.push(name),
-            _ => return Err(error("清理路径含非预期的上级目录。")),
-        }
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) => {
-                if is_link(&metadata) || !dunce::canonicalize(&current)?.starts_with(root) {
-                    return Err(error(format!(
-                        "路径包含目录链接，已保留：{}",
-                        current.display()
-                    )));
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
-            Err(e) => return Err(e.into()),
-        }
-    }
-    Ok(())
-}
-
-fn plain_tree(root: &Path, path: &Path) -> Result<(), AppError> {
-    owned_path(root, path)?;
-    for entry in walkdir::WalkDir::new(path).follow_links(false) {
-        let entry = entry.map_err(|e| error(e.to_string()))?;
-        if is_link(&fs::symlink_metadata(entry.path())?) {
-            return Err(error(format!("目录中含链接，已保留：{}", path.display())));
-        }
-    }
-    Ok(())
 }
 
 fn readonly(path: &Path) -> Result<Connection, AppError> {

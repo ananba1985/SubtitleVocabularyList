@@ -36,6 +36,8 @@ impl Store {
         let root = root.as_ref().to_path_buf();
         std::fs::create_dir_all(root.join("media"))?;
         std::fs::create_dir_all(root.join("jobs"))?;
+        std::fs::create_dir_all(root.join("corpora"))?;
+        std::fs::create_dir_all(root.join("cache/speech"))?;
         let mut connection = Connection::open(root.join("vocabulary.sqlite3"))?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.pragma_update(None, "foreign_keys", "ON")?;

@@ -34,6 +34,8 @@ pub(crate) async fn app_ready(startup: State<'_, crate::host::HostStartup>, hand
             Ok(removed) => eprintln!("[data-maintenance] 启动验证通过，回收 {removed} 项旧目录／自动备份。"),
             Err(error) => eprintln!("[data-maintenance] 自动清理已延后，下次启动重试：{error}"),
         });
+        let app = handle.state::<Arc<crate::application::Application>>().inner().clone();
+        tauri::async_runtime::spawn_blocking(move || app.tasks.request_file_maintenance());
     }
     #[cfg(not(all(windows, feature = "desktop")))]
     let _ = handle;

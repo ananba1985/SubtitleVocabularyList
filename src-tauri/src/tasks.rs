@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, RwLock,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -101,6 +101,8 @@ pub struct TaskManager {
     start_guard: Mutex<()>,
     observer: Observer,
     foreground: Mutex<HashMap<String, TaskSnapshot>>,
+    files: RwLock<()>,
+    files_dirty: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -111,6 +113,11 @@ pub struct TaskContext {
 }
 
 impl TaskContext {
+    pub(crate) fn work_directory(&self) -> Result<std::path::PathBuf, AppError> {
+        self.manager.files_dirty.store(true, Ordering::Release);
+        crate::job_storage::workspace(&self.manager.store, &self.task_id)
+    }
+
     pub fn message(&self, stage: &str, value: &str) {
         let _ = self.manager.update(&self.task_id, |snapshot| {
             if !snapshot.terminal() && snapshot.state != "cancel_requested" {
@@ -163,7 +170,34 @@ impl TaskManager {
             start_guard: Mutex::new(()),
             observer,
             foreground: Mutex::new(HashMap::new()),
+            files: RwLock::new(()),
+            files_dirty: AtomicBool::new(false),
         })
+    }
+
+    /// Event-driven maintenance: startup and workspace-producing task completion.
+    /// An active worker defers the scan; its completion retries without polling.
+    pub(crate) fn request_file_maintenance(&self) {
+        self.files_dirty.store(true, Ordering::Release);
+        self.maintain_files_if_pending();
+    }
+
+    fn maintain_files_if_pending(&self) {
+        if !self.files_dirty.load(Ordering::Acquire) { return; }
+        let Ok(_lease) = self.files.try_write() else { return; };
+        if !self.files_dirty.swap(false, Ordering::AcqRel) { return; }
+        let result = (|| {
+            let foreground = self.foreground.lock().map_err(|_| AppError::new("internal_error", "任务引用当前不可用。"))?
+                .values().cloned().collect::<Vec<_>>();
+            crate::job_storage::maintain(&self.store, &foreground)
+        })();
+        match result {
+            Ok(report) => eprintln!("[job-storage] 迁移 {} 份长期资料，回收 {} 项无引用工作文件。", report.migrated_sources, report.removed),
+            Err(error) => {
+                self.files_dirty.store(true, Ordering::Release);
+                eprintln!("[job-storage] 文件维护已延后：{error}");
+            }
+        }
     }
 
     // Call only during startup after the desktop single-instance guard is active.
@@ -268,6 +302,7 @@ impl TaskManager {
         };
         let manager = Arc::clone(self);
         std::thread::spawn(move || {
+            let files = manager.files.read().unwrap_or_else(|error| error.into_inner());
             context.progress("starting", 0, 0, "正在处理");
             let result =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| worker(context.clone())))
@@ -299,6 +334,8 @@ impl TaskManager {
             if let Ok(mut controls) = manager.controls.lock() {
                 controls.remove(&context.task_id);
             }
+            drop(files);
+            manager.maintain_files_if_pending();
         });
         Ok(snapshot)
     }

@@ -253,6 +253,7 @@ impl Store {
             path_hint: Some(dunce::simplified(input_path).to_string_lossy().to_string()),
             duration_ms: Some(imported.duration_ms),
         })?;
+        let (imported, corpus_path) = crate::job_storage::publish_import(self, &id, imported, corpus_path)?;
         let now = Utc::now().timestamp_millis();
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;

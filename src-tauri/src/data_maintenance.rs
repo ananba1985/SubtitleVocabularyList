@@ -4,7 +4,6 @@ use rusqlite::{Connection, MAIN_DB, OpenFlags};
 use std::{
     fs,
     path::{Component, Path, PathBuf},
-    time::UNIX_EPOCH,
 };
 
 fn error(message: impl Into<String>) -> AppError {
@@ -155,7 +154,7 @@ fn only_database_files(path: &Path, database: &str, receipt: bool) -> Result<boo
     Ok(path.join(database).is_file())
 }
 
-fn import_migration(root: &Path, path: &Path, id: uuid::Uuid) -> Result<bool, AppError> {
+fn remove_verified_migration(root: &Path, path: &Path) -> Result<bool, AppError> {
     plain_tree(root, path)?;
     if !only_database_files(path, "before.sqlite3", true)? {
         return Ok(false);
@@ -174,17 +173,11 @@ fn import_migration(root: &Path, path: &Path, id: uuid::Uuid) -> Result<bool, Ap
         }
     }
     let before = path.join("before.sqlite3");
-    let time = fs::metadata(&before)?
-        .modified()?
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| error(e.to_string()))?
-        .as_millis();
     let connection = readonly(&before)?;
     verify(&connection)?;
-    snapshot(root, &connection, time, id)?;
     drop(connection);
-    // The database was copied consistently (including WAL) before its old wrapper
-    // and SQLite sidecars are removed. Unknown files keep the entire directory.
+    // Startup and current-database validation have succeeded. This recovery copy
+    // is temporary; do not copy it into automatic/ only to delete it again.
     plain_tree(root, path)?;
     fs::remove_dir_all(path)?;
     Ok(true)
@@ -245,8 +238,8 @@ pub(crate) fn after_startup(store: &Store) -> Result<usize, AppError> {
             removed += 1;
         } else if name == "legacy-installed-data" {
             removed += usize::from(remove_empty_legacy_data(&root, &path)?);
-        } else if let Some(id) = migration_directory(&name) {
-            removed += usize::from(import_migration(&root, &path, id)?);
+        } else if migration_directory(&name).is_some() {
+            removed += usize::from(remove_verified_migration(&root, &path)?);
         }
     }
     let automatic = backups.join("automatic");
@@ -256,10 +249,10 @@ pub(crate) fn after_startup(store: &Store) -> Result<usize, AppError> {
         for entry in fs::read_dir(&automatic)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            if let Some(time) = snapshot_time(&name) {
+            if snapshot_time(&name).is_some() {
                 owned_path(&root, &entry.path())?;
                 if entry.file_type()?.is_file() {
-                    snapshots.push((time, entry.path()));
+                    snapshots.push(entry.path());
                 }
             } else {
                 let partial = name
@@ -282,8 +275,9 @@ pub(crate) fn after_startup(store: &Store) -> Result<usize, AppError> {
                 }
             }
         }
-        snapshots.sort_by(|a, b| b.cmp(a));
-        for (_, path) in snapshots.into_iter().skip(2) {
+        // Every managed recovery snapshot becomes disposable only after the
+        // successful-startup gate above. There is no count-based retention.
+        for path in snapshots {
             for file in [
                 path.clone(),
                 PathBuf::from(format!("{}-wal", path.display())),
@@ -296,6 +290,10 @@ pub(crate) fn after_startup(store: &Store) -> Result<usize, AppError> {
             }
             removed += 1;
         }
+        if fs::read_dir(&automatic)?.next().is_none() {
+            owned_path(&root, &automatic)?;
+            fs::remove_dir(&automatic)?;
+        }
     }
     Ok(removed)
 }
@@ -305,7 +303,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn successful_startup_retires_owned_artifacts_and_keeps_two_backups_and_learning_data() {
+    fn successful_upgrade_keeps_recovery_until_startup_then_clears_only_automatic_backups() {
         let directory = tempfile::tempdir().unwrap();
         let root = dunce::canonicalize(directory.path()).unwrap();
         let old = Connection::open(root.join("vocabulary.sqlite3")).unwrap();
@@ -329,6 +327,33 @@ mod tests {
         let store = Store::open(&root).unwrap();
         assert_eq!(store.schema_version().unwrap(), 10);
         assert_eq!(store.get_entry("legacy").unwrap().text, "legacy");
+        let recovery = fs::read_dir(root.join("backups/automatic"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .and_then(snapshot_time)
+                    .is_some()
+            })
+            .unwrap();
+        {
+            let before_upgrade = readonly(&recovery).unwrap();
+            assert_eq!(
+                before_upgrade
+                    .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                9
+            );
+            assert_eq!(
+                before_upgrade
+                    .query_row("SELECT text FROM entries WHERE id='legacy'", [], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .unwrap(),
+                "legacy"
+            );
+        }
         let saved = store
             .collect(&crate::vocabulary::CollectionInput {
                 operation_id: uuid::Uuid::new_v4().to_string(),
@@ -402,18 +427,8 @@ mod tests {
         store.maintain_after_startup().unwrap();
 
         assert!(!legacy_cache.exists() && !legacy_data.exists() && !migration.exists());
-        let retained = fs::read_dir(backups.join("automatic"))
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|s| s.to_str())
-                    .and_then(snapshot_time)
-                    .is_some()
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(retained.len(), 2);
-        assert!(retained.contains(&newest) && retained.contains(&previous));
+        assert!(!recovery.exists() && !newest.exists() && !previous.exists());
+        assert!(!backups.join("automatic").exists());
         assert_eq!(
             fs::read(manual).unwrap(),
             b"manual backup preserved byte for byte"

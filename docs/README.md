@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-GOV-001 |
-| 文档版本 | 0.105 |
+| 文档版本 | 0.106 |
 | 更新日期 | 2026-10-23 |
 | 状态 | 初版待评审 |
 | 适用范围 | 项目需求、设计、开发、验证与交付文档 |
@@ -78,7 +78,7 @@
 | 开发计划 | [planning/development-plan.md](planning/development-plan.md) | 阶段、依赖、交付、需求测试关联与完成依据 | 安排实施顺序，不复制技术选型或编造进度 |
 | 版本管理 | [development/version-management.md](development/version-management.md) | 三段版本规则、主版本人工控制、统一来源、工具与变更记录 | 递增不表示发布，不触发打包；文档/schema/策略号独立 |
 | 开发环境 | [development/windows-environment.md](development/windows-environment.md) | 已验证的依赖准备、资源与开发命令 | 开发资源准备与最终用户安装交付分别验收 |
-| 资料目录与迁移 | [development/data-directory.md](development/data-directory.md)、[testing/data-directory-results.md](testing/data-directory-results.md) | 安装目录内 Data、本机测试默认、迁移、成功启动后回收及手工／自动备份 | 自动快照保留两份、旧目录回收最小正常验证通过；本轮不操作日常 Data，不代替真实新版本启动或发行包实装 |
+| 资料目录与迁移 | [development/data-directory.md](development/data-directory.md)、[testing/data-directory-results.md](testing/data-directory-results.md) | 安装目录内 Data、本机测试默认、迁移、成功启动后回收及手工／临时恢复备份 | 0.26.4 改为升级前临时备份，升级／校验／首次正常启动通过后清除，失败保留；旧两份策略证据仅作历史记录，本轮不操作日常 Data 或实装 |
 | 后台词义去重修复 | [testing/preparation-dedup-results.md](testing/preparation-dedup-results.md) | 通用词义跨集缓存、句子译文独立保存、旧解释保持及正常验证 | 项数与 HTTP 数量区分，不宣称全量生成或性能验收 |
 | 后台准备内容诊断 | [testing/preparation-content-results.md](testing/preparation-content-results.md) | 原始 PGS 核对、缩写、专名线索、分词和诊断缓存修复 | 实际内容修复与发行包升级分别记录，不通过忽略失败项冒充完成 |
 | 离线基础词库及资源隔离 | [design/base-dictionary.md](design/base-dictionary.md)、[testing/base-dictionary-results.md](testing/base-dictionary-results.md) | 已翻译词表、明确词形映射、资源故障隔离、底库命中不调用模型及真实候选覆盖 | 底库与个人词库分离，词语覆盖与句子翻译分开，不捆绑未经核对的第三方数据 |
@@ -282,3 +282,4 @@
 | 0.102 | 2026-10-23 | 索引 0.24.0 真实手动词库双向同步、原声／历史／冲突正常证据及单次计费授权，保留剧集共享边界 |
 | 0.103 | 2026-10-23 | 索引独立剧集准备资料设计与真实验证，记录 P0 实现清单收尾及 P1／自动触发未测／发布边界 |
 | 0.105 | 2026-10-23 | 索引成功启动和数据库验证后的旧目录回收、两份自动快照、手工备份及完整学习资料保持证据 |
+| 0.106 | 2026-10-23 | 索引 0.26.4 升级前临时备份、成功校验和启动后清除、失败保留及完整资料保持，区分旧策略证据 |

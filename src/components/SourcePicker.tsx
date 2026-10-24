@@ -7,11 +7,15 @@ export function SourcePicker({
   sourceId,
   onSelect,
   action,
+  autoSelectFirst = true,
+  showCandidateCount = true,
 }: {
   sources: SourceSummary[];
   sourceId: string;
   onSelect: (id: string) => void;
   action?: ReactNode;
+  autoSelectFirst?: boolean;
+  showCandidateCount?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const groups = useMemo(() => groupSources(sources), [sources]);
@@ -30,11 +34,11 @@ export function SourcePicker({
   const selected = sources.find((source) => source.id === sourceId);
   // Imports and refreshes retain a valid selection; only an unavailable choice needs a fallback.
   useEffect(() => {
-    if (!series) {
+    if (autoSelectFirst && !series) {
       const next = filtered[0]?.seasons[0]?.choices[0]?.source.id ?? "";
       if (next !== sourceId) onSelect(next);
     }
-  }, [filtered, series, sourceId, onSelect]);
+  }, [filtered, series, sourceId, onSelect, autoSelectFirst]);
   function search(value: string) {
     setQuery(value);
     const matches = filterSourceGroups(groups, value);
@@ -121,7 +125,8 @@ export function SourcePicker({
             {(!selected || !season) && <option value="">请选择剧集</option>}
             {season?.choices.map(({ source, label }) => (
               <option key={source.id} value={source.id}>
-                {label} · {source.candidateCount} 个候选
+                {label}
+                {showCandidateCount && ` · ${source.candidateCount} 个候选`}
               </option>
             ))}
           </select>

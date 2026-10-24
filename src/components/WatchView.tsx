@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -10,6 +10,7 @@ import { WatchOcr } from "./WatchOcr";
 import { WatchClip } from "./WatchClip";
 import { WatchPlaylist } from "./WatchPlaylist";
 import { RelatedEpisodes } from "./RelatedEpisodes";
+import { SourcePicker } from "./SourcePicker";
 import type { CollectionSeed, Settings, SourceSummary } from "../types";
 import type {
   PlayerSnapshot,
@@ -34,6 +35,24 @@ export function WatchView({
   const [state, setState] = useState<PlayerSnapshot | null>(null);
   const [sources, setSources] = useState<SourceSummary[]>([]);
   const [selected, setSelected] = useState("");
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(true);
+  const selectionSources = useMemo(() => {
+    if (!state?.sourceId || sources.some((source) => source.id === state.sourceId))
+      return sources;
+    // Keep the actual video's source visible while its import/list refresh finishes.
+    return [
+      ...sources,
+      {
+        id: state.sourceId,
+        title: state.title,
+        durationMs: state.duration * 1000,
+        textSource: "video",
+        exampleCount: 0,
+        candidateCount: 0,
+        importedAt: 0,
+      },
+    ];
+  }, [sources, state?.sourceId, state?.title, state?.duration]);
   const [progress, setProgress] = useState<WatchProgress | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -211,6 +230,7 @@ export function WatchView({
     // Follow actual file changes, while allowing a different episode to be
     // selected for the explicit Open action between player updates.
     setSelected(state?.path ? (state.sourceId ?? "") : "");
+    if (state?.path) setSourcePickerOpen(false);
   }, [state?.path, state?.sourceId, state?.sessionId]);
   useEffect(() => {
     const current = getCurrentWindow();
@@ -469,35 +489,18 @@ export function WatchView({
         >
           {busy ? "正在打开…" : state?.loaded ? "添加视频" : "打开视频"}
         </button>
-        {(!!sources.length || !!state?.path) && (
-          <>
-            <select
-              aria-label="已导入剧集"
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-            >
-              <option value="">
-                {state?.path && !state.sourceId
-                  ? `${state.title} · 当前视频`
-                  : "选择已导入剧集"}
-              </option>
-              {state?.sourceId &&
-                !sources.some((s) => s.id === state.sourceId) && (
-                  <option value={state.sourceId}>{state.title}</option>
-                )}
-              {sources.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title}
-                </option>
-              ))}
-            </select>
-            <button
-              disabled={busy || !selected}
-              onClick={() => void start(undefined, selected)}
-            >
-              打开剧集
-            </button>
-          </>
+        {!!selectionSources.length && (
+          <button
+            aria-expanded={sourcePickerOpen}
+            aria-controls="watch-source-picker"
+            onClick={() => setSourcePickerOpen((value) => !value)}
+          >
+            {sourcePickerOpen
+              ? "收起选择"
+              : state?.path
+                ? "切换剧集"
+                : "选择已导入剧集"}
+          </button>
         )}
         {!state?.loaded && !!state?.playback.playlist.length && (
           <button
@@ -603,6 +606,26 @@ export function WatchView({
           {fullscreen ? "退出全屏" : "全屏"}
         </button>
       </div>
+      {!!selectionSources.length && sourcePickerOpen && (
+        <div id="watch-source-picker" className="watch-source-picker">
+          <SourcePicker
+            sources={selectionSources}
+            sourceId={selected}
+            onSelect={setSelected}
+            autoSelectFirst={false}
+            showCandidateCount={false}
+            action={
+              <button
+                className="primary"
+                disabled={busy || !selected}
+                onClick={() => void start(undefined, selected)}
+              >
+                {busy ? "正在打开…" : "打开剧集"}
+              </button>
+            }
+          />
+        </div>
+      )}
       <RelatedEpisodes path={state?.path ?? ""} loaded={state?.loaded ?? false} />
       {state?.path && state.importStatus?.message && (
         <p role="status" className="muted">

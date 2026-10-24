@@ -8,10 +8,27 @@
     $svlProblems = [Collections.Generic.List[string]]::new()
     $svlCommands = @{}
     Write-Host '正在检查打包前置条件（不清理、不编译、不下载）……'
-    foreach ($svlTool in @('git', 'node', 'pnpm', 'cargo', 'python', '7z')) {
+    foreach ($svlTool in @('git', 'node', 'pnpm', 'cargo', 'python')) {
         $svlCommands[$svlTool] = Get-Command $svlTool -ErrorAction SilentlyContinue
         if (-not $svlCommands[$svlTool]) {
             $svlProblems.Add("未找到开发命令 $svlTool，请按 docs/development/windows-environment.md 准备开发环境。")
+        }
+    }
+
+    if ($svlCommands['python']) {
+        try {
+            $svlExtractorJson = & python -X utf8 (Join-Path $Workspace 'scripts/prepare-mpv-release.py') --check-extractor
+            if ($LASTEXITCODE -ne 0) { throw '无法核对播放器缓存及解压工具。' }
+            $svlExtractor = $svlExtractorJson | ConvertFrom-Json
+            if (-not $svlExtractor.required) {
+                Write-Host '通过：现有播放器 DLL 摘要正确，无需解压，不要求 7-Zip。'
+            } elseif ($svlExtractor.path) {
+                Write-Host "通过：播放器解压工具为 $($svlExtractor.path)。"
+            } else {
+                throw '播放器需要解压，但未找到 7-Zip。请安装 7-Zip；支持 PATH、安装注册表、Program Files 及 Scoop 安装位置，无需手动修改系统 PATH。'
+            }
+        } catch {
+            $svlProblems.Add('播放器解压检查失败：' + $_.Exception.Message)
         }
     }
 

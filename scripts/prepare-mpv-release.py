@@ -10,6 +10,7 @@ import struct
 import subprocess
 import urllib.request
 import zipfile
+from archive_tools import find_7zip
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -41,16 +42,24 @@ def fetch(path, url, expected):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resources-directory", default=".tools/release-resources")
+    parser.add_argument("--check-extractor", action="store_true", help="Read-only extraction prerequisite check; no downloads or extraction.")
     args = parser.parse_args()
     config_path = ROOT / "scripts/mpv-runtime.json"
     config = json.loads(config_path.read_text(encoding="utf-8-sig"))
     runtime = ROOT / ".tools/runtime/mpv"
     archive = runtime.parent / config["archive"]
-    fetch(archive, config["archiveUrl"], config["archiveSha256"])
     library = runtime / config["library"]
-    if not library.is_file() or digest(library) != config["librarySha256"]:
+    extraction_required = not library.is_file() or digest(library) != config["librarySha256"]
+    extractor = find_7zip() if extraction_required else None
+    if args.check_extractor:
+        print(json.dumps({"required": extraction_required, "path": str(extractor) if extractor else None}))
+        return
+    if extraction_required:
+        if extractor is None:
+            raise RuntimeError("Player archive extraction requires 7-Zip. Install 7-Zip or configure its existing installation; the system PATH need not be changed.")
+        fetch(archive, config["archiveUrl"], config["archiveSha256"])
         runtime.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["7z", "x", "-y", f"-o{runtime}", str(archive)], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([str(extractor), "x", "-y", f"-o{runtime}", str(archive)], check=True, stdout=subprocess.DEVNULL)
     if digest(library) != config["librarySha256"]:
         raise RuntimeError("libmpv DLL checksum mismatch")
     with library.open("rb") as stream:

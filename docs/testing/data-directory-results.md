@@ -1,12 +1,12 @@
-# SubtitleVocabularyList 资料目录迁移验证
+# SubtitleVocabularyList 资料目录迁移与自动清理验证
 
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-DATA-DIR-001 |
-| 文档版本 | 0.1 |
-| 更新日期 | 2026-10-11 |
-| 状态 | 本机迁移及本地 debug exe 正常启动通过；新版发行包未构建或安装 |
-| 对应版本 | 0.6.1，schema 7 |
+| 文档版本 | 0.2 |
+| 更新日期 | 2026-10-23 |
+| 状态 | 历史迁移记录保持；自动清理最小正常验证通过，本轮未操作日常资料、打包或安装 |
+| 对应版本 | 原迁移 0.6.1／schema 7；清理增量验证工作区 0.26.3／schema 10 |
 | 对应需求 | NFR-02、NFR-06，TC-49 |
 | 依据 | [目录方案](../development/data-directory.md)、[测试计划](test-plan.md) |
 
@@ -45,8 +45,42 @@
 
 未执行新安装包实装、跨发行版本升级、实际音频重听、站点同步、权限／故障注入或并发竞争测试。文件存在和数据比较证明本次迁移范围，不能代替这些场景验收。安装版“可执行文件目录/Data”的路径规则已经写入源码，发行分支实际运行留给用户手动生成新包后的安装验证；现存 0.1 包仍是旧代码。
 
-## 5 修订记录
+## 5 成功启动后的自动清理最小验证
+
+2026-10-23 按用户授权补齐 NFR-06 的本地回收规则；需求、架构与[目录规则](../development/data-directory.md#4-成功启动后的自动清理)同步。每次桌面启动只在主界面初始资料读取成功、宿主完整 setup 通过后安排一次后台维护；当前库的迁移、quick_check 和 foreign_key_check 为清理前置条件。非空旧 schema 升级前新增一致性自动快照，现有无新 schema 的启动不会重复备份完整数据库。
+
+### 5.1 已执行的最小正常验证
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml --features desktop --lib data_maintenance::tests::successful_startup_retires_owned_artifacts_and_keeps_two_backups_and_learning_data --offline
+cargo check --manifest-path src-tauri/Cargo.toml --features desktop --lib --offline
+pnpm exec tsc --noEmit
+pnpm version:check
+```
+
+选中的 **1 项正常测试通过**，其余 117 项未执行。Windows 桌面 lib 编译检查、前端 TypeScript 检查和统一版本检查通过。正常测试在合成临时 Data 中覆盖：
+
+| 场景 | 实际结果 |
+| --- | --- |
+| 旧 schema 正常升级 | schema 9 升级为 10，先生成可读取的自动快照，旧词条内容保持 |
+| 旧目录回收 | 旧安装缓存、空旧安装库及迁移包装目录移除；迁移数据库先转存为一致性自动快照 |
+| 备份轮换 | 超过两份时，仅保留快照时间最新的两份，按实际文件名核对 |
+| 手工内容保持 | `backups/manual-backup.sqlite3`、手工子目录及笔记文件逐字节保持 |
+| 学习资料保持 | 例句和作答的完整同步导出清理前后相同，旧词条可读，原声音频代表文件字节保持，当前 WebView 缓存代表文件保持 |
+
+另外用实际 `scripts/data-migration.py` 的 snapshot／retarget 正常入口处理一个隔离合成 SQLite：路径改写及全部表比较成功后，生成 `verified=true`、`integrity=ok` 且 targetRoot 匹配目标目录的 `migration-verified.json`；业务文字保持。Python 语法检查通过，正常脚本验证退出 0，合成临时目录已移除。
+
+初次无桌面 feature 的 lib 测试编译还暴露出已有 assessment 测试引用桌面限定夹具的限制；本轮未修改该无关测试，改用本次实际涉及的 desktop feature 执行上述单个正常例。实现过程中发现的 SQLite API 名称和夹具字段编译问题已修正，不将失败的编译尝试计为通过。
+
+### 5.2 保留边界
+
+未运行新 GUI、生成或安装发行包，也未对 `D:\SubtitleVocabularyList\Data` 执行清理；目录里的现有文件将在用户运行包含本实现的新桌面版本且通过成功门槛后按规则处理。前端触发和宿主一次性调度已接入并经类型／编译检查，合成测试不代替真实版本升级和主窗启动验收。
+
+手工备份和来源不明文件保留，包括未标记为自动快照的旧人工释义修复备份。非空旧库、额外未知文件、链接和占用等保护属于代码约束；本轮未追加负例、故障注入、真实进程竞争、兼容矩阵或完整回归，也未重新验证同步／播放。Android 不接入此 Windows 旧目录回收流程，不因本次改动新增其升级备份。
+
+## 6 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
 | 0.1 | 2026-10-11 | 记录真实资料和缓存迁移、路径修正、24 表比较及本地 debug exe 的实际启动，保留安装边界 |
+| 0.2 | 2026-10-23 | 记录首屏成功后的旧目录回收、两份自动快照、迁移回执及手工／完整学习资料保持的最小正常验证，区分真实 Data 和实装边界 |

@@ -63,6 +63,12 @@ export default function App() {
   const [episodePanel, setEpisodePanel] = useState<EpisodePanel>(null);
   const [practicePanel, setPracticePanel] = useState<PracticePanel>(null);
   const taskBuffer = useRef<Map<string, TaskUpdate> | null>(null);
+  const startupReported = useRef(false);
+  useEffect(() => {
+    if (!info || !settings || startupReported.current) return;
+    startupReported.current = true;
+    void call("app_ready").catch((error) => console.warn("启动后维护未开始", error));
+  }, [info, settings]);
   useEffect(() => {
     let disposed = false;
     const receive = () => {

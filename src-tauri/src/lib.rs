@@ -44,6 +44,8 @@ pub mod site_connection;
 #[cfg(any(all(windows, feature = "desktop"), all(target_os = "android", feature = "mobile")))]
 mod device_sync;
 pub mod store;
+#[cfg(any(all(windows, feature = "desktop"), test))]
+mod data_maintenance;
 pub mod sync_data;
 mod sync_delta;
 mod sync_limits;

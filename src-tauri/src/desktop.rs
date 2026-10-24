@@ -185,7 +185,6 @@ pub fn run() {
             }));
             let clipboard=crate::desktop_query::ClipboardWatcher::default();clipboard.initialize(&application)?;app.manage(clipboard);
             app.manage(application);
-            app.state::<crate::host::HostStartup>().ready();
             app.manage(NativeDesktop::default());
             app.manage(TrayAction::default());
             app.manage(crate::desktop_query::QueryWindowState::default());
@@ -310,6 +309,7 @@ pub fn run() {
                 "[startup] services ready: {} ms",
                 _startup.elapsed().as_millis()
             );
+            app.state::<crate::host::HostStartup>().ready();
             Ok(())
         })
         .on_window_event(|window, event| {

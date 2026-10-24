@@ -25,8 +25,19 @@ pub(crate) struct AppCapabilities {
 }
 
 #[svl_ipc_macros::command]
-pub(crate) async fn app_ready(startup: State<'_, crate::host::HostStartup>) -> Result<(), AppError> {
-    startup.wait().await
+pub(crate) async fn app_ready(startup: State<'_, crate::host::HostStartup>, handle: tauri::AppHandle) -> Result<(), AppError> {
+    startup.wait().await?;
+    #[cfg(all(windows, feature = "desktop"))]
+    if startup.begin_maintenance() {
+        let app = handle.state::<Arc<crate::application::Application>>().inner().clone();
+        tauri::async_runtime::spawn_blocking(move || match app.store.maintain_after_startup() {
+            Ok(removed) => eprintln!("[data-maintenance] 启动验证通过，回收 {removed} 项旧目录／自动备份。"),
+            Err(error) => eprintln!("[data-maintenance] 自动清理已延后，下次启动重试：{error}"),
+        });
+    }
+    #[cfg(not(all(windows, feature = "desktop")))]
+    let _ = handle;
+    Ok(())
 }
 
 #[svl_ipc_macros::command]

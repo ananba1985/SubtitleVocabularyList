@@ -78,6 +78,10 @@ def main():
         if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
             raise RuntimeError('SQLite integrity check failed')
         target.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        (backup.parent / 'migration-verified.json').write_text(json.dumps({
+            'formatVersion': 1, 'verified': True, 'targetRoot': str(Path(new).resolve()),
+            'tablesCompared': len(names), 'integrity': 'ok',
+        }, ensure_ascii=False), encoding='utf-8')
         print(json.dumps({'tablesCompared': len(names), 'counts': counts, 'pathsUpdated': updated,
                           'integrity': 'ok'}, ensure_ascii=False))
 

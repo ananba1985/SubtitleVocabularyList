@@ -47,6 +47,10 @@ impl Store {
                 "此词库由较新版本创建，请使用对应软件版本打开。",
             ));
         }
+        #[cfg(any(all(windows, feature = "desktop"), test))]
+        if version > 0 && version < 10 {
+            crate::data_maintenance::before_schema_upgrade(&root, &connection)?;
+        }
         if version == 0 {
             let transaction = connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/001_initial.sql"))?;
@@ -118,6 +122,11 @@ impl Store {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    #[cfg(any(all(windows, feature = "desktop"), test))]
+    pub(crate) fn maintain_after_startup(&self) -> Result<usize, AppError> {
+        crate::data_maintenance::after_startup(self)
     }
 
     pub fn dictionary_warnings(&self) -> Vec<String> {

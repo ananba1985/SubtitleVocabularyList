@@ -3,6 +3,7 @@
 ## Product and scope
 
 - Use `SubtitleVocabularyList` as the product name, public repository name and local workspace directory name.
+- Use the canonical workspace path directly. Do not create legacy directory aliases or junctions such as `VocabularyList` to work around a tool's stale working directory; correct that tool's configuration or report its limitation.
 - Follow the confirmed 0.1 requirements in `docs/requirements/PRD.md`. Do not add deferred features or turn open questions into committed requirements.
 - Follow the confirmed technology decisions in `docs/design/architecture.md`. Keep proposed and verified implementation details distinct.
 - Preserve unrelated changes. Deliver the simplest complete solution within the user's authorization.

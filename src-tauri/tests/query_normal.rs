@@ -297,6 +297,89 @@ fn automatic_paragraph_translates_complete_text_and_reuses_translation_cache() {
 }
 
 #[test]
+fn automatic_short_sentence_bypasses_word_cache_and_preserves_dictionary_queries() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::create_dir(directory.path().join("dictionaries")).unwrap();
+    let dictionary = rusqlite::Connection::open(directory.path().join("dictionaries/base.sqlite3")).unwrap();
+    dictionary.execute_batch("CREATE TABLE dictionary_entries(word TEXT PRIMARY KEY,meaning TEXT); CREATE TABLE dictionary_aliases(form TEXT PRIMARY KEY,lemma TEXT); CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT); INSERT INTO metadata VALUES ('source','synthetic fixture'); INSERT INTO dictionary_entries VALUES ('at least','至少'),('doubt','怀疑');").unwrap();
+    drop(dictionary);
+    let store = Arc::new(Store::open(directory.path()).unwrap());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let settings = Settings {
+        model_url: format!("http://{}", listener.local_addr().unwrap()),
+        ..Default::default()
+    };
+    let target = "I doubt they are on twitter";
+    let translated = "我怀疑他们是否在用推特。";
+    let server = std::thread::spawn(move || {
+        for translation in [false, true] {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut data = Vec::new();
+            let request: serde_json::Value = loop {
+                let mut buffer = [0; 4096];
+                let size = stream.read(&mut buffer).unwrap();
+                assert!(size > 0);
+                data.extend_from_slice(&buffer[..size]);
+                if let Some(end) = data.windows(4).position(|p| p == b"\r\n\r\n") {
+                    let length: usize = String::from_utf8_lossy(&data[..end]).lines()
+                        .find_map(|line| line.to_lowercase().strip_prefix("content-length:")
+                            .map(|n| n.trim().parse().unwrap())).unwrap();
+                    if data.len() >= end + 4 + length {
+                        break serde_json::from_slice(&data[end + 4..end + 4 + length]).unwrap();
+                    }
+                }
+            };
+            let input: serde_json::Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(input["target"], target);
+            let system = request["messages"][0]["content"].as_str().unwrap();
+            let value = if translation {
+                assert_eq!(input["context"], target);
+                assert!(system.contains("将 target 完整译成"));
+                assert_eq!(request["max_tokens"], 2048);
+                json!({"meaning":"","translation":translated,"notes":""})
+            } else {
+                assert!(system.contains("常用的简短中文解释"));
+                json!({"meaning":"怀疑","translation":"","notes":"旧词义结果"})
+            };
+            let response = json!({"choices":[{"finish_reason":"stop","message":{"content":value.to_string()}}]}).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+        }
+    });
+    let app = Arc::new(Application::new(Arc::clone(&store), TaskManager::new(Arc::clone(&store), Arc::new(|_| {})), settings));
+    let input = QueryInput {
+        target: target.into(), context: String::new(), mode: "explain".into(),
+        source_language: "auto".into(), target_language: "auto".into(), origin: QueryOrigin::default(),
+    };
+    // The previous explicit dictionary request creates the same persisted word
+    // result as the old auto heuristic, including its query_results cache.
+    for mode in ["explain", "auto", "auto"] {
+        let session = app.queries.open(QueryInput { mode: mode.into(), ..input.clone() }, None).unwrap();
+        app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+        let completed = finished(&app, &session.session_id);
+        let value = completed.results[0].value.as_ref().unwrap();
+        if mode == "explain" {
+            assert_eq!(value.meaning, "怀疑");
+        } else {
+            assert_eq!(value.translation, translated);
+            assert!(value.meaning.is_empty());
+            assert_eq!(completed.input.mode, "auto");
+        }
+    }
+    server.join().unwrap();
+    assert_eq!(store.explanation(target, "").unwrap().unwrap().meaning, "怀疑");
+    // Single words and a complete known phrase continue using the offline base.
+    for (target, meaning) in [("doubt", "怀疑"), ("at least", "至少")] {
+        let session = app.queries.open(QueryInput { target: target.into(), mode: "auto".into(), ..input.clone() }, None).unwrap();
+        app.query_start(session.session_id.clone(), session.input_revision, vec!["qwen".into()], false, true).unwrap();
+        let completed = finished(&app, &session.session_id);
+        assert_eq!(completed.results[0].cache_source, "dictionary");
+        assert_eq!(completed.results[0].value.as_ref().unwrap().meaning, meaning);
+    }
+    assert!(store.list_entries("", 0, 40).unwrap().is_empty());
+}
+
+#[test]
 fn query_multi_provider_collection_cache_and_plugin_normal_flow() {
     let directory = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(directory.path()).unwrap());

@@ -68,31 +68,32 @@ impl QueryInput {
         }
     }
 
-    fn resolved_mode(&self) -> &str {
+    fn resolved_mode(&self, store: &Store) -> Result<&str, AppError> {
         // The dictionary prompt and stored explanations are English-to-Chinese.
         // Reverse queries, including a single Chinese word, need translation.
         if !self.source_language.starts_with("en") || !self.target_language.starts_with("zh") {
-            return "translate";
+            return Ok("translate");
         }
         if self.mode != "auto" {
-            return &self.mode;
+            return Ok(&self.mode);
         }
         let target = self.target.trim();
         let words = target.split_whitespace().count();
-        // A conservative text heuristic, not a grammatical parser. Keep short
-        // vocabulary queries; translate longer or visibly punctuated passages.
-        if words > 6
-            || target.contains(['\n', '\r', '。', '！', '？'])
+        // A short unpunctuated sentence is still a sentence. Keep multiword
+        // dictionary queries only when the complete input has a base entry;
+        // saved model explanations must not decide how new input is routed.
+        if target.contains(['\n', '\r', '。', '！', '？'])
             || words > 1
                 && (target.ends_with(['.', '!', '?'])
                     || target.contains(". ")
                     || target.contains("! ")
                     || target.contains("? ")
                     || target.contains(';'))
+            || words > 1 && store.dictionary_explanation(target)?.is_none()
         {
-            "translate"
+            Ok("translate")
         } else {
-            "explain"
+            Ok("explain")
         }
     }
 
@@ -618,7 +619,7 @@ impl Application {
         // Retain automatic language/mode choices in the editable UI session.
         // Resolve again for each query before service selection and cache lookup.
         input.resolve_languages();
-        input.mode = input.resolved_mode().to_owned();
+        input.mode = input.resolved_mode(&self.store)?.to_owned();
         explanations::validate_input(&input.target, &input.context)?;
         cancel_locked(&mut state, &session_id);
         let query_id = Uuid::new_v4().to_string();

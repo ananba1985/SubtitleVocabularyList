@@ -18,6 +18,11 @@
     "vamos": { "meaning": "（西班牙语）我们去；走吧；快点；用于催促、鼓励。", "notes": "常用西语词；不采用 ECDICT 同形军事缩写解释。动词 ir 的形式，依原句判断。参考：https://dle.rae.es/vamos；https://dle.rae.es/ir" },
     "woosnum": { "meaning": "姓氏，保留 Woosnum 原拼写。", "notes": "已对照原字幕核对的姓氏，不按普通英语单词作拼写纠错；不编造标准音译或人物身份。" }
   },
+  "ocr_variants": {
+    "ahal": { "target": "aha", "kind": "已核对 PGS 字幕 Aha!，感叹号误识别为 l" },
+    "quinceariera": { "target": "quinceanera", "kind": "已核对 PGS 字幕 quinceañera，底库使用无重音拼写" },
+    "snhickering": { "target": "snicker", "kind": "已核对 PGS 字幕 Snickering，纠正 OCR 并还原词形" }
+  },
   "variants": {
     "couldnt": { "target": "couldn't", "kind": "省略撇号" },
     "didnt": { "target": "didn't", "kind": "省略撇号" },

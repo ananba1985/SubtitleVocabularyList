@@ -30,6 +30,12 @@ pub fn validate_input(text: &str, context: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+pub(crate) fn model_output_error(mut error: AppError, content: &str) -> AppError {
+    let content: String = content.chars().take(16000).collect();
+    error.message.push_str(&format!("\n模型返回内容：{content}"));
+    error
+}
+
 impl Explanation {
     pub(crate) fn normalize_model_fields(&mut self, original: &str) {
         self.recover_name_meaning(original);
@@ -91,6 +97,31 @@ impl Explanation {
 }
 
 impl Store {
+    pub(crate) fn ocr_dictionary_explanation(&self, text: &str) -> Result<Option<Explanation>, AppError> {
+        let Some(value) = self.base_dictionary()?.ocr_explanation(text)? else { return Ok(None); };
+        let witnessed: bool = self.connection()?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM occurrences o JOIN sources s ON s.id=o.source_id JOIN examples e ON e.id=o.example_id WHERE o.candidate_key=? AND s.text_source='pgs_ocr' AND e.archived=0)",
+            [crate::vocabulary::normalize(text)], |row| row.get(0),
+        )?;
+        Ok(witnessed.then_some(value))
+    }
+
+    pub(crate) fn model_sentence_text(&self, sentence: &str) -> Result<String, AppError> {
+        if !sentence.contains('|') { return Ok(sentence.to_owned()); }
+        let ocr: bool = self.connection()?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM examples e JOIN sources s ON s.id=e.source_id WHERE e.text=? AND s.text_source='pgs_ocr' AND e.archived=0)",
+            [sentence], |row| row.get(0),
+        )?;
+        if !ocr { return Ok(sentence.to_owned()); }
+        let characters: Vec<_> = sentence.chars().collect();
+        Ok(characters.iter().enumerate().map(|(index, &character)| {
+            if character == '|'
+                && (index == 0 || characters[index - 1].is_whitespace())
+                && (index + 1 == characters.len() || characters[index + 1].is_whitespace())
+            { 'I' } else { character }
+        }).collect())
+    }
+
     // A definition remains shared by word. One original occurrence only supplies
     // case and a usage clue, so names and deliberate spellings are not mistaken
     // for nonexistent lowercase English words.
@@ -153,6 +184,8 @@ impl Store {
         let (mut value, meaning_scope) = if let Some(value) = self.explanation(text, "")? {
             (value, "general")
         } else if let Some(value) = self.dictionary_explanation(text)? {
+            (value, "dictionary")
+        } else if let Some(value) = self.ocr_dictionary_explanation(text)? {
             (value, "dictionary")
         } else {
             return Ok(self.sentence_translation(context)?.map(|translation| {

@@ -17,6 +17,8 @@ pub(crate) struct BaseDictionary {
 struct Supplements {
     definitions: HashMap<String, Definition>,
     variants: HashMap<String, Variant>,
+    #[serde(default)]
+    ocr_variants: HashMap<String, Variant>,
 }
 
 #[derive(Deserialize)]
@@ -123,6 +125,19 @@ impl BaseDictionary {
             return Ok(Some(value));
         }
         Ok(None)
+    }
+
+    // These corrections have been checked against subtitle pixels. They are
+    // deliberately separate from ordinary dictionary aliases; the caller must
+    // establish that this target actually came from a PGS OCR occurrence.
+    pub(crate) fn ocr_explanation(&self, text: &str) -> Result<Option<Explanation>, AppError> {
+        let Some(variant) = self.supplements.ocr_variants.get(&dictionary_key(text)) else {
+            return Ok(None);
+        };
+        Ok(self.lookup(&variant.target)?.map(|mut value| {
+            value.notes.push_str(&format!("；{}：{} → {}；原字幕文字保留", variant.kind, text, variant.target));
+            value
+        }))
     }
 
     fn lookup(&self, key: &str) -> Result<Option<Explanation>, AppError> {

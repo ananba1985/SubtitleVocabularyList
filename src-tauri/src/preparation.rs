@@ -1282,6 +1282,120 @@ mod tests {
     }
 
     #[test]
+    fn failed_ocr_words_and_echoed_sentences_are_repaired_with_originals_preserved() {
+        // Real captures can be replayed locally without committing user media
+        // or requests. CI uses the equivalent synthetic inputs below.
+        let replay = std::env::var_os("SVL_PREPARATION_CONTENT_REPLAY_DIR").map(std::path::PathBuf::from);
+        let words = ["ahal", "quinceariera", "snhickering"];
+        let sentences: Vec<String> = if let Some(root) = &replay {
+            let failures: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("failures.json")).unwrap()).unwrap();
+            failures.as_array().unwrap()[3..].iter().map(|item| item["text"].as_str().unwrap().to_owned()).collect()
+        } else {
+            (0..10).map(|id| format!("| will open chapter {id}." )).collect()
+        };
+        let original_response = if let Some(root) = &replay {
+            std::fs::read(root.join("sentences.response.json")).unwrap()
+        } else {
+            json!({"choices":[{"message":{"content":json!({"items":sentences.iter().enumerate().map(|(id,text)|json!({"id":id,"translation":text})).collect::<Vec<_>>()} ).to_string()}}]}).to_string().into_bytes()
+        };
+        let fixed_response = if let Some(root) = &replay {
+            std::fs::read(root.join("sentences-final.response.json")).unwrap()
+        } else {
+            json!({"choices":[{"message":{"content":json!({"items":(0..10).map(|id|json!({"id":id,"translation":format!("我会打开第{id}章。") })).collect::<Vec<_>>()} ).to_string()}}]}).to_string().into_bytes()
+        };
+        if let Some(root) = &replay {
+            for word in words {
+                let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join(format!("{word}.response.json"))).unwrap()).unwrap();
+                let content = raw["choices"][0]["message"]["content"].as_str().unwrap();
+                let mut value: Explanation = serde_json::from_str(content).unwrap();
+                value.normalize_model_fields(word);
+                let error = value.validate("").unwrap_err();
+                let diagnostic = crate::explanations::model_output_error(error, content);
+                assert!(diagnostic.message.contains(&value.notes));
+            }
+        }
+        let expected: serde_json::Value = serde_json::from_slice(&fixed_response).unwrap();
+        let expected: serde_json::Value = serde_json::from_str(expected["choices"][0]["message"]["content"].as_str().unwrap()).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("dictionaries")).unwrap();
+        let dictionary = rusqlite::Connection::open(directory.path().join("dictionaries/base.sqlite3")).unwrap();
+        dictionary.execute_batch("CREATE TABLE dictionary_entries(word TEXT PRIMARY KEY,meaning TEXT); CREATE TABLE dictionary_aliases(form TEXT PRIMARY KEY,lemma TEXT); CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT); INSERT INTO metadata VALUES ('source','synthetic dictionary fixture'); INSERT INTO dictionary_entries VALUES ('aha','啊哈'),('snicker','窃笑'),('quinceanera','女孩十五岁生日的成人礼');").unwrap();
+        drop(dictionary);
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        {
+            let connection = store.connection().unwrap();
+            connection.execute("INSERT INTO sources(id,kind,title,fingerprint,corpus_path,text_source,imported_at,created_at) VALUES ('pgs','video','Synthetic OCR','pgs-fixture','fixture.json','pgs_ocr',1,1)", []).unwrap();
+            for (index,text) in words.iter().copied().chain(sentences.iter().map(String::as_str)).enumerate() {
+                let id = format!("example-{index}");
+                connection.execute("INSERT INTO examples(id,source_id,location_key,identity_key,text,start_ms,end_ms,created_at) VALUES (?,'pgs',?,?,?,0,1000,1)",params![id,id,id,text]).unwrap();
+                if index < words.len() {
+                    connection.execute("INSERT INTO occurrences(id,source_id,example_id,candidate_key,raw_text,token_start,token_end,kind) VALUES (?,'pgs',?,?,?,0,1,'word')",params![id,id,text,text]).unwrap();
+                }
+            }
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for (attempt,response) in [original_response,fixed_response].into_iter().enumerate() {
+                let (mut stream,_) = listener.accept().unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut data = Vec::new();
+                let request: serde_json::Value = loop {
+                    let mut buffer = [0;4096];
+                    let size = stream.read(&mut buffer).unwrap();
+                    assert!(size>0);
+                    data.extend_from_slice(&buffer[..size]);
+                    if let Some(end) = data.windows(4).position(|part|part==b"\r\n\r\n") {
+                        let length: usize = String::from_utf8_lossy(&data[..end]).lines().find_map(|line|line.to_lowercase().strip_prefix("content-length:").map(|n|n.trim().parse().unwrap())).unwrap();
+                        if data.len()>=end+4+length { break serde_json::from_slice(&data[end+4..end+4+length]).unwrap(); }
+                    }
+                };
+                let input: serde_json::Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+                assert_eq!(input["sentences"].as_array().unwrap().len(),10);
+                for item in input["sentences"].as_array().unwrap() {
+                    assert!(!item["text"].as_str().unwrap().split_whitespace().any(|word|word=="|"));
+                }
+                if attempt==1 { assert!(input["previousFailure"].as_str().unwrap().contains("translation")); }
+                assert!(request["messages"][0]["content"].as_str().unwrap().contains("实际中文译文"));
+                write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",response.len()).unwrap();
+                stream.write_all(&response).unwrap();
+            }
+        });
+        let app = application(Arc::clone(&store), url);
+        let worker = Arc::clone(&app);
+        let sentence_inputs = sentences.clone();
+        let reports = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&reports);
+        let task = app.tasks.start("explanation_batch", &Uuid::new_v4().to_string(), "ocr-content-replay", move |context| {
+            let make_input = |text: String, kind: &str| PreparationInput { source_id:"pgs".into(),title:"Synthetic OCR".into(),kind:kind.into(),text,context:String::new() };
+            let batch = PreparationBatch { inputs:words.iter().map(|word|make_input((*word).into(),"word")).collect() };
+            let values = worker.explain_prepared_batch(&batch,&context,|_,_|{})?;
+            assert_eq!(values.len(),3);
+            assert!(values.iter().all(|value|matches!(value,Ok(Some(false)))));
+            let batch = PreparationBatch { inputs:sentence_inputs.into_iter().map(|text|make_input(text,"sentence")).collect() };
+            let values = worker.explain_prepared_batch(&batch,&context,|stage,message|observed.lock().unwrap().push((stage,message)))?;
+            assert_eq!(values.len(),10);
+            assert!(values.iter().all(|value|matches!(value,Ok(Some(true)))));
+            Ok(json!({"resolvedWords":3,"savedSentences":10}))
+        }).unwrap();
+        let completed = finish(&app,&task);
+        assert_eq!(completed.state,"succeeded");
+        server.join().unwrap();
+        assert!(reports.lock().unwrap().iter().any(|(stage,_)|*stage=="retry_wait"));
+        for word in words {
+            let prepared = store.prepared_explanation(word,"").unwrap().unwrap();
+            assert!(prepared.value.notes.contains("已核对 PGS"));
+            assert!(prepared.value.notes.contains("原字幕文字保留"));
+        }
+        for (index,sentence) in sentences.iter().enumerate() {
+            assert_eq!(store.sentence_translation(sentence).unwrap().unwrap(),expected["items"][index]["translation"].as_str().unwrap());
+            let original: String = store.connection().unwrap().query_row("SELECT text FROM examples WHERE id=?",[format!("example-{}",index+3)],|row|row.get(0)).unwrap();
+            assert_eq!(&original,sentence);
+        }
+        assert!(store.list_entries("",0,40).unwrap().is_empty());
+    }
+
+    #[test]
     fn connection_retry_delay_grows_and_remains_bounded() {
         assert_eq!(retry_delay(1), Duration::from_secs(2));
         assert_eq!(retry_delay(2), Duration::from_secs(4));

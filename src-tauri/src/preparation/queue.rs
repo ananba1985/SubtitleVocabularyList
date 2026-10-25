@@ -96,6 +96,8 @@ impl Store {
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
+        drop(query);
+        drop(connection);
         let mut pending = Vec::new();
         for (input, cached_meaning) in inputs {
             if cached_meaning
@@ -104,7 +106,10 @@ impl Store {
             {
                 continue;
             }
-            if input.kind == "sentence" || self.dictionary_explanation(&input.text)?.is_none() {
+            if input.kind == "sentence"
+                || self.dictionary_explanation(&input.text)?.is_none()
+                    && self.ocr_dictionary_explanation(&input.text)?.is_none()
+            {
                 pending.push(input);
             }
         }

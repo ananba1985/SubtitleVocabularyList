@@ -34,6 +34,7 @@ impl Application {
     ) -> Result<Option<bool>, AppError> {
         let mut connection_retries: u32 = 0;
         let mut output_retried = false;
+        let mut output_feedback: Option<String> = None;
         loop {
             let epoch = self.preparation_retry_epoch.load(Ordering::Relaxed);
             context.check_cancelled()?;
@@ -45,7 +46,7 @@ impl Application {
             }
             report("translations", format!("{} · {}", input.title, input.text));
             let result = if input.kind == "sentence" {
-                self.translate_many(&[input.text.clone()], context)
+                self.translate_many_with_feedback(&[input.text.clone()], output_feedback.as_deref(), context)
                     .and_then(|mut values| {
                         values
                             .remove(&input.text)
@@ -73,6 +74,7 @@ impl Application {
                     ),
                 )
             } else if error.code == "invalid_data" && !output_retried {
+                output_feedback = Some(error.message.clone());
                 output_retried = true;
                 connection_retries = 0;
                 (
@@ -107,6 +109,7 @@ impl Application {
         let mut outcomes = vec![None; batch.inputs.len()];
         let mut connection_retries: u32 = 0;
         let mut output_retried = false;
+        let mut output_feedback: Option<String> = None;
         loop {
             let epoch = self.preparation_retry_epoch.load(Ordering::Relaxed);
             context.check_cancelled()?;
@@ -148,7 +151,7 @@ impl Application {
             );
             let mut retry_error = None;
             let result = if first.kind == "sentence" {
-                self.translate_many(&texts, context)
+                self.translate_many_with_feedback(&texts, output_feedback.as_deref(), context)
             } else {
                 self.explain_many(&texts, &first.context, context)
             };
@@ -206,6 +209,7 @@ impl Application {
                     ),
                 )
             } else if error.code == "invalid_data" && !output_retried {
+                output_feedback = Some(error.message.clone());
                 output_retried = true;
                 connection_retries = 0;
                 (

@@ -623,7 +623,7 @@ fn generate_explanation(
         context,
     )?;
     let mut value: Explanation = serde_json::from_str(&stripped)
-        .map_err(|_| AppError::new("invalid_data", "模型结果格式无效，原文和草稿已保留。"))?;
+        .map_err(|_| explanations::model_output_error(AppError::new("invalid_data", "模型结果格式无效，原文和草稿已保留。"), &stripped))?;
     value.normalize_model_fields(&raw_target);
     context.check_cancelled()?;
     if context_text.trim().is_empty() {
@@ -635,7 +635,7 @@ fn generate_explanation(
         &value,
         &settings.model_url,
         &settings.model_name,
-    )?;
+    ).map_err(|error| explanations::model_output_error(error, &stripped))?;
     Ok((saved, true))
 }
 

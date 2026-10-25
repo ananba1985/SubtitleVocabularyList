@@ -3,10 +3,10 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DOC-TEST-PREP-DEDUP-001 |
-| 文档版本 | 0.2 |
+| 文档版本 | 0.3 |
 | 更新日期 | 2026-10-24 |
 | 状态 | 最小核心正常流程通过；未生成新安装包 |
-| 对应版本 | 0.6.2 去重基线，schema 8；0.26.8 批量等待预算增量，不改变 schema |
+| 对应版本 | 0.6.2 去重基线，schema 8；0.26.8 批量等待预算与 0.26.9 内容失败增量，不改变 schema |
 | 对应需求 | FR-02、FR-08、NFR-02、NFR-03；TC-50 |
 
 ## 1 问题与修改
@@ -57,9 +57,36 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --features desktop --li
 
 最初使用无桌面 feature 的 lib 单测命令在既有 `assessment_tests` 对 `sync_test_fixture` 的条件编译处失败；改用桌面 feature 后执行同一用例通过，没有修改无关测试条件。正式 Data 的访问全为只读，模型仅健康／槽位读取及既有日志取证，没有追加真实生成请求或改动启动参数。私有诊断、模型日志摘录及正常测试记录保留在 `.local/preparation-timeout-0.26.8/`。本轮没有打包、安装或重启用户客户端；安装版原任务不会自动使用源码修复，真实模型在修复版的完整生成和 13 项内容问题仍需后续分别核对。
 
-## 5 修订记录
+## 5 13 项内容失败的原始返回与修复（0.26.9）
+
+2026-10-24，用户明确要求继续核对原始返回，区分模型、解析及校验并修复。正式任务、媒体、配置及 SQLite 均只读，不取消或重启正在运行的安装版。此前版本没有保存这 13 项失败时的 HTTP 原文，因此本轮证据是**重新请求获得的原始响应**，不冒称恢复了历史响应。按失败清单重新组合 10 句并分配 id，使用原生产提示、schema、temperature=0.1、enable_thinking=false 及 500／2700-token 预算，串行复现。
+
+| 项目 | 原始返回和原图核对 | 原因与处理 |
+| --- | --- | --- |
+| ahal | 合法 JSON，meaning 为空，notes 判断原文可能是笑声误录；PGS 原图为 Aha!，感叹号被识别为 l | OCR 输入错误；仅在已导入 PGS OCR 候选中关联底库 aha，保留纠正说明 |
+| quinceariera | 合法 JSON，meaning 为空，notes 指出可能是 quinceañera；原图确认后者；ECDICT 对应无重音拼写 quinceanera | OCR 输入错误；复用底库“女孩十五岁成人礼”含义，不将模型诊断直接当作释义 |
+| snhickering | 合法 JSON，meaning 为空，notes 判断应为 Snicker；原图为 [Snickering] | OCR 输入错误；纠正并还原到 snicker 底库释义，原字幕和候选保留 |
+| 10 个句子 | HTTP 正常结束、JSON 可解析，10 个 translation **逐项原样复制英文**，包括没有竖线误识别的普通句子 | 模型未执行翻译；解析没有删改内容，现有中文校验拒绝正确。改用明确中文要求和示例、保留校验；有限补试携带原始字段的校验反馈 |
+
+原词义请求依次用时约 15.35、9.61、9.30 秒，均 finish_reason=stop；原句批次 44.56 秒正常结束但仍为英文，说明这类失败与 0.26.8 的 60 秒截断不同。原图在后台通过 FFmpeg 的英文 PGS 轨道合成取得，没有使用桌面鼠标键盘。图片字幕画布为 1920×1080，读取原图时与视频缩放对齐，以免字幕被截出画面。
+
+仅修正 quinceariera 请求目标为原图的 quinceañera 后，真实模型已返回中文词义；最终实现优先复用已有 ECDICT 无重音条目，减少额外模型调用。使用最终生产翻译提示及 PGS 中独立 `|` → I 的模型输入副本，原 10 句在同一真实 Qwen 服务中 **30.02 秒**返回 10 个中文 translation，finish_reason=stop。原文仍含有 `|` 的记录保持，不覆盖字幕。上述时间仅为本次复现记录，不作为速度或翻译质量基准。
+
+随后将捕获的原始失败响应和最终真实响应送入隔离的生产核心流程：
+
+```powershell
+$env:SVL_PREPARATION_CONTENT_REPLAY_DIR = Join-Path $PWD '.local/preparation-content-0.26.9'
+cargo test --locked --manifest-path src-tauri/Cargo.toml --features desktop --lib preparation::tests::failed_ocr_words_and_echoed_sentences_are_repaired_with_originals_preserved -- --exact
+```
+
+**1 passed、0 failed**，执行 1.17 秒，不含编译。三个原始词义响应能解析，原 meaning 校验拒绝原因与诊断内容一致。合成底库与真实 PGS 来源标记的隔离记录，使 3 个 OCR 候选获得有纠正说明的现有中文释义；生产 worker 收到真实英文回显后进入 retry_wait，下一次请求带 previousFailure，保留逐项中文校验，最终 10 句按原始句键完整保存。原文逐项比较保持，个人词条为 0。提交的默认夹具使用合成句子，用户的真实剧集内容仅从本机环境变量路径加载，没有写入公开仓库。
+
+请求 JSON、完整 HTTP 响应 JSON、assistant content、三个原字幕图、逐项 summary／摘要和核心日志保留在 `.local/preparation-content-0.26.9/`。没有执行无关故障、压力、扩展回归或 UI／安装验证；本次失败响应重放属于用户明确指定的这 13 项排查范围。未改正式 Data 或模型启动参数，未生成安装包、安装或重启；正在运行的 0.26.6 需要后续更新才能使用修复，历史失败回执不被此次隔离验证改写。
+
+## 6 修订记录
 
 | 版本 | 日期 | 内容 |
 | --- | --- | --- |
 | 0.1 | 2026-10-12 | 记录词／句独立缓存、正常集成验证、只读资料统计及交付边界 |
 | 0.2 | 2026-10-24 | 记录安装版批量超时的只读取证、按输出预算的期限修复、10 项正常保存验证及未实装边界 |
+| 0.3 | 2026-10-24 | 记录 13 项真实复现响应、PGS 原图、OCR 底库纠正及中文反馈补试，区分历史响应缺失和当前隔离修复证据 |

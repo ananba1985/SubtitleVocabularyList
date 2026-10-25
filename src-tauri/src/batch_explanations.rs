@@ -14,6 +14,76 @@ struct BatchResponse {
     items: Vec<BatchItem>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{application::{Settings, model_request_timeout}, store::Store, tasks::TaskManager};
+    use std::{io::{Read, Write}, net::TcpListener, sync::Arc, time::{Duration, Instant}};
+
+    #[test]
+    fn ten_item_batch_uses_generation_budget_and_saves_complete_results() {
+        // This is the output budget of the live ten-word batch. Check the
+        // production deadline directly without a minute-long delayed server.
+        assert_eq!(model_request_timeout(1200), Duration::from_secs(180));
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(directory.path()).unwrap());
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let settings = Settings { model_url: format!("http://{}", listener.local_addr().unwrap()), ..Default::default() };
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut data = Vec::new();
+            let request: serde_json::Value = loop {
+                let mut buffer = [0; 4096];
+                let size = stream.read(&mut buffer).unwrap();
+                assert!(size > 0);
+                data.extend_from_slice(&buffer[..size]);
+                if let Some(end) = data.windows(4).position(|p| p == b"\r\n\r\n") {
+                    let length: usize = String::from_utf8_lossy(&data[..end]).lines()
+                        .find_map(|line| line.to_lowercase().strip_prefix("content-length:")
+                            .map(|n| n.trim().parse().unwrap())).unwrap();
+                    if data.len() >= end + 4 + length {
+                        break serde_json::from_slice(&data[end + 4..end + 4 + length]).unwrap();
+                    }
+                }
+            };
+            assert_eq!(request["max_tokens"], 1200);
+            assert_eq!(request["response_format"]["json_schema"]["name"], "vocabulary_explanation");
+            let input: serde_json::Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(input["targets"].as_array().unwrap().len(), 10);
+            let items = (0..10).map(|id| json!({"id":id,"meaning":format!("合成词义{id}"),"notes":""})).collect::<Vec<_>>();
+            let content = json!({"translation":"","items":items}).to_string();
+            let response = json!({"choices":[{"message":{"content":content}}]}).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+        });
+        let app = Arc::new(Application::new(Arc::clone(&store), TaskManager::new(Arc::clone(&store), Arc::new(|_| {})), settings));
+        let worker = Arc::clone(&app);
+        let texts = (0..10).map(|id| format!("fixtureword{id}")).collect::<Vec<_>>();
+        let task = app.tasks.start("explanation_batch", &uuid::Uuid::new_v4().to_string(), "batch-budget", move |context| {
+            let values = worker.explain_many(&texts, "", &context)?;
+            assert_eq!(values.len(), 10);
+            assert!(values.values().all(|value| matches!(value, Ok(true))));
+            Ok(json!({"saved":values.len()}))
+        }).unwrap();
+        let started = Instant::now();
+        loop {
+            let snapshot = app.tasks.get(&task.id).unwrap();
+            if snapshot.terminal() {
+                assert_eq!(snapshot.state, "succeeded", "{:?}", snapshot.error);
+                assert_eq!(snapshot.result.unwrap()["saved"], 10);
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        server.join().unwrap();
+        for id in 0..10 {
+            assert_eq!(store.explanation(&format!("fixtureword{id}"), "").unwrap().unwrap().meaning, format!("合成词义{id}"));
+        }
+        assert!(store.list_entries("", 0, 40).unwrap().is_empty());
+    }
+}
+
 #[derive(Deserialize)]
 struct BatchItem {
     id: usize,

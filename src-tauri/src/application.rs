@@ -647,40 +647,19 @@ pub(crate) fn model_content(
     max_tokens: usize,
     context: &TaskContext,
 ) -> Result<String, AppError> {
-    context.check_cancelled()?;
-    let client = reqwest::blocking::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(60))
-        .connect_timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(provider_error)?;
-    let url = format!(
-        "{}/v1/chat/completions",
-        settings.model_url.trim_end_matches('/')
-    );
-    let response = client.post(url).json(&json!({
-        "model":settings.model_name,
-        "messages":[{"role":"system","content":system},{"role":"user","content":serde_json::to_string(&input)?}],
-        "temperature":0.1,"max_tokens":max_tokens,"stream":false,
-        "chat_template_kwargs":{"enable_thinking":false},
-        "response_format":{"type":"json_schema","json_schema":{"name":"vocabulary_explanation","strict":true,"schema":schema}}
-    })).send().map_err(provider_error)?.error_for_status().map_err(provider_error)?.json::<Value>().map_err(provider_error)?;
-    context.check_cancelled()?;
-    let content = response["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| AppError::new("invalid_data", "模型没有返回有效解释。"))?;
-    Ok(content
-        .trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim()
-        .to_owned())
+    model_content_with_timeout(
+        settings, schema, system, input, max_tokens,
+        model_request_timeout(max_tokens), "vocabulary_explanation", context,
+    )
 }
 
-// Longer question batches have their own deadline; ordinary lookups keep their existing limit.
-// Dropping this async request on cancellation closes the request instead of leaving a worker behind.
+// Allow generation time proportional to the requested output plus startup/prefill
+// headroom. This is a bounded wait budget, not a promise about model throughput.
+pub(crate) fn model_request_timeout(max_tokens: usize) -> std::time::Duration {
+    std::time::Duration::from_secs(max_tokens.div_ceil(10).saturating_add(60).min(600) as u64)
+}
+
+// Question batches retain their caller-supplied deadline.
 pub(crate) fn assessment_model_content(
     settings: &Settings,
     schema: Value,
@@ -690,24 +669,50 @@ pub(crate) fn assessment_model_content(
     timeout: std::time::Duration,
     context: &TaskContext,
 ) -> Result<String, AppError> {
+    model_content_with_timeout(
+        settings, schema, system, input, max_tokens,
+        timeout, "assessment_questions", context,
+    )
+}
+
+// Dropping the async request on cancellation closes the connection promptly,
+// including while waiting for headers or a non-streaming response body.
+fn model_content_with_timeout(
+    settings: &Settings,
+    schema: Value,
+    system: &str,
+    input: Value,
+    max_tokens: usize,
+    timeout: std::time::Duration,
+    schema_name: &str,
+    context: &TaskContext,
+) -> Result<String, AppError> {
     context.check_cancelled()?;
     let payload = json!({
         "model":settings.model_name,
         "messages":[{"role":"system","content":system},{"role":"user","content":serde_json::to_string(&input)?}],
         "temperature":0.1,"max_tokens":max_tokens,"stream":false,
         "chat_template_kwargs":{"enable_thinking":false},
-        "response_format":{"type":"json_schema","json_schema":{"name":"assessment_questions","strict":true,"schema":schema}}
+        "response_format":{"type":"json_schema","json_schema":{"name":schema_name,"strict":true,"schema":schema}}
     });
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|_| AppError::new("internal_error", "无法准备本次题库请求。"))?;
+        .map_err(|_| AppError::new("internal_error", "无法准备本次模型请求。"))?;
     runtime.block_on(async {
         let client=reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
             .timeout(timeout).connect_timeout(std::time::Duration::from_secs(5)).build().map_err(provider_error)?;
         let url=format!("{}/v1/chat/completions",settings.model_url.trim_end_matches('/'));
-        let response=async {client.post(url).json(&payload).send().await.map_err(provider_error)?
-            .error_for_status().map_err(provider_error)?.json::<Value>().await.map_err(provider_error)};
+        let request_error = |error: reqwest::Error| {
+            let timed_out = error.is_timeout();
+            let mut error = provider_error(error);
+            if timed_out {
+                error.message = format!("本次本地模型请求超过 {} 秒等待上限。已保存资料保留。", timeout.as_secs());
+            }
+            error
+        };
+        let response=async {client.post(url).json(&payload).send().await.map_err(request_error)?
+            .error_for_status().map_err(request_error)?.json::<Value>().await.map_err(request_error)};
         tokio::pin!(response);
         let value=loop {
             tokio::select! {
@@ -715,8 +720,9 @@ pub(crate) fn assessment_model_content(
                 _=tokio::time::sleep(std::time::Duration::from_millis(100)) => context.check_cancelled()?,
             }
         };
+        context.check_cancelled()?;
         let content=value["choices"][0]["message"]["content"].as_str()
-            .ok_or_else(||AppError::new("invalid_data","模型没有返回有效题目。"))?;
+            .ok_or_else(||AppError::new("invalid_data","模型没有返回有效内容。"))?;
         Ok(content.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim().to_owned())
     })
 }

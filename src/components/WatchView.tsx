@@ -35,9 +35,12 @@ export function WatchView({
   const [state, setState] = useState<PlayerSnapshot | null>(null);
   const [sources, setSources] = useState<SourceSummary[]>([]);
   const [selected, setSelected] = useState("");
-  const [sourcePickerOpen, setSourcePickerOpen] = useState(true);
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const selectionSources = useMemo(() => {
-    if (!state?.sourceId || sources.some((source) => source.id === state.sourceId))
+    if (
+      !state?.sourceId ||
+      sources.some((source) => source.id === state.sourceId)
+    )
       return sources;
     // Keep the actual video's source visible while its import/list refresh finishes.
     return [
@@ -57,6 +60,7 @@ export function WatchView({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [options, setOptions] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [query, setQuery] = useState<
     (WatchRequest & { revision: number; playerSession: string }) | null
   >(null);
@@ -330,7 +334,7 @@ export function WatchView({
       window.removeEventListener("scroll", update, true);
       document.removeEventListener("visibilitychange", update);
     };
-  }, [!!state?.path, collectionOpen]);
+  }, [!!state?.path, collectionOpen, sourcePickerOpen, options, moreOpen]);
   const start = async (path?: string, sourceId?: string) => {
     setBusy(true);
     setError("");
@@ -520,83 +524,102 @@ export function WatchView({
             继续上次观看 · {time(progress.position * 1000)}
           </button>
         )}
-        <div className="watch-playback-controls">
-          <button
-            disabled={busy || !state?.path}
-            onClick={() => void control("close")}
-            title="停止并关闭当前视频，保留播放列表和观看进度"
-          >
-            ■ 停止播放
-          </button>
-          <button
-            aria-label="上一集"
-            disabled={busy || !state?.loaded || (state.playlistIndex ?? 0) <= 0}
-            onClick={() => void playlistChange("previous")}
-          >
-            上一集
-          </button>
-          <button
-            aria-label="下一集"
-            disabled={
-              busy ||
-              !state?.loaded ||
-              state.playlistIndex === null ||
-              state.playlistIndex >= state.playback.playlist.length - 1
-            }
-            onClick={() => void playlistChange("next")}
-          >
-            下一集
-          </button>
-          <label>
-            倍速{" "}
-            <select
-              aria-label="播放倍速"
-              value={state?.playback.preferences.speed ?? 1}
-              onChange={(e) => void control("speed", Number(e.target.value))}
-            >
-              {[
-                ...new Set([
-                  0.5,
-                  0.75,
-                  1,
-                  1.25,
-                  1.5,
-                  1.75,
-                  2,
-                  3,
-                  4,
-                  state?.playback.preferences.speed ?? 1,
-                ]),
-              ]
-                .sort((a, b) => a - b)
-                .map((speed) => (
-                  <option key={speed} value={speed}>
-                    {Number(speed.toFixed(2))}×
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={state?.playback.preferences.autoNext ?? true}
-              onChange={(e) =>
-                void control("auto_next", e.target.checked ? 1 : 0)
-              }
-            />
-            自动连播
-          </label>
-        </div>
-        <button disabled={!state?.loaded} onClick={() => void control("menu")}>
-          ⚙ 播放器设置
-        </button>
         <button
-          className="text-button"
-          aria-expanded={options}
-          onClick={() => setOptions((v) => !v)}
+          disabled={busy || !state?.path}
+          onClick={() => void control("close")}
+          title="停止并关闭当前视频，保留播放列表和观看进度"
         >
-          学习设置
+          ■ 停止播放
         </button>
+        <details
+          className="watch-more"
+          onToggle={(event) => {
+            const open = event.currentTarget.open;
+            setMoreOpen(open);
+            if (!open) setOptions(false);
+          }}
+        >
+          <summary>更多控制</summary>
+          <div className="watch-more-panel">
+            <div className="watch-playback-controls">
+              <button
+                aria-label="上一集"
+                disabled={
+                  busy || !state?.loaded || (state.playlistIndex ?? 0) <= 0
+                }
+                onClick={() => void playlistChange("previous")}
+              >
+                上一集
+              </button>
+              <button
+                aria-label="下一集"
+                disabled={
+                  busy ||
+                  !state?.loaded ||
+                  state.playlistIndex === null ||
+                  state.playlistIndex >= state.playback.playlist.length - 1
+                }
+                onClick={() => void playlistChange("next")}
+              >
+                下一集
+              </button>
+              <label>
+                倍速{" "}
+                <select
+                  aria-label="播放倍速"
+                  value={state?.playback.preferences.speed ?? 1}
+                  onChange={(e) =>
+                    void control("speed", Number(e.target.value))
+                  }
+                >
+                  {[
+                    ...new Set([
+                      0.5,
+                      0.75,
+                      1,
+                      1.25,
+                      1.5,
+                      1.75,
+                      2,
+                      3,
+                      4,
+                      state?.playback.preferences.speed ?? 1,
+                    ]),
+                  ]
+                    .sort((a, b) => a - b)
+                    .map((speed) => (
+                      <option key={speed} value={speed}>
+                        {Number(speed.toFixed(2))}×
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={state?.playback.preferences.autoNext ?? true}
+                  onChange={(e) =>
+                    void control("auto_next", e.target.checked ? 1 : 0)
+                  }
+                />
+                自动连播
+              </label>
+            </div>
+            <button
+              disabled={!state?.loaded}
+              onClick={() => void control("menu")}
+            >
+              ⚙ 播放器设置
+            </button>
+            <button
+              className="text-button"
+              aria-expanded={options}
+              onClick={() => setOptions((v) => !v)}
+            >
+              学习设置
+            </button>
+          </div>
+        </details>
         <button
           onClick={async () => {
             const window = getCurrentWindow();
@@ -626,33 +649,10 @@ export function WatchView({
           />
         </div>
       )}
-      <RelatedEpisodes path={state?.path ?? ""} loaded={state?.loaded ?? false} />
       {state?.path && state.importStatus?.message && (
         <p role="status" className="muted">
           {state.importStatus.message}
         </p>
-      )}
-      {state?.loaded &&
-        (state.playback.preferences.loopMode !== "none" ||
-          state.loopA !== null) && (
-          <small className="watch-loop-status" role="status">
-            {state.playback.preferences.loopMode === "file"
-              ? "单集循环"
-              : state.playback.preferences.loopMode === "playlist"
-                ? "列表循环"
-                : ""}
-            {state.loopA !== null
-              ? ` · A–B：${time(state.loopA * 1000)}—${state.loopB === null ? "等待设置 B" : time(state.loopB * 1000)}`
-              : ""}
-          </small>
-        )}
-      {state && (
-        <WatchPlaylist
-          state={state}
-          busy={busy}
-          change={playlistChange}
-          add={chooseVideo}
-        />
       )}
       {(error || state?.error) && (
         <p role="alert" className="error">
@@ -887,6 +887,32 @@ export function WatchView({
             </>
           )}
         </div>
+      )}
+      <RelatedEpisodes
+        path={state?.path ?? ""}
+        loaded={state?.loaded ?? false}
+      />
+      {state?.loaded &&
+        (state.playback.preferences.loopMode !== "none" ||
+          state.loopA !== null) && (
+          <small className="watch-loop-status" role="status">
+            {state.playback.preferences.loopMode === "file"
+              ? "单集循环"
+              : state.playback.preferences.loopMode === "playlist"
+                ? "列表循环"
+                : ""}
+            {state.loopA !== null
+              ? ` · A–B：${time(state.loopA * 1000)}—${state.loopB === null ? "等待设置 B" : time(state.loopB * 1000)}`
+              : ""}
+          </small>
+        )}
+      {state && (
+        <WatchPlaylist
+          state={state}
+          busy={busy}
+          change={playlistChange}
+          add={chooseVideo}
+        />
       )}
     </section>
   );

@@ -16,6 +16,9 @@
 .watch-toolbar,.watch-options,.watch-caption-heading,.watch-caption-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .watch-toolbar select { flex:1; min-width:160px; max-width:500px; }
 .watch-toolbar button { white-space:nowrap; }
+.watch-more summary { cursor:pointer; padding:8px 12px; border:1px solid #d8e0d8; border-radius:8px; background:#fff; white-space:nowrap; }
+.watch-more[open] { flex-basis:100%; }
+.watch-more-panel { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 0 0; }
 .watch-source-picker { flex:none; border:1px solid #d8e0d8; border-radius:10px; padding:14px; background:#fff; }
 .watch-source-picker .source-picker { margin-bottom:0; }
 .watch-playback-controls,.watch-playlist-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
@@ -32,7 +35,8 @@
 .watch-fullscreen .watch-playlist { display:none; }
 .watch-loop-status { color:#526b5d; }
 .watch-fullscreen .watch-loop-status { display:none; }
-.watch-stage { position:relative; flex:1; min-height:220px; background:#101714; border:1px solid #20392f; color:#c2d2c7; }
+.watch-stage { position:relative; flex:1; min-height:max(320px, 60vh); background:#101714; border:1px solid #20392f; color:#c2d2c7; }
+.watch-related,.watch-playlist,.watch-loop-status { flex:none; }
 .watch-empty { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; }
 .watch-empty strong { font-size:22px; }
 .app-shell.watch-fullscreen { display:block; }
